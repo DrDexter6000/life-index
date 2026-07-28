@@ -791,6 +791,10 @@ def _validate_edit_payload(
         or not all(isinstance(s, str) for s in selected)
     ):
         return None, IMPORT_REVIEW_EDIT_INVALID
+    # Duplicate selected ids would rebuild (and later publish) the same source
+    # bytes twice; reject before any write.
+    if selected is not None and len(selected) != len(set(selected)):
+        return None, IMPORT_REVIEW_EDIT_INVALID
 
     return payload, None
 
@@ -907,13 +911,25 @@ def _apply_edit_decision(
 
     # decision == confirmed: a date is required to promote.
     has_conflict = _has_capture_conflict(proposal)
+    existing_dr = proposal.get("date_resolution") or {}
+    existing_dr_status = existing_dr.get("status")
     effective_date: str | None = None
     dr_status = DATE_STATUS_EXIF
     if has_user_date and is_valid_calendar_date(journal.get("date", "")):
+        # An explicit date in THIS edit is the highest authority.
         effective_date = journal.get("date", "")
         dr_status = DATE_STATUS_USER
-    elif not has_conflict and is_valid_calendar_date(journal.get("date", "")):
+    elif is_valid_calendar_date(journal.get("date", "")):
+        # No new date supplied, but a valid date is already present (preserved
+        # from a prior resolution). Keep it and preserve its recorded authority
+        # rather than clearing the user's date or downgrading a user_confirmed
+        # resolution to exif_authoritative.
         effective_date = journal.get("date", "")
+        dr_status = (
+            DATE_STATUS_USER
+            if existing_dr_status == DATE_STATUS_USER
+            else DATE_STATUS_EXIF
+        )
 
     if effective_date is not None:
         journal["date"] = effective_date
@@ -944,6 +960,47 @@ def _proposal_journal_projection(proposal: dict[str, Any]) -> dict[str, Any]:
     return {
         field: journal.get(field, [] if field == "tags" else "")
         for field in _EDITABLE_JOURNAL_FIELDS
+    }
+
+
+def _public_advisory(entry: Any) -> dict[str, Any]:
+    """Project a warning/conflict as stable, locator-free fields only.
+
+    Adapter messages can embed a source relative path; the review projection
+    never exposes a filesystem locator, so only the code/severity/runnable flags
+    are surfaced (the GUI maps codes to localized messages)."""
+    if not isinstance(entry, dict):
+        return {"code": "", "severity": ""}
+    out: dict[str, Any] = {
+        "code": entry.get("code", ""),
+        "severity": entry.get("severity", ""),
+    }
+    if "runnable" in entry:
+        out["runnable"] = bool(entry["runnable"])
+    return out
+
+
+def _proposal_review_projection(
+    proposal: dict[str, Any], authoritative_state: str
+) -> dict[str, Any]:
+    """Shared GUI-facing projection of a single review proposal.
+
+    Used by both the ``import review`` page and edit success so the two surfaces
+    present one identical, authoritative shape: the ledger-authoritative state
+    (never the plan's per-proposal ``state`` field), the editable journal, the
+    proposal's date resolution, its adapter conflicts/warnings (codes only), and
+    every source_fact projected as a selectable attachment with a selected flag.
+    No source filesystem path (relative or absolute) is ever exposed.
+    """
+    return {
+        "proposal_id": proposal.get("proposal_id", ""),
+        "state": authoritative_state,
+        "journal": _proposal_journal_projection(proposal),
+        "date_resolution": proposal.get("date_resolution")
+        or {"status": DATE_STATUS_UNRESOLVED, "date": ""},
+        "conflicts": [_public_advisory(c) for c in (proposal.get("conflicts") or [])],
+        "warnings": [_public_advisory(w) for w in (proposal.get("warnings") or [])],
+        "available_attachments": _available_attachments(proposal),
     }
 
 
@@ -1169,6 +1226,10 @@ def _reconcile_review_authority_locked(
         job["authority_status"] = AUTHORITY_STATUS_PLAN_LEDGER_MISMATCH
         if already_closed:
             return False
+        # A flip of recovery_required/authority_status is one atomic parent-
+        # visible change -> exactly one queue_revision bump. plan_revision (plan
+        # content) is untouched: this is a state-only convergence write.
+        _bump_queue(job)
         job["updated_at"] = _now_iso()
         return True
 
@@ -1184,6 +1245,12 @@ def _reconcile_review_authority_locked(
             if isinstance(p, dict)
         }
         job["updated_at"] = _now_iso()
+        changed = True
+    # Legacy migration: a review parent predating the package-3 queue_revision
+    # field initializes it to 1 exactly once (persisted here); a later read finds
+    # the field present and is a stable no-write.
+    if "queue_revision" not in job or job.get("queue_revision") is None:
+        job["queue_revision"] = 1
         changed = True
     return changed
 
@@ -1367,20 +1434,25 @@ def confirm_review(  # noqa: C901
     lock = FileLock(_review_lock_path(data_dir, parent_id), timeout=30.0)
     with lock:
         ledger = _read_ledger(data_dir)
-        _reconcile_review_authority_locked(ledger, parent_id, data_dir)
+        # Track whether reconciliation actually converged anything: a blocked
+        # stage/active-child refusal is a no-write when nothing converged (a
+        # stable duplicate re-stage must not rewrite the ledger/plan), and
+        # persists only the required convergence write when it did.
+        reconciled = _reconcile_review_authority_locked(ledger, parent_id, data_dir)
         existing_job = _get_job(ledger, parent_id)
 
         # ``import stage``: refuse to create a second job/plan for a source root
         # that already has an actionable review job (pending/confirmed/batching
         # proposals) or an active child. A root whose prior jobs are all finished
         # (skipped/imported/stale, no active child) may be staged fresh. Zero
-        # writes occur on the blocked path.
+        # writes occur on the blocked path when the queue was already converged.
         if stage and source_root_identity:
             blocking = _find_blocking_stage_job(
                 ledger, source_root_identity, parent_id
             )
             if blocking is not None:
-                _write_ledger(data_dir, ledger)  # persist any reconciliation above
+                if reconciled:
+                    _write_ledger(data_dir, ledger)  # persist convergence only
                 return _err(
                     IMPORT_REVIEW_ALREADY_STAGED,
                     "Source root is already staged as a pending/active review job.",
@@ -1394,7 +1466,8 @@ def confirm_review(  # noqa: C901
 
         # Refuse to mutate the queue while a child batch is unsettled.
         if existing_job and existing_job.get("active_child_id"):
-            _write_ledger(data_dir, ledger)  # persist any reconciliation above
+            if reconciled:
+                _write_ledger(data_dir, ledger)  # persist convergence only
             return _err(
                 IMPORT_BATCH_ALREADY_ACTIVE,
                 "Cannot edit the review queue while a child batch is active.",
@@ -1633,13 +1706,61 @@ def edit_review(  # noqa: C901
                 retryable=True,
             )
 
-        # Token is current: converge the authority (may write on recovery) and
-        # re-read the authoritative state.
-        _reconcile_review_authority_locked(raw_ledger, parent_id, data_dir)
-        _reconcile_parent(raw_ledger, parent_id, data_dir)
-        _write_ledger(data_dir, raw_ledger)
+        # Token is current against the raw ledger: converge the authority and the
+        # active child, persisting ONLY when reconciliation actually changed
+        # something (a stable job is a no-write). Then re-read the converged job.
+        changed = _reconcile_review_authority_locked(raw_ledger, parent_id, data_dir)
+        changed = _reconcile_parent(raw_ledger, parent_id, data_dir) or changed
+        if changed:
+            _write_ledger(data_dir, raw_ledger)
         ledger = _read_ledger(data_dir)
         job = _get_job(ledger, parent_id)
+
+        # Re-check the token against the CONVERGED job. If reconciliation advanced
+        # queue_revision (e.g. a pending intent finalized under the lock), the
+        # client's token is now stale: return a retryable conflict with the
+        # current token and do NOT apply the user edit. The required convergence
+        # write above may remain.
+        converged_q = _queue_revision_of(job)
+        if int(expected_queue_revision) != converged_q:
+            return _err(
+                IMPORT_REVIEW_REVISION_CONFLICT,
+                "Edit token is stale after reconciliation; refetch and retry.",
+                {
+                    "import_id": parent_id,
+                    "expected_queue_revision": int(expected_queue_revision),
+                    "current_queue_revision": converged_q,
+                },
+                retryable=True,
+            )
+
+        # An in-flight child batch blocks editing ANY proposal (even an unrelated
+        # one) — a settle could still move membership under the edit.
+        if job.get("active_child_id"):
+            return _err(
+                IMPORT_BATCH_ALREADY_ACTIVE,
+                "Cannot edit the review queue while a child batch is active.",
+                {
+                    "import_id": parent_id,
+                    "active_child_id": job.get("active_child_id"),
+                },
+                retryable=False,
+            )
+        # Authority mismatch / non-child recovery: refuse to act on an untrusted
+        # plan and fail closed with recovery advice.
+        if job.get("recovery_required") or (
+            job.get("authority_status") == AUTHORITY_STATUS_PLAN_LEDGER_MISMATCH
+        ):
+            return _err(
+                IMPORT_REVIEW_RECOVERY_REQUIRED,
+                "Review queue requires recovery before it can be edited.",
+                {
+                    "import_id": parent_id,
+                    "recovery_required": True,
+                    "authority_status": job.get("authority_status"),
+                },
+                retryable=False,
+            )
 
         plan = read_review_plan(data_dir, parent_id)
         if not isinstance(plan, dict):
@@ -1752,19 +1873,16 @@ def edit_review(  # noqa: C901
         _finalize_review_update(data_dir, ledger, parent_id, intent)
 
     final_proposal = plan["proposals"][target_index]
+    final_state = final_proposal.get("state", STATE_PENDING)
     return _ok(
         {
             "schema_version": REVIEW_SCHEMA_VERSION,
             "import_id": parent_id,
             "queue_revision": new_queue_revision,
             "plan_revision": new_revision,
+            "queue_counts": _queue_counts(proposal_states),
             "reason_code": reason_code,
-            "proposal": {
-                "proposal_id": proposal_id,
-                "state": final_proposal.get("state", STATE_PENDING),
-                "journal": _proposal_journal_projection(final_proposal),
-                "available_attachments": _available_attachments(final_proposal),
-            },
+            "proposal": _proposal_review_projection(final_proposal, final_state),
         }
     )
 
@@ -1779,88 +1897,99 @@ def review_queue(
 ) -> dict[str, Any]:
     """``import review``: bounded, paginated read of a review queue.
 
-    Locks + reconciles the parent (so a crashed ledger/child converges), then
-    projects the proposals in persisted plan order with the ledger-authoritative
+    The entire snapshot is built under ONE per-parent lock: the ledger read,
+    queue-token read, plan/ledger + active-child reconciliation (persisted only
+    on convergence), recovery check, persisted-plan read, authoritative state
+    overlay, filter, and page capture. Folding it all into the single lock means
+    a cooperating writer (``edit``/``run``/``confirm``, same lock) can never
+    interleave inside the snapshot window, so a page is never assembled from
+    mixed revisions. After convergence a repeated read is a stable no-write.
+
+    Projects the proposals in persisted plan order with the ledger-authoritative
     state overlaid (never the plan's per-proposal ``state`` field). A
     recovery-required or plan/ledger-mismatch state fails closed with
-    ``IMPORT_REVIEW_RECOVERY_REQUIRED``. Each proposal exposes only stable,
-    non-locator fields plus ``available_attachments`` (selected flags); no source
-    filesystem path is ever exposed. After convergence a repeated read is a
-    stable no-write.
+    ``IMPORT_REVIEW_RECOVERY_REQUIRED``. Each proposal and the response carry the
+    full shared projection + authority fields; no source filesystem path is ever
+    exposed.
     """
-    reconcile_review_authority(data_dir, parent_id)
-    ledger = _read_ledger(data_dir)
-    job = _get_job(ledger, parent_id)
-    if not _is_review_job(job):
-        return _err(
-            "IMPORT_JOB_NOT_FOUND",
-            f"No parent review job found for import-id: {parent_id}",
-            {"import_id": parent_id},
-            retryable=False,
-        )
-    if job.get("recovery_required") or (
-        job.get("authority_status") == AUTHORITY_STATUS_PLAN_LEDGER_MISMATCH
-    ):
-        return _err(
-            IMPORT_REVIEW_RECOVERY_REQUIRED,
-            "Review queue requires recovery before it can be read.",
+    lock = FileLock(_review_lock_path(data_dir, parent_id), timeout=30.0)
+    with lock:
+        ledger = _read_ledger(data_dir)
+        # Converge plan/ledger authority + active child under this one lock so the
+        # whole snapshot is one revision; persist only on actual convergence.
+        changed = _reconcile_review_authority_locked(ledger, parent_id, data_dir)
+        changed = _reconcile_parent(ledger, parent_id, data_dir) or changed
+        if changed:
+            _write_ledger(data_dir, ledger)
+        job = _get_job(ledger, parent_id)
+        if not _is_review_job(job):
+            return _err(
+                "IMPORT_JOB_NOT_FOUND",
+                f"No parent review job found for import-id: {parent_id}",
+                {"import_id": parent_id},
+                retryable=False,
+            )
+        if job.get("recovery_required") or (
+            job.get("authority_status") == AUTHORITY_STATUS_PLAN_LEDGER_MISMATCH
+        ):
+            return _err(
+                IMPORT_REVIEW_RECOVERY_REQUIRED,
+                "Review queue requires recovery before it can be read.",
+                {
+                    "import_id": parent_id,
+                    "recovery_required": True,
+                    "authority_status": job.get("authority_status"),
+                },
+                retryable=False,
+            )
+
+        plan = read_review_plan(data_dir, parent_id)
+        if not isinstance(plan, dict):
+            return _err(
+                IMPORT_REVIEW_PLAN_MISSING,
+                f"No persisted review plan for parent: {parent_id}",
+                {"import_id": parent_id},
+                retryable=False,
+            )
+
+        prop_states = job.get("proposal_states", {}) or {}
+        state_filter = set(states) if states else None
+        all_proposals = [
+            p for p in (plan.get("proposals", []) or []) if isinstance(p, dict)
+        ]
+        total_all = len(all_proposals)
+
+        projected: list[dict[str, Any]] = []
+        for prop in all_proposals:
+            pid = prop.get("proposal_id", "")
+            state = prop_states.get(pid, prop.get("state", STATE_PENDING))
+            if state_filter is not None and state not in state_filter:
+                continue
+            projected.append(_proposal_review_projection(prop, state))
+
+        total_filtered = len(projected)
+        clamped_limit = max(1, min(int(limit), 100))
+        off = max(0, int(offset))
+        page = projected[off : off + clamped_limit]
+        has_more = (off + clamped_limit) < total_filtered
+
+        return _ok(
             {
+                "schema_version": REVIEW_SCHEMA_VERSION,
                 "import_id": parent_id,
-                "recovery_required": True,
-                "authority_status": job.get("authority_status"),
-            },
-            retryable=False,
-        )
-
-    plan = read_review_plan(data_dir, parent_id)
-    if not isinstance(plan, dict):
-        return _err(
-            IMPORT_REVIEW_PLAN_MISSING,
-            f"No persisted review plan for parent: {parent_id}",
-            {"import_id": parent_id},
-            retryable=False,
-        )
-
-    prop_states = job.get("proposal_states", {}) or {}
-    state_filter = set(states) if states else None
-    all_proposals = [p for p in (plan.get("proposals", []) or []) if isinstance(p, dict)]
-    total_all = len(all_proposals)
-
-    projected: list[dict[str, Any]] = []
-    for prop in all_proposals:
-        pid = prop.get("proposal_id", "")
-        state = prop_states.get(pid, prop.get("state", STATE_PENDING))
-        if state_filter is not None and state not in state_filter:
-            continue
-        projected.append(
-            {
-                "proposal_id": pid,
-                "state": state,
-                "journal": _proposal_journal_projection(prop),
-                "available_attachments": _available_attachments(prop),
+                "queue_revision": _queue_revision_of(job),
+                "plan_revision": int(job.get("plan_revision", 1) or 1),
+                "source_root_identity": job.get("source_root_identity", ""),
+                "queue_counts": _queue_counts(prop_states),
+                "total_all": total_all,
+                "total_filtered": total_filtered,
+                "offset": off,
+                "limit": clamped_limit,
+                "has_more": has_more,
+                "next_offset": (off + clamped_limit) if has_more else None,
+                "proposals": page,
             }
         )
-
-    total_filtered = len(projected)
-    clamped_limit = max(1, min(int(limit), 100))
-    off = max(0, int(offset))
-    page = projected[off : off + clamped_limit]
-    has_more = (off + clamped_limit) < total_filtered
-
-    return _ok(
-        {
-            "schema_version": REVIEW_SCHEMA_VERSION,
-            "import_id": parent_id,
-            "queue_revision": _queue_revision_of(job),
-            "total_all": total_all,
-            "total_filtered": total_filtered,
-            "offset": off,
-            "limit": clamped_limit,
-            "has_more": has_more,
-            "next_offset": (off + clamped_limit) if has_more else None,
-            "proposals": page,
-        }
-    )
 
 
 def list_reviews(
@@ -1898,6 +2027,7 @@ def list_reviews(
                 "queue_counts": _queue_counts(prop_states),
                 "active_child_id": j.get("active_child_id"),
                 "recovery_required": bool(j.get("recovery_required", False)),
+                "authority_status": j.get("authority_status"),
                 "plan_revision": j.get("plan_revision", 1) or 1,
                 "queue_revision": _queue_revision_of(j),
                 "created_at": j.get("created_at"),

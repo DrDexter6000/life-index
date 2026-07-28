@@ -1075,3 +1075,475 @@ def test_preview_lost_locator_flow(tmp_path: Path) -> None:
     assert out.read_bytes() == before_bytes
     assert source_file.stat().st_mtime_ns == before_mtime
     assert source_file.read_bytes() == before_bytes
+
+
+# ===================================================================
+# G) rework — atomic snapshot, post-reconcile token, projections,
+#    legacy token, edit correctness, stable duplicate-stage no-write.
+#    Causal RED-first tests for the narrow M7-B package-3 rework.
+# ===================================================================
+
+
+def _stage_inproc(data_dir: Path, plan: dict, src: Path, tmp_path: Path) -> str:
+    review.confirm_review(
+        plan_path=str(_plan_file(tmp_path, plan, name=f"stage_{plan['import_id']}.json")),
+        data_dir=data_dir, source_root=str(src), stage=True,
+    )
+    return plan["import_id"]
+
+
+# --- F1: atomic review snapshot under one per-parent lock -------------------
+
+
+def test_review_snapshot_reads_plan_and_ledger_under_one_lock(
+    isolated_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The plan + ledger capture that drives a review page must occur while the
+    per-parent lock is held, so the snapshot can never be assembled from mixed
+    revisions. Instruments lock depth around every plan/ledger read."""
+    data_dir = isolated_data_dir
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = _stage_inproc(data_dir, plan, src, tmp_path)
+
+    state = {"depth": 0}
+    plan_depths: list[int] = []
+    ledger_depths: list[int] = []
+
+    class _RecordingLock(review.FileLock):
+        def __enter__(self) -> "_RecordingLock":
+            ret = super().__enter__()
+            state["depth"] += 1
+            return ret
+
+        def __exit__(self, *a: object) -> None:
+            state["depth"] -= 1
+            return super().__exit__(*a)  # type: ignore[return-value]
+
+    monkeypatch.setattr(review, "FileLock", _RecordingLock)
+
+    orig_plan = review.read_review_plan
+
+    def rec_plan(d: Path, pid: str) -> dict | None:
+        plan_depths.append(state["depth"])
+        return orig_plan(d, pid)
+
+    orig_ledger = review._read_ledger
+
+    def rec_ledger(d: Path) -> dict:
+        ledger_depths.append(state["depth"])
+        return orig_ledger(d)
+
+    monkeypatch.setattr(review, "read_review_plan", rec_plan)
+    monkeypatch.setattr(review, "_read_ledger", rec_ledger)
+
+    review.review_queue(parent_id, data_dir)
+
+    assert plan_depths, "read_review_plan was never invoked"
+    assert ledger_depths, "_read_ledger was never invoked"
+    # On the rejected base the page-assembly reads happen AFTER reconcile
+    # released its lock (depth 0) -> the snapshot window is unlocked.
+    assert min(plan_depths) >= 1, f"plan read outside the lock: {plan_depths}"
+    assert min(ledger_depths) >= 1, f"ledger read outside the lock: {ledger_depths}"
+
+
+def test_review_page_never_assembled_from_mixed_revisions(
+    isolated_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cooperating writer (edit_review, same per-parent lock) must never
+    interleave inside the page-snapshot window. Instruments read_review_plan to
+    attempt a non-blocking locked mutation at snapshot time."""
+    from tools.lib.file_lock import FileLock as _RealFileLock
+
+    data_dir = isolated_data_dir
+    src = tmp_path / "photos"
+    _make_jpeg(src / "a.jpg", color=(1, 2, 3))
+    _make_jpeg(src / "b.jpg", color=(4, 5, 6), date_original="2024:07:01 09:00:00")
+    plan = _photo_plan(data_dir, src)
+    parent_id = _stage_inproc(data_dir, plan, src, tmp_path)
+    pid = plan["proposals"][0]["proposal_id"]
+    lock_path = review._review_lock_path(data_dir, parent_id)
+
+    mutated = {"yes": False}
+    orig_plan = review.read_review_plan
+
+    def interfering_read_plan(d: Path, pid_: str) -> dict | None:
+        # A cooperating writer attempting the SAME per-parent lock at the exact
+        # instant the page reads the plan. Non-blocking: blocked while review
+        # holds the lock; succeeds only if the snapshot window is unlocked.
+        lk = _RealFileLock(lock_path)
+        if lk.try_lock():
+            try:
+                lg = review._read_ledger(d)
+                job = lg["jobs"][parent_id]
+                ps = dict(job.get("proposal_states", {}))
+                if pid in ps:
+                    ps[pid] = "skipped"
+                job["proposal_states"] = ps
+                review._bump_queue(job)
+                review._write_ledger(d, lg)
+                mutated["yes"] = True
+            finally:
+                lk.unlock()
+        return orig_plan(d, pid_)
+
+    monkeypatch.setattr(review, "read_review_plan", interfering_read_plan)
+
+    res = review.review_queue(parent_id, data_dir)
+    data = res["data"]
+    live_q = review._queue_revision_of(
+        review._get_job(review._read_ledger(data_dir), parent_id)
+    )
+    assert mutated["yes"] is False, "concurrent writer mutated the queue mid-snapshot"
+    assert data["queue_revision"] == live_q, "page assembled from mixed revisions"
+
+
+# --- F2: post-reconcile edit safety + token recheck -------------------------
+
+
+def test_edit_conflicts_when_reconcile_advanced_token(
+    isolated_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pending intent finalized by reconciliation advances queue_revision; an
+    edit bearing the pre-reconcile token must conflict (retryable) and NOT apply."""
+    data_dir = isolated_data_dir
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    pid = plan["proposals"][0]["proposal_id"]
+    # first confirm -> queue_revision 1
+    review.confirm_review(
+        plan_path=str(_plan_file(tmp_path, plan, "p1.json")),
+        data_dir=data_dir, source_root=str(src),
+    )
+    assert review._read_ledger(data_dir)["jobs"][parent_id]["queue_revision"] == 1
+
+    # second confirm with a changed title, finalize "crashes" -> pending intent
+    plan["proposals"][0]["journal"]["title"] = "crash replay title"
+    original_finalize = review._finalize_review_update
+    crashed = {"done": False}
+
+    def crashing_finalize(d: Path, lg: dict, p: str, intent: dict) -> None:
+        if not crashed["done"]:
+            crashed["done"] = True
+            return
+        return original_finalize(d, lg, p, intent)
+
+    monkeypatch.setattr(review, "_finalize_review_update", crashing_finalize)
+    review.confirm_review(
+        plan_path=str(_plan_file(tmp_path, plan, "p2.json")),
+        data_dir=data_dir, source_root=str(src),
+    )
+    monkeypatch.setattr(review, "_finalize_review_update", original_finalize)
+    assert "pending_review_update" in review._read_ledger(data_dir)["jobs"][parent_id]
+
+    # edit with the pre-reconcile token (1): reconciliation finalizes the intent
+    # (advancing the token to 2), so the edit must conflict and not apply.
+    edit = _edit_file(
+        tmp_path, _edit_payload(pid, decision="pending", journal={"title": "MUST NOT APPLY"}),
+        name="edit_conflict.json",
+    )
+    res = review.edit_review(
+        edit_path=str(edit), parent_id=parent_id,
+        expected_queue_revision=1, data_dir=data_dir,
+    )
+    assert res["success"] is False
+    assert res["error"]["code"] == "IMPORT_REVIEW_REVISION_CONFLICT"
+    assert res["error"]["retryable"] is True
+    assert res["error"]["details"]["current_queue_revision"] == 2
+    # the user edit was NOT applied; the crash-replay title survives
+    persisted = _review_plan(data_dir, parent_id)
+    titles = [p["journal"]["title"] for p in persisted["proposals"] if p["proposal_id"] == pid]
+    assert titles == ["crash replay title"]
+    # the convergence write (finalize) remains: token advanced to 2
+    assert review._read_ledger(data_dir)["jobs"][parent_id]["queue_revision"] == 2
+
+
+def test_edit_recovery_mismatch_fails_closed(tmp_path: Path) -> None:
+    """An authority plan/ledger mismatch must fail an edit closed
+    (IMPORT_REVIEW_RECOVERY_REQUIRED), regardless of the token."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    pid = plan["proposals"][0]["proposal_id"]
+    _stage(data_dir, plan, src, tmp_path)
+
+    # seed an unexplained plan/ledger fingerprint mismatch
+    persisted = _review_plan(data_dir, parent_id)
+    persisted["plan_fingerprint"] = "sha256:deadbeefmismatch000000000000000000000000"
+    (data_dir / ".life-index" / "import-jobs" / parent_id / "review-plan.json").write_text(
+        json.dumps(persisted), encoding="utf-8")
+    # let status converge the mismatch once and read the live token
+    _status(data_dir, parent_id)
+    q = _ledger(data_dir)["jobs"][parent_id]["queue_revision"]
+
+    res = _err(_edit(data_dir, parent_id, _edit_payload(pid, decision="pending",
+                     journal={"title": "should not apply"}), q, tmp_path))
+    assert res["error"]["code"] == "IMPORT_REVIEW_RECOVERY_REQUIRED"
+    assert res["error"]["retryable"] is False
+    # edit not applied
+    persisted2 = _review_plan(data_dir, parent_id)
+    titles = [p["journal"]["title"] for p in persisted2["proposals"] if p["proposal_id"] == pid]
+    assert titles != ["should not apply"]
+
+
+def test_edit_active_child_blocks_unrelated_proposal(tmp_path: Path) -> None:
+    """An unsettled active child batch must block editing ANY proposal
+    (IMPORT_BATCH_ALREADY_ACTIVE), even an unrelated one."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "a.jpg", color=(1, 2, 3))
+    _make_jpeg(src / "b.jpg", color=(4, 5, 6), date_original="2024:07:01 09:00:00")
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    pids = [p["proposal_id"] for p in plan["proposals"]]
+    _stage(data_dir, plan, src, tmp_path)
+
+    # seed an in-flight child; let reconcile settle it to a stable active state
+    child_id = f"{parent_id}#batch-seeded"
+    ledger = _ledger(data_dir)
+    ledger["jobs"][child_id] = {
+        "kind": "batch", "parent_review_job_id": parent_id,
+        "state": "running", "updated_at": "2026-01-01T00:00:00+00:00",
+    }
+    ledger["jobs"][parent_id]["active_child_id"] = child_id
+    ledger["jobs"][parent_id]["proposal_states"][pids[0]] = "batching"
+    _save_ledger(data_dir, ledger)
+    _status(data_dir, parent_id)  # converge once (recovery + retained child)
+    q = _ledger(data_dir)["jobs"][parent_id]["queue_revision"]
+    assert _ledger(data_dir)["jobs"][parent_id]["active_child_id"] == child_id
+
+    # editing an UNRELATED proposal must be blocked by the active child
+    other = pids[-1]
+    res = _err(_edit(data_dir, parent_id, _edit_payload(other, decision="skipped"), q, tmp_path))
+    assert res["error"]["code"] == "IMPORT_BATCH_ALREADY_ACTIVE"
+    assert res["error"]["retryable"] is False
+    # edit not applied: the unrelated proposal is still pending
+    assert _ledger(data_dir)["jobs"][parent_id]["proposal_states"][other] == "pending"
+
+
+# --- F3: complete GUI-facing projections ------------------------------------
+
+
+def test_review_response_carries_full_authority_projection(tmp_path: Path) -> None:
+    """A review page exposes the full proposal projection (date_resolution,
+    conflicts, warnings, all available_attachments) and response-level authority
+    (plan_revision, queue_revision, source_root_identity hash, queue_counts)."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg_rich(src / "miss.jpg", color=(4, 5, 6))  # missing-date conflict
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    _stage(data_dir, plan, src, tmp_path)
+
+    res = _ok(_review(data_dir, parent_id))["data"]
+    # response-level authority
+    for key in ("plan_revision", "queue_revision", "source_root_identity", "queue_counts"):
+        assert key in res, f"missing response field {key}"
+    assert res["source_root_identity"].startswith("sha256:")
+    blob = json.dumps(res)
+    assert str(src) not in blob
+    assert "source_rel_path" not in blob
+
+    prop = res["proposals"][0]
+    for key in ("proposal_id", "state", "journal", "date_resolution",
+                "conflicts", "warnings", "available_attachments"):
+        assert key in prop, f"missing proposal field {key}"
+    # unresolved missing-date conflict is surfaced
+    assert prop["date_resolution"]["status"] == "unresolved"
+    codes = {c.get("code") for c in prop["conflicts"]}
+    assert "PHOTO_CAPTURE_TIME_MISSING" in codes
+    # adapter warnings are surfaced by code, never by a locator-bearing message
+    assert isinstance(prop["warnings"], list)
+    for w in prop["warnings"]:
+        assert "code" in w and "severity" in w
+        assert "message" not in w
+    assert "miss.jpg" not in json.dumps(prop)
+    # all source_facts are selectable attachments with a selected flag
+    assert len(prop["available_attachments"]) >= 1
+    assert isinstance(prop["available_attachments"][0]["selected"], bool)
+
+
+def test_edit_success_carries_full_projection_and_counts(tmp_path: Path) -> None:
+    """Edit success returns queue_counts, both revisions, reason_code, and the
+    same authoritative proposal projection (date_resolution/conflicts/warnings)."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg_rich(src / "miss.jpg", color=(4, 5, 6))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    pid = plan["proposals"][0]["proposal_id"]
+    _stage(data_dir, plan, src, tmp_path)
+
+    payload = _edit_payload(pid, decision="confirmed",
+                            journal={"title": "Resolved", "date": "2024-06-15"})
+    res = _ok(_edit(data_dir, parent_id, payload, 1, tmp_path))["data"]
+    for key in ("plan_revision", "queue_revision", "queue_counts", "reason_code", "proposal"):
+        assert key in res, f"missing edit-success field {key}"
+    prop = res["proposal"]
+    for key in ("proposal_id", "state", "journal", "date_resolution",
+                "conflicts", "warnings", "available_attachments"):
+        assert key in prop, f"missing proposal field {key}"
+    assert prop["state"] == "confirmed"
+    assert prop["date_resolution"]["status"] == "user_confirmed"
+    blob = json.dumps(res)
+    assert "source_rel_path" not in blob
+    assert str(src) not in blob
+
+
+# --- F4: deterministic legacy queue token + authority bump ------------------
+
+
+def test_legacy_missing_queue_revision_initialized_once(
+    isolated_data_dir: Path, tmp_path: Path
+) -> None:
+    """A review parent missing queue_revision is initialized to 1 and persisted
+    exactly once; a second read is a stable no-write."""
+    data_dir = isolated_data_dir
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = _stage_inproc(data_dir, plan, src, tmp_path)
+
+    # simulate a legacy ledger job predating the queue_revision field
+    ledger = review._read_ledger(data_dir)
+    ledger["jobs"][parent_id].pop("queue_revision", None)
+    review._write_ledger(data_dir, ledger)
+    assert "queue_revision" not in review._read_ledger(data_dir)["jobs"][parent_id]
+
+    review.review_queue(parent_id, data_dir)  # first read: initialize + persist
+    job = review._read_ledger(data_dir)["jobs"][parent_id]
+    assert job.get("queue_revision") == 1, "legacy queue_revision not initialized to 1"
+    after_first = json.dumps(review._read_ledger(data_dir), sort_keys=True)
+
+    review.review_queue(parent_id, data_dir)  # second read: stable no-write
+    after_second = json.dumps(review._read_ledger(data_dir), sort_keys=True)
+    assert after_first == after_second
+
+
+def test_authority_mismatch_bumps_queue_once_not_plan(tmp_path: Path) -> None:
+    """A plan/ledger mismatch that flips recovery_required/authority_status bumps
+    queue_revision exactly once and never touches plan_revision."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    _stage(data_dir, plan, src, tmp_path)
+    q0 = _ledger(data_dir)["jobs"][parent_id]["queue_revision"]
+    plan_rev0 = _ledger(data_dir)["jobs"][parent_id]["plan_revision"]
+
+    persisted = _review_plan(data_dir, parent_id)
+    persisted["plan_fingerprint"] = "sha256:deadbeefmismatch111111111111111111111111"
+    (data_dir / ".life-index" / "import-jobs" / parent_id / "review-plan.json").write_text(
+        json.dumps(persisted), encoding="utf-8")
+
+    # first converge: mismatch -> recovery_required + authority_status + ONE bump
+    s = _status(data_dir, parent_id)
+    job = _ledger(data_dir)["jobs"][parent_id]
+    assert s["authority_status"] == "plan_ledger_mismatch"
+    assert s["recovery_required"] is True
+    assert job["queue_revision"] == q0 + 1, "mismatch did not bump queue_revision exactly once"
+    assert job["plan_revision"] == plan_rev0, "state-only change must not bump plan_revision"
+    after_first = json.dumps(_ledger(data_dir), sort_keys=True)
+
+    # second converge: stable no-write (convergence)
+    _status(data_dir, parent_id)
+    after_second = json.dumps(_ledger(data_dir), sort_keys=True)
+    assert after_first == after_second
+
+
+# --- F5: edit payload/data correctness --------------------------------------
+
+
+def test_edit_rejects_duplicate_selected_attachment_ids(tmp_path: Path) -> None:
+    """Duplicate selected_attachment_ids would publish the same bytes twice; the
+    edit must be rejected as IMPORT_REVIEW_EDIT_INVALID."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "a.jpg", color=(1, 2, 3))
+    _make_jpeg(src / "b.jpg", color=(4, 5, 6))  # same day -> one 2-attachment proposal
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    prop = plan["proposals"][0]
+    assert len(prop["attachments"]) == 2
+    aid = prop["attachments"][0]["attachment_id"]
+    pid = prop["proposal_id"]
+    _stage(data_dir, plan, src, tmp_path)
+
+    payload = _edit_payload(pid, decision="confirmed", journal={"date": "2024-06-15"},
+                            selected_attachment_ids=[aid, aid])
+    res = _err(_edit(data_dir, parent_id, payload, 1, tmp_path))
+    assert res["error"]["code"] == "IMPORT_REVIEW_EDIT_INVALID"
+    # zero writes: token unchanged
+    assert _ledger(data_dir)["jobs"][parent_id]["queue_revision"] == 1
+
+
+def test_edit_title_only_keeps_user_date_and_confirmed(tmp_path: Path) -> None:
+    """A missing-date proposal resolved with a user date stays confirmed (date +
+    user_confirmed resolution) across a later title-only confirm edit."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg_rich(src / "miss.jpg", color=(4, 5, 6))  # missing capture date
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    pid = plan["proposals"][0]["proposal_id"]
+    _stage(data_dir, plan, src, tmp_path)
+
+    # 1) resolve the missing-date proposal with an explicit user date
+    r1 = _ok(_edit(data_dir, parent_id,
+                   _edit_payload(pid, decision="confirmed", journal={"date": "2024-06-15"}),
+                   1, tmp_path))["data"]
+    assert r1["proposal"]["state"] == "confirmed"
+    assert r1["proposal"]["date_resolution"]["status"] == "user_confirmed"
+
+    # 2) a later confirm that changes only the title must keep the date + state
+    r2 = _ok(_edit(data_dir, parent_id,
+                   _edit_payload(pid, decision="confirmed", journal={"title": "just a title"}),
+                   r1["queue_revision"], tmp_path))["data"]
+    assert r2["proposal"]["state"] == "confirmed"
+    assert r2["reason_code"] is None
+    assert r2["proposal"]["journal"]["date"] == "2024-06-15"
+    assert r2["proposal"]["journal"]["title"] == "just a title"
+    assert r2["proposal"]["date_resolution"]["status"] == "user_confirmed"
+
+
+# --- F6: duplicate-stage stable no-write ------------------------------------
+
+
+def test_duplicate_stage_stable_is_no_write(tmp_path: Path) -> None:
+    """Re-staging an already-staged actionable same-root job is rejected with
+    IMPORT_REVIEW_ALREADY_STAGED and must NOT rewrite the ledger/plan (stable
+    hash + mtime) when no reconciliation convergence is required."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "a.jpg", color=(1, 2, 3))
+    plan1 = _photo_plan(data_dir, src)
+    _stage(data_dir, plan1, src, tmp_path)
+
+    ledger_path = data_dir / ".life-index" / "import-jobs" / "ledger.json"
+    plan_path = data_dir / ".life-index" / "import-jobs" / plan1["import_id"] / "review-plan.json"
+    ledger_hash_before = hashlib.sha256(ledger_path.read_bytes()).hexdigest()
+    ledger_mtime_before = ledger_path.stat().st_mtime_ns
+    plan_hash_before = hashlib.sha256(plan_path.read_bytes()).hexdigest()
+    plan_mtime_before = plan_path.stat().st_mtime_ns
+
+    res = _err(_stage_raw(data_dir, plan1, src, tmp_path))
+    assert res["error"]["code"] == "IMPORT_REVIEW_ALREADY_STAGED"
+
+    assert hashlib.sha256(ledger_path.read_bytes()).hexdigest() == ledger_hash_before
+    assert ledger_path.stat().st_mtime_ns == ledger_mtime_before
+    assert hashlib.sha256(plan_path.read_bytes()).hexdigest() == plan_hash_before
+    assert plan_path.stat().st_mtime_ns == plan_mtime_before
