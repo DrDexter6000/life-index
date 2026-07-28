@@ -364,6 +364,7 @@ def _process_jpeg(
         "content_sha256": content_hash,
         "size_bytes": len(file_bytes),
         "source_rel_path": rel_path,
+        "source_ref": src_ref,
         "media_type": "image/jpeg",
         "capture_time": {
             "value": capture_time_iso,

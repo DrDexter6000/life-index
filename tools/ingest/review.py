@@ -63,6 +63,12 @@ IMPORT_REVIEW_PLAN_MISSING = "IMPORT_REVIEW_PLAN_MISSING"
 IMPORT_PREVIEW_UNAVAILABLE = "IMPORT_PREVIEW_UNAVAILABLE"
 IMPORT_RECOVERY_REQUIRED = "IMPORT_RECOVERY_REQUIRED"
 
+# Authority status surfaced when the persisted review plan and the ledger
+# disagree with no durable intent to explain it. Reconciliation never silently
+# picks one side; it fails closed and leaves repair to the operator (or a fresh
+# ``confirm`` that re-derives from an explicit incoming plan).
+AUTHORITY_STATUS_PLAN_LEDGER_MISMATCH = "plan_ledger_mismatch"
+
 # Proposal states (additive ``state`` field).
 STATE_PENDING = "pending"
 STATE_CONFIRMED = "confirmed"
@@ -247,6 +253,27 @@ def _is_review_job(job: dict[str, Any] | None) -> bool:
     return bool(job) and job.get("kind") == "review"
 
 
+# The durable parent-projection fields a review job carries. These are the only
+# fields the confirm intent/finalize protocol snapshots, restores, and finalizes
+# — everything else on the job is transient or managed elsewhere (e.g. child
+# recovery by ``_reconcile_parent``). ``authority_status`` and
+# ``pending_review_update`` are deliberately excluded: they are control-plane
+# markers, not part of the authoritative projection.
+_PROJECTION_FIELDS = (
+    "kind",
+    "state",
+    "source_root_identity",
+    "review_plan_rel_path",
+    "proposal_states",
+    "active_child_id",
+    "recovery_required",
+    "next_batch_sequence",
+    "idempotency_key",
+    "plan_fingerprint",
+    "plan_revision",
+)
+
+
 # ---------------------------------------------------------------------------
 # Source-root identity
 # ---------------------------------------------------------------------------
@@ -417,6 +444,21 @@ def _attachment_fingerprint_from(att: dict[str, Any]) -> str:
     )
 
 
+def _is_confined_rel_path(rel_path: Any) -> bool:
+    """True for a non-empty relative path with no traversal/absolute escape.
+
+    A purely lexical check (no filesystem access): rejects absolute paths and
+    any path containing a ``..`` segment. Full data-dir confinement is enforced
+    again at run time via ``_resolve_confined_file_path``.
+    """
+    if not rel_path or not isinstance(rel_path, str):
+        return False
+    p = Path(rel_path)
+    if p.is_absolute():
+        return False
+    return all(part != ".." for part in p.parts)
+
+
 def _validate_proposal_immutability(proposal: dict[str, Any]) -> str | None:
     """Return an error code string when a proposal tampers immutable facts, else None."""
     facts_list = proposal.get("source_facts") or []
@@ -430,15 +472,43 @@ def _validate_proposal_immutability(proposal: dict[str, Any]) -> str | None:
             if recomputed is None or recomputed not in valid_member_fps:
                 return "IMPORT_PLAN_INVALID"
 
-    # Each selected attachment must reference a source fact in THIS proposal.
-    proposal_shas = {f.get("content_sha256") for f in facts_list if isinstance(f, dict)}
+    # Each selected attachment must be immutably bound to exactly one source
+    # fact in THIS proposal: source_sha256 + source_rel_path + source_ref +
+    # media_type + size_bytes must all match the bound fact, the attachment_id
+    # must be the deterministic derivation of its own source content, and any
+    # supplied target must stay confined (no traversal / absolute escape).
+    facts_by_sha: dict[str, dict[str, Any]] = {}
+    for facts in facts_list:
+        if isinstance(facts, dict):
+            content_sha = facts.get("content_sha256")
+            if isinstance(content_sha, str):
+                facts_by_sha[content_sha] = facts
+
     for att in proposal.get("attachments", []):
-        if att.get("source_sha256") not in proposal_shas:
+        bound = facts_by_sha.get(att.get("source_sha256"))
+        if bound is None:
             return "IMPORT_PLAN_INVALID"
-        # attachment_id must correspond to its own source content hash.
-        expected_prefix = att.get("source_sha256", "").removeprefix("sha256:")[:12]
-        if not str(att.get("attachment_id", "")).endswith(expected_prefix):
+        for att_field, fact_field in (
+            ("source_sha256", "content_sha256"),
+            ("source_rel_path", "source_rel_path"),
+            ("source_ref", "source_ref"),
+            ("media_type", "media_type"),
+            ("size_bytes", "size_bytes"),
+        ):
+            if att.get(att_field) != bound.get(fact_field):
+                return "IMPORT_PLAN_INVALID"
+        # attachment_id is deterministic: att_<source content prefix>.
+        expected_id = "att_" + str(att.get("source_sha256", "")).removeprefix("sha256:")[:12]
+        if att.get("attachment_id") != expected_id:
             return "IMPORT_PLAN_INVALID"
+        att_target = att.get("target_rel_path")
+        if att_target and not _is_confined_rel_path(att_target):
+            return "IMPORT_PLAN_INVALID"
+
+    # Journal target (when supplied) must also stay confined.
+    journal_target = (proposal.get("journal") or {}).get("target_rel_path")
+    if journal_target and not _is_confined_rel_path(journal_target):
+        return "IMPORT_PLAN_INVALID"
 
     # Group source_record_fingerprint must match the recomputed group fp.
     if member_fps:
@@ -490,14 +560,16 @@ def _resolve_and_derive_proposal(
 
     if effective_date is not None:
         journal["date"] = effective_date
-        if not journal.get("target_rel_path"):
-            seq = next_seq_for_date(effective_date, data_dir, used_seqs)
-            journal["target_rel_path"] = journal_target_rel_path(effective_date, seq)
+        # Canonical journal target derived from the effective date + sequence,
+        # never trusted from incoming GUI edits (a non-frozen proposal's target
+        # is always re-derived so it stays within the canonical date path).
+        seq = next_seq_for_date(effective_date, data_dir, used_seqs)
+        journal["target_rel_path"] = journal_target_rel_path(effective_date, seq)
+        # Canonical attachment target derived from the effective date + content.
         for att in attachments:
-            if not att.get("target_rel_path"):
-                att["target_rel_path"] = attachment_target_rel_path(
-                    effective_date, att.get("source_sha256", "")
-                )
+            att["target_rel_path"] = attachment_target_rel_path(
+                effective_date, att.get("source_sha256", "")
+            )
         proposal["date_resolution"] = {
             "status": DATE_STATUS_USER if status == DATE_STATUS_USER else DATE_STATUS_EXIF,
             "date": effective_date,
@@ -571,54 +643,175 @@ def _recompute_plan_fingerprints(plan: dict[str, Any]) -> dict[str, Any]:
     return plan
 
 
+def _projection_snapshot(job: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Snapshot the authoritative projection of a review job, or None.
+
+    Returns None when *job* is not a review job (first confirm). Used to capture
+    the pre-update projection so a crashed confirm can restore it verbatim.
+    """
+    if not isinstance(job, dict) or job.get("kind") != "review":
+        return None
+    return {field: job.get(field) for field in _PROJECTION_FIELDS}
+
+
+def _rebuild_review_job_from_plan(
+    jobs: dict[str, Any], parent_id: str, plan: dict[str, Any]
+) -> None:
+    """Rebuild a parent review projection from a surviving persisted plan.
+
+    Used when the ledger lost its parent job but the review plan survived
+    (crash after plan replace, before the ledger was ever written on a first
+    confirm with no shell, or a manual ledger wipe). The plan's recorded
+    per-proposal states are authoritative; durable states are never reset.
+    """
+    proposal_states = {
+        p.get("proposal_id", ""): p.get("state", STATE_PENDING)
+        for p in plan.get("proposals", [])
+        if isinstance(p, dict)
+    }
+    jobs[parent_id] = {
+        "kind": "review",
+        "state": "confirmed",
+        "source_root_identity": plan.get("source_root_identity", ""),
+        "review_plan_rel_path": _review_plan_rel_path(parent_id),
+        "proposal_states": proposal_states,
+        "active_child_id": None,
+        "recovery_required": False,
+        "next_batch_sequence": 1,
+        "idempotency_key": plan.get("idempotency_key", ""),
+        "plan_fingerprint": plan.get("plan_fingerprint", ""),
+        "plan_revision": plan.get("plan_revision", 1) or 1,
+        "updated_at": _now_iso(),
+    }
+
+
+def _apply_intent_finalize(
+    jobs: dict[str, Any], parent_id: str, intent: dict[str, Any]
+) -> None:
+    """Apply a finalized projection from *intent* in place (caller persists).
+
+    Idempotent: replaying a finalize whose projection is already applied yields
+    the same authoritative job. Clears the pending intent and any stale fail-
+    closed status.
+    """
+    projection = intent.get("projection") or {}
+    job = jobs.get(parent_id)
+    if not isinstance(job, dict):
+        job = {"kind": "review"}
+        jobs[parent_id] = job
+    job["kind"] = "review"
+    job["state"] = "confirmed"
+    job["source_root_identity"] = projection.get("source_root_identity", "")
+    job["review_plan_rel_path"] = _review_plan_rel_path(parent_id)
+    job["proposal_states"] = projection.get("proposal_states", {})
+    job["active_child_id"] = None
+    job["recovery_required"] = False
+    job["next_batch_sequence"] = projection.get("next_batch_sequence", 1)
+    job["idempotency_key"] = projection.get("idempotency_key", "")
+    job["plan_fingerprint"] = projection.get("plan_fingerprint", "")
+    job["plan_revision"] = intent.get(
+        "expected_plan_revision", job.get("plan_revision", 1) or 1
+    )
+    job.pop("pending_review_update", None)
+    job.pop("authority_status", None)
+    job["updated_at"] = _now_iso()
+
+
+def _apply_intent_abort(
+    jobs: dict[str, Any], parent_id: str, intent: dict[str, Any]
+) -> None:
+    """Abort a pending intent whose plan replace never happened (caller persists).
+
+    - No prior projection (``intent.prior`` is None) → remove the empty
+      first-confirm shell entirely.
+    - Prior projection present → restore it verbatim and clear the intent.
+    """
+    prior = intent.get("prior")
+    if not prior:
+        jobs.pop(parent_id, None)
+        return
+    job = jobs.get(parent_id)
+    if not isinstance(job, dict):
+        job = {"kind": "review"}
+        jobs[parent_id] = job
+    for field in _PROJECTION_FIELDS:
+        if field in prior:
+            job[field] = prior[field]
+    job.pop("pending_review_update", None)
+    job.pop("authority_status", None)
+    job["updated_at"] = _now_iso()
+
+
 def _reconcile_review_authority_locked(
     ledger: dict[str, Any], parent_id: str, data_dir: Path
 ) -> bool:
-    """Restore a missing/lost parent projection from the persisted review plan.
+    """Converge the parent review authority across the confirm crash windows.
 
     Mutates *ledger* in place; returns True if it changed. The caller holds the
-    per-parent lock and persists. Covers the plan/ledger crash window: if the
-    ledger lost its parent review job but the review plan survived, rebuild the
-    projection from the plan's recorded proposal states. Never silently resets
-    durable states — a present ledger job is authoritative for its states.
+    per-parent lock and persists.
+
+    Three durable explanations are handled, in order:
+
+    1. A pending ``pending_review_update`` intent is present:
+       - persisted plan fingerprint == ``intent.expected_plan_fingerprint``
+         → the plan replace succeeded but finalize was interrupted → finalize
+         idempotently from the intent (crash after plan, before finalize);
+       - otherwise the plan is still old / absent → the replace never happened
+         → abort: retain the prior projection, or remove an empty first-confirm
+         shell (crash after intent, before plan).
+    2. No intent, but the persisted plan fingerprint disagrees with the ledger's
+       ``plan_fingerprint`` → fail closed (``recovery_required`` +
+       ``authority_status``); never silently choose one.
+    3. No intent and consistent → leave the ledger authority intact; rebuild a
+       missing parent from a surviving plan, and backfill empty states.
+
+    Repeated reconciliation converges: each branch leaves the job either fully
+    finalized, restored, or explicitly fail-closed, so a second pass is a no-op.
     """
     jobs = ledger.setdefault("jobs", {})
     job = jobs.get(parent_id)
     plan = read_review_plan(data_dir, parent_id)
+    persisted_fp = plan.get("plan_fingerprint") if isinstance(plan, dict) else None
+    intent = job.get("pending_review_update") if isinstance(job, dict) else None
 
-    if not _is_review_job(job) and plan is not None:
-        proposal_states = {
+    if isinstance(intent, dict):
+        expected_fp = intent.get("expected_plan_fingerprint")
+        if persisted_fp is not None and persisted_fp == expected_fp:
+            _apply_intent_finalize(jobs, parent_id, intent)
+        else:
+            _apply_intent_abort(jobs, parent_id, intent)
+        return True
+
+    if not isinstance(job, dict) or job.get("kind") != "review":
+        if isinstance(plan, dict):
+            _rebuild_review_job_from_plan(jobs, parent_id, plan)
+            return True
+        return False
+
+    # Review job present, no intent.
+    ledger_fp = job.get("plan_fingerprint")
+    if persisted_fp is not None and ledger_fp and persisted_fp != ledger_fp:
+        # Unexplained mismatch: plan and ledger disagree with nothing to explain
+        # it. Fail closed rather than silently picking an authority.
+        job["recovery_required"] = True
+        job["authority_status"] = AUTHORITY_STATUS_PLAN_LEDGER_MISMATCH
+        job["updated_at"] = _now_iso()
+        return True
+
+    changed = False
+    if "authority_status" in job:
+        job.pop("authority_status", None)
+        changed = True
+    states = job.get("proposal_states") or {}
+    if not states and isinstance(plan, dict):
+        job["proposal_states"] = {
             p.get("proposal_id", ""): p.get("state", STATE_PENDING)
             for p in plan.get("proposals", [])
             if isinstance(p, dict)
         }
-        jobs[parent_id] = {
-            "kind": "review",
-            "state": "confirmed",
-            "source_root_identity": plan.get("source_root_identity", ""),
-            "review_plan_rel_path": _review_plan_rel_path(parent_id),
-            "proposal_states": proposal_states,
-            "active_child_id": None,
-            "recovery_required": False,
-            "next_batch_sequence": 1,
-            "idempotency_key": plan.get("idempotency_key", ""),
-            "plan_fingerprint": plan.get("plan_fingerprint", ""),
-            "updated_at": _now_iso(),
-        }
-        return True
-
-    if _is_review_job(job):
-        states = job.get("proposal_states") or {}
-        if not states and plan is not None:
-            job["proposal_states"] = {
-                p.get("proposal_id", ""): p.get("state", STATE_PENDING)
-                for p in plan.get("proposals", [])
-                if isinstance(p, dict)
-            }
-            job["updated_at"] = _now_iso()
-            return True
-
-    return False
+        job["updated_at"] = _now_iso()
+        changed = True
+    return changed
 
 
 def reconcile_review_authority(data_dir: Path, parent_id: str) -> None:
@@ -628,6 +821,64 @@ def reconcile_review_authority(data_dir: Path, parent_id: str) -> None:
         ledger = _read_ledger(data_dir)
         if _reconcile_review_authority_locked(ledger, parent_id, data_dir):
             _write_ledger(data_dir, ledger)
+
+
+# ---------------------------------------------------------------------------
+# Durable intent/finalize protocol (crash-safe plan↔ledger update)
+# ---------------------------------------------------------------------------
+
+
+def _persist_review_intent(
+    data_dir: Path,
+    ledger: dict[str, Any],
+    parent_id: str,
+    intent: dict[str, Any],
+) -> None:
+    """Durably record a pending review-update intent on the parent job.
+
+    Step I1 of the confirm protocol: write the intent (carrying the expected
+    plan fingerprint/revision, the complete finalized projection, and a
+    snapshot of the prior projection) to the ledger *before* the review plan is
+    replaced. If the process crashes after this and before the plan replace,
+    reconciliation aborts the intent and restores the prior projection (or
+    removes an empty first-confirm shell). The caller holds the per-parent lock.
+    """
+    jobs = ledger.setdefault("jobs", {})
+    job = jobs.get(parent_id)
+    if not isinstance(job, dict):
+        projection = intent.get("projection") or {}
+        job = {
+            "kind": "review",
+            "state": "confirming",
+            "review_plan_rel_path": _review_plan_rel_path(parent_id),
+            "proposal_states": {},
+            "active_child_id": None,
+            "recovery_required": False,
+            "next_batch_sequence": projection.get("next_batch_sequence", 1),
+            "idempotency_key": projection.get("idempotency_key", ""),
+            "plan_fingerprint": "",
+            "plan_revision": 0,
+        }
+        jobs[parent_id] = job
+    job["pending_review_update"] = intent
+    job["updated_at"] = _now_iso()
+    _write_ledger(data_dir, ledger)
+
+
+def _finalize_review_update(
+    data_dir: Path,
+    ledger: dict[str, Any],
+    parent_id: str,
+    intent: dict[str, Any],
+) -> None:
+    """Apply the finalized projection from *intent* and clear it (step F).
+
+    Idempotent with reconciliation: replaying this against the same intent is a
+    no-op. The caller holds the per-parent lock and has just replaced the
+    review plan atomically.
+    """
+    _apply_intent_finalize(ledger.setdefault("jobs", {}), parent_id, intent)
+    _write_ledger(data_dir, ledger)
 
 
 def confirm_review(  # noqa: C901
@@ -780,24 +1031,36 @@ def confirm_review(  # noqa: C901
 
         counts = _queue_counts(proposal_states)
 
-        _write_review_plan_atomic(data_dir, parent_id, plan)
-
-        jobs = ledger.setdefault("jobs", {})
+        # --- Durable intent/revision protocol: crash-safe plan↔ledger update.
+        # The merged plan + projection are computed first; a pending intent is
+        # then atomically persisted on the parent job (I1) BEFORE the review plan
+        # is replaced (P), and the parent projection is finalized from that
+        # intent afterwards (F). A crash in either window converges via
+        # reconciliation; the ledger stays the sole authority (no second store).
+        plan_fingerprint = plan.get("plan_fingerprint", "")
         next_batch_sequence = (existing_job or {}).get("next_batch_sequence", 1)
-        jobs[parent_id] = {
-            "kind": "review",
-            "state": "confirmed",
-            "source_root_identity": source_root_identity,
-            "review_plan_rel_path": _review_plan_rel_path(parent_id),
-            "proposal_states": proposal_states,
-            "active_child_id": None,
-            "recovery_required": False,
-            "next_batch_sequence": next_batch_sequence,
-            "idempotency_key": plan.get("idempotency_key", ""),
-            "plan_fingerprint": plan.get("plan_fingerprint", ""),
-            "updated_at": _now_iso(),
+        idempotency_key = plan.get("idempotency_key", "")
+        new_revision = (int((existing_job or {}).get("plan_revision", 0)) or 0) + 1
+        plan["plan_revision"] = new_revision
+
+        intent = {
+            "expected_plan_fingerprint": plan_fingerprint,
+            "expected_plan_revision": new_revision,
+            "projection": {
+                "proposal_states": proposal_states,
+                "plan_fingerprint": plan_fingerprint,
+                "source_root_identity": source_root_identity,
+                "next_batch_sequence": next_batch_sequence,
+                "idempotency_key": idempotency_key,
+            },
+            "prior": _projection_snapshot(existing_job),
+            "created_at": _now_iso(),
         }
-        _write_ledger(data_dir, ledger)
+
+        # I1: durable intent → P: atomic plan replace → F: finalize + clear.
+        _persist_review_intent(data_dir, ledger, parent_id, intent)
+        _write_review_plan_atomic(data_dir, parent_id, plan)
+        _finalize_review_update(data_dir, ledger, parent_id, intent)
 
     return _ok(
         {
@@ -846,7 +1109,7 @@ def query_review_status(import_id: str, data_dir: Path) -> dict[str, Any]:
     reconcile_review_authority(data_dir, import_id)
     ledger = _read_ledger(data_dir)
     job = _get_job(ledger, import_id)
-    if not _is_review_job(job):
+    if not isinstance(job, dict) or job.get("kind") != "review":
         # Legacy / child batch job — unchanged status behaviour.
         from tools.ingest.runner import query_status
 
@@ -864,6 +1127,9 @@ def query_review_status(import_id: str, data_dir: Path) -> dict[str, Any]:
             "queue_counts": _queue_counts(proposal_states),
             "active_child_id": job.get("active_child_id"),
             "recovery_required": bool(job.get("recovery_required", False)),
+            "authority_status": job.get("authority_status"),
+            "plan_fingerprint": job.get("plan_fingerprint", ""),
+            "plan_revision": job.get("plan_revision", 1) or 1,
             "review_plan_rel_path": job.get("review_plan_rel_path", ""),
         }
     )
@@ -874,12 +1140,41 @@ def query_review_status(import_id: str, data_dir: Path) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _project_parent_after_child_rollback(
+    data_dir: Path, parent_id: str, child_proposal_ids: list[str]
+) -> None:
+    """Restore a rolled-back child's exact membership to ``confirmed``.
+
+    The caller holds the parent's per-parent lock. The projection is driven by
+    the child's own ``proposal_ids`` (what THIS batch touched), never by the
+    parent's last selection, and only batching/imported proposals move back to
+    confirmed. Clears the active child + recovery flag.
+    """
+    ledger = _read_ledger(data_dir)
+    parent = _get_job(ledger, parent_id)
+    if not isinstance(parent, dict) or parent.get("kind") != "review":
+        return
+    proposal_states = dict(parent.get("proposal_states", {}) or {})
+    for pid in child_proposal_ids:
+        if proposal_states.get(pid) in (STATE_BATCHING, STATE_IMPORTED):
+            proposal_states[pid] = STATE_CONFIRMED
+    parent["proposal_states"] = proposal_states
+    parent["active_child_id"] = None
+    parent["recovery_required"] = False
+    parent["updated_at"] = _now_iso()
+    _write_ledger(data_dir, ledger)
+
+
 def execute_review_rollback(import_id: str, data_dir: Path) -> dict[str, Any]:
     """``import rollback`` dispatch: refuse parent review jobs, else delegate.
 
-    After a child batch job is rolled back, reconcile its parent review job so
-    the rolled-back proposals are restored to ``confirmed`` (re-runnable). This
-    is what makes "rollback restores confirmed" observable via ``import status``.
+    A child batch job is rolled back and re-projected onto its parent **under the
+    parent's per-parent lock** — the same lock ``run`` takes — so the parent↔
+    child lock order stays consistent and the projection cannot race a concurrent
+    confirm/run/status. The plan/ledger authority is reconciled first, then the
+    checksum-guarded child rollback runs, then the exact ``child.proposal_ids``
+    projection restores the touched proposals to ``confirmed``. This is what
+    makes "rollback restores confirmed" observable via ``import status``.
     """
     ledger = _read_ledger(data_dir)
     job = _get_job(ledger, import_id)
@@ -900,26 +1195,30 @@ def execute_review_rollback(import_id: str, data_dir: Path) -> dict[str, Any]:
     ) or []
     parent_id = job.get("parent_review_job_id") if isinstance(job, dict) else None
 
-    result = execute_rollback(import_id=import_id, data_dir=data_dir)
+    # A child batch job rolls back + re-projects its parent under the parent's
+    # per-parent lock (consistent parent→child lock order with run). Reconcile
+    # the plan/ledger authority first so the projection starts from truth.
+    if parent_id:
+        lock = FileLock(_review_lock_path(data_dir, parent_id), timeout=30.0)
+        with lock:
+            pre_ledger = _read_ledger(data_dir)
+            if _reconcile_review_authority_locked(pre_ledger, parent_id, data_dir):
+                _write_ledger(data_dir, pre_ledger)
 
-    # If this was a child batch job that just rolled back, re-project its parent
-    # review job so proposals move out of imported/batching back to confirmed.
-    # This is what makes "rollback restores confirmed" observable via status.
-    if result["success"] and parent_id:
-        ledger = _read_ledger(data_dir)
-        parent = _get_job(ledger, parent_id)
-        if _is_review_job(parent):
-            proposal_states = dict(parent.get("proposal_states", {}) or {})
-            for pid in child_proposal_ids:
-                if proposal_states.get(pid) in (STATE_BATCHING, STATE_IMPORTED):
-                    proposal_states[pid] = STATE_CONFIRMED
-            parent["proposal_states"] = proposal_states
-            parent["active_child_id"] = None
-            parent["recovery_required"] = False
-            parent["updated_at"] = _now_iso()
-            _write_ledger(data_dir, ledger)
+            # Checksum-guarded child rollback. execute_rollback holds no lock of
+            # its own, so running it under the parent lock preserves a single
+            # lock order (parent only) shared with run.
+            result = execute_rollback(import_id=import_id, data_dir=data_dir)
 
-    return result
+            # Exact child.proposal_ids projection under the same lock.
+            if result["success"]:
+                _project_parent_after_child_rollback(
+                    data_dir, parent_id, child_proposal_ids
+                )
+            return result
+
+    # Legacy / standalone batch job (no parent review job) — unchanged path.
+    return execute_rollback(import_id=import_id, data_dir=data_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -1463,6 +1762,22 @@ def run_batch(  # noqa: C901
         _reconcile_parent(ledger, parent_id, data_dir)
         _write_ledger(data_dir, ledger)
         job = _get_job(ledger, parent_id)
+
+        # 1b. Fail closed when the persisted plan and ledger disagree with no
+        #     durable intent to explain it — running would act on an untrusted
+        #     plan. (An unsettled active child keeps its own recovery_required;
+        #     this gate fires only on an explicit plan/ledger mismatch.)
+        if job.get("authority_status") == AUTHORITY_STATUS_PLAN_LEDGER_MISMATCH:
+            return _err(
+                IMPORT_RECOVERY_REQUIRED,
+                "Review plan and ledger disagree (plan_ledger_mismatch); "
+                "resolve the authority before running.",
+                {
+                    "import_id": parent_id,
+                    "authority_status": AUTHORITY_STATUS_PLAN_LEDGER_MISMATCH,
+                },
+                retryable=False,
+            )
 
         # 2. Single active child.
         if job.get("active_child_id"):

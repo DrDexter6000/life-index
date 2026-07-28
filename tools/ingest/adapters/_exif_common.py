@@ -284,55 +284,61 @@ def parse_capture_time(
 def _read_exif_offset(exif_data: dict, chosen_tag: str) -> str | None:
     """Return a normalised EXIF UTC offset string for the chosen date tag.
 
-    Looks up OffsetTimeOriginal / OffsetTimeDigitized / OffsetTime in priority
-    order matching the chosen tag, then falls back to any present offset.
-    Returns the offset string (e.g. ``"+05:00"``) or ``None`` when absent or
-    malformed. The offset is never applied to convert the calendar date.
+    Uses **only** the offset tag paired with *chosen_tag* — it never borrows a
+    sibling offset (e.g. it will not use ``OffsetTimeDigitized`` for
+    ``DateTimeOriginal``). Returns the offset string (e.g. ``"+05:00"``) or
+    ``None`` when the paired tag is absent or malformed. The offset is never
+    applied to convert the calendar date.
     """
     preferred = {
         "DateTimeOriginal": "OffsetTimeOriginal",
         "CreateDate": "OffsetTimeDigitized",
         "DateTime": "OffsetTime",
     }
-    keys = [preferred.get(chosen_tag)] + [
-        "OffsetTimeOriginal",
-        "OffsetTimeDigitized",
-        "OffsetTime",
-    ]
-    seen: set[str] = set()
-    for key in keys:
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        raw = exif_data.get(key)
-        if raw is None:
-            continue
-        if isinstance(raw, bytes):
-            raw = raw.decode("ascii", errors="replace")
-        normalised = _normalise_exif_offset(str(raw).strip())
-        if normalised is not None:
-            return normalised
-    return None
+    key = preferred.get(chosen_tag)
+    if not key:
+        return None
+    raw = exif_data.get(key)
+    if raw is None:
+        return None
+    if isinstance(raw, bytes):
+        raw = raw.decode("ascii", errors="replace")
+    return _normalise_exif_offset(str(raw).strip())
 
 
 def _normalise_exif_offset(raw: str) -> str | None:
-    """Normalise an EXIF offset string (``+05:00`` / ``+0500`` / ``+05``)."""
+    """Normalise an EXIF offset string (``+05:00`` / ``+0500`` / ``+05``).
+
+    Trust rules (a failure returns ``None``, leaving the date camera-local):
+
+    - An explicit sign (``+`` / ``-``) is required; a bare ``0500`` is rejected.
+    - Minutes must be a valid ``00``–``59`` value.
+    - The offset must stay within real-world UTC bounds: at most ±14:00, and
+      ``14`` is only valid with ``:00`` minutes.
+    """
     if not raw:
         return None
-    sign = ""
-    rest = raw
-    if rest[0] in "+-":
-        sign = rest[0]
-        rest = rest[1:]
-    digits = rest.replace(":", "")
-    if not digits.isdigit() or len(digits) > 4:
+    raw = raw.strip()
+    if not raw or raw[0] not in "+-":
         return None
-    if len(digits) <= 2:
+    sign = raw[0]
+    digits = raw[1:].replace(":", "")
+    if not digits.isdigit():
+        return None
+    if len(digits) in (1, 2):
         hours = digits.zfill(2)
         minutes = "00"
-    else:
+    elif len(digits) == 4:
         hours = digits[:2]
         minutes = digits[2:4]
+    else:
+        return None
+    h = int(hours)
+    m = int(minutes)
+    if m > 59:
+        return None
+    if h > 14 or (h == 14 and m != 0):
+        return None
     return f"{sign}{hours}:{minutes}"
 
 

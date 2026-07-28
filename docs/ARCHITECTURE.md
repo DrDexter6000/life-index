@@ -621,6 +621,39 @@ Round 19 Phase 1-D 在搜索子系统中新增以下能力：
 - **Structured Intent Match Bonus**（R1 safe）：`STRUCTURED_*` 常量组在 keyword-only 路径上对同时命中 date_range + topic_hints 的候选结果加分（+50 keyword path），安全实现不做全局排序补丁。
 - **Broad/private eval advisory**：Broad/private quality metrics remain observable and advisory; weak or errored broad metrics do not enter blocking failures or override exact Core results. 私有查询数、阈值、指标与语料事实仅存于公开制品之外的 operator evidence。
 
+### 5.11 Import review queue authority（M7 历史照片冷启动）
+
+`media.photo_timeline` 在既有 import ledger / rollback manifest / fingerprint 权威之上
+additive 一个可恢复照片审阅队列。其权威架构有三条不变量（实现见 `tools/ingest/review.py`，
+权威契约见 `docs/API.md` 「Review queue & batch import」）：
+
+- **Per-parent single-writer 权威**：每个 parent review job 有一把 per-parent
+  `FileLock`（`.life-index/import-jobs/<parent_id>/review.lock`）。`confirm` / `run` /
+  `status` / child `rollback` 的 parent 投影都在该锁内进行，parent↔child 锁序一致
+  （只取 parent 锁，`execute_rollback` 自身不加锁，故无嵌套/死锁）。child rollback 的
+  parent 投影由 child 自身精确 `proposal_ids` 驱动，绝不复用 parent 上一次选择。
+
+- **Crash-safe plan↔ledger 更新（intent/reconciliation）**：ledger 是唯一权威（不引入
+  第二个 store）。`confirm` 按 **durable intent → atomic plan replace → finalize** 三步
+  在锁内更新：先在 parent job 写入 `pending_review_update` intent（含
+  `expected_plan_fingerprint` / `expected_plan_revision`、完整 finalize 投影、prior 投影
+  快照），再 atomic 替换 review-plan.json，最后从 intent finalize 并清 intent。reconcile
+  （confirm/status/run/rollback 共用）收敛三窗口：intent 指纹匹配持久化 plan → 幂等
+  finalize；intent 存在但 plan 仍旧/缺失 → abandon intent、恢复 prior 投影（首次 confirm
+  空 shell 移除）；**无 intent 但 plan 与 ledger 指纹不一致** → fail closed
+  （`recovery_required` + `authority_status = "plan_ledger_mismatch"`），`run` 返回
+  `IMPORT_RECOVERY_REQUIRED`，绝不静默二选一。重复 status 收敛。
+
+- **Immutable provenance 权威**：source facts（adapter/provenance、content SHA-256、size、
+  source 相对路径/ref、capture time value/source/timezone authority、GPS）不可变；一个
+  selected attachment 必须绑定到同一不可变 source fact（`source_sha256` / `source_rel_path`
+  / `source_ref` / `media_type` / `size_bytes` + 确定 `attachment_id`），`confirm` 做绑定
+  交叉校验拒绝任何篡改。非 frozen proposal 的 canonical attachment / journal target 由
+  effective date + content 在 `confirm` 时重新派生，绝不信任 incoming GUI 编辑。EXIF 日期
+  权威绝不来自文件 mtime；offset 只取与所选 capture tag 配对的 offset tag（不借用兄弟
+  tag），且必须有显式符号、合法分钟、落在 ±14:00 真实世界范围内，否则按相机本地 naive
+  使用、绝不换算。
+
 ---
 
 ## 6. 工程规范

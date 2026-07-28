@@ -116,11 +116,19 @@ parent review job 的 batch 路径。crash/重启后用 `import-id` 恢复队列
   `date_resolution`（`user_confirmed` 可解析不可变 EXIF 冲突）；**绝不**用文件 mtime，**无 1970-01-01
   sentinel**。缺日期/冲突的 proposal `journal.date`/`target_rel_path` 为空、
   `date_resolution.status=unresolved`，停在显式 `pending` 区，直到用户给出 `user_confirmed` date。
+  EXIF offset 只取与所选 capture tag 配对的 offset tag（不借用兄弟 tag），且必须有显式符号、合法分钟、
+  落在 ±14:00 内，否则按相机本地 naive 使用、绝不换算。
 - re-confirm 安全：`imported`/`batching` proposal 冻结（内容不变、state 以 ledger 权威为准、绝不降级）；
   `pending`/`confirmed`/`skipped` 接受安全编辑（含 attachment selection）。有未结算 active child 时
   confirm 被拒（`IMPORT_BATCH_ALREADY_ACTIVE`）。
 - child batch id 单调 `<parent_id>#batch-<seq>`（parent 存 durable `next_batch_sequence`），每个 child
-  记录精确 `proposal_ids`；rollback 从 child 自身成员投影，parent 不可整体回滚。
+  记录精确 `proposal_ids`；rollback 从 child 自身成员投影（在 parent 的 per-parent lock 内、reconcile 后），
+  parent 不可整体回滚。
+- crash / 权威纪律：confirm 按 durable intent→plan→finalize 更新，confirm/status/run/rollback 都先幂等
+  reconcile 收敛 crash 窗口。若 `status` 报 `recovery_required: true` +
+  `authority_status: "plan_ledger_mismatch"`（plan 与 ledger 不一致、无 intent 解释），**向用户报告、不要盲目
+  重试 run**——`run` 此时返回 `IMPORT_RECOVERY_REQUIRED`。一次新的 `confirm`（显式 incoming plan）可作为修复
+  手段。child 仍 `batching` 的 `recovery_required` 同理需人工/补偿恢复。
 - rescan 去重集合 = committed manifest 的 attachment SHA + authoritative state 为
   `confirmed`/`batching`/`imported` 的 review proposal 的 attachment SHA（被 rollback 恢复为
   `confirmed` 的仍排除）；同名不同字节视为不同记录。

@@ -112,13 +112,14 @@ def _build_exif_app1(
     dt_original: str = "",
     dt_digitized: str = "",
     offset_original: str = "",
+    offset_digitized: str = "",
 ) -> bytes:
     """Build a little-endian EXIF APP1 payload (Exif\\0\\0 + TIFF).
 
     IFD0 carries Make/Model/ExifTag; the ExifIFD carries DateTimeOriginal /
-    DateTimeDigitized / OffsetTimeOriginal. Only non-empty tags are written, so
-    the adapter's ExifIFD branch reads exactly what we intend (offset / conflict
-    authority) rather than the main-IFD fallback.
+    DateTimeDigitized / OffsetTimeOriginal / OffsetTimeDigitized. Only non-empty
+    tags are written, so the adapter's ExifIFD branch reads exactly what we
+    intend (offset / conflict authority) rather than the main-IFD fallback.
     """
 
     def _entries(specs: list[tuple[int, int, bytes]]) -> list[tuple[int, int, int, bytes]]:
@@ -137,6 +138,8 @@ def _build_exif_app1(
         exif_items.append((36868, dt_digitized))
     if offset_original:
         exif_items.append((0x9011, offset_original))
+    if offset_digitized:
+        exif_items.append((0x9012, offset_digitized))
     have_exif = bool(exif_items)
 
     # TIFF header (8 bytes), IFD0 at offset 8.
@@ -209,6 +212,7 @@ def _make_jpeg_rich(
     dt_original: str = "",
     dt_digitized: str = "",
     offset_original: str = "",
+    offset_digitized: str = "",
 ) -> Path:
     """Write a synthetic JPEG whose ExifIFD carries the requested date/offset tags."""
     from PIL import Image
@@ -219,6 +223,7 @@ def _make_jpeg_rich(
     app1 = _build_exif_app1(
         make=make, model=model, dt_original=dt_original,
         dt_digitized=dt_digitized, offset_original=offset_original,
+        offset_digitized=offset_digitized,
     )
     length = len(app1) + 2
     segment = b"\xff\xe1" + struct.pack(">H", length) + app1
@@ -371,6 +376,41 @@ def test_date_naive_exif_is_camera_local(tmp_path: Path) -> None:
     assert not any(c.get("code") in _CAPTURE_CONFLICT_CODES for c in prop["conflicts"])
 
 
+def test_date_malformed_offset_falls_back_to_naive(tmp_path: Path) -> None:
+    """An out-of-world / malformed offset is not trusted; date stays camera-local."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    # +14:30 is invalid (14 only valid with :00); date must remain 2024-06-15.
+    _make_jpeg_rich(
+        src / "bad.jpg", color=(1, 2, 3),
+        dt_original="2024:06:15 10:30:00", offset_original="+14:30",
+    )
+    plan = _photo_plan(data_dir, src)
+    prop = plan["data"]["proposals"][0]
+    assert prop["journal"]["date"] == "2024-06-15"
+    assert prop["source_facts"][0]["capture_time"]["timezone_authority"] == "exif_naive"
+    assert not any(c.get("code") in _CAPTURE_CONFLICT_CODES for c in prop["conflicts"])
+
+
+def test_date_mismatched_offset_tag_not_borrowed(tmp_path: Path) -> None:
+    """OffsetTimeDigitized must not be borrowed for DateTimeOriginal."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    # DateTimeOriginal present, but only OffsetTimeDigitized (paired with
+    # CreateDate) is carried — the adapter must not borrow it.
+    _make_jpeg_rich(
+        src / "mismatch.jpg", color=(1, 2, 3),
+        dt_original="2024:06:15 10:30:00", offset_digitized="+05:30",
+    )
+    plan = _photo_plan(data_dir, src)
+    prop = plan["data"]["proposals"][0]
+    assert prop["journal"]["date"] == "2024-06-15"
+    assert prop["source_facts"][0]["capture_time"]["timezone_authority"] == "exif_naive"
+    assert not any(c.get("code") in _CAPTURE_CONFLICT_CODES for c in prop["conflicts"])
+
+
 def test_date_missing_yields_empty_date_pending(tmp_path: Path) -> None:
     data_dir = tmp_path / "Life-Index"
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -498,6 +538,128 @@ def test_resolved_photo_confirms_without_explicit_resolution(tmp_path: Path) -> 
     res = _confirm(data_dir, plan["data"], source_root=src)["data"]
     assert res["queue_counts"]["confirmed"] == 1
     assert res["queue_counts"]["pending"] == 0
+
+
+# ===================================================================
+# Immutable attachment provenance — confirm rejects tampered binding
+# ===================================================================
+
+
+def _one_photo_plan_and_prop(tmp_path: Path) -> tuple[Path, Path, dict[str, Any], dict[str, Any]]:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    prop = plan["data"]["proposals"][0]
+    return data_dir, src, plan["data"], prop
+
+
+def _confirm_err(data_dir: Path, plan_data: dict[str, Any], src: Path) -> dict[str, Any]:
+    return _err(_run_import(
+        data_dir, "confirm", "--plan",
+        str(_plan_file(Path(data_dir).parent, plan_data, name="prov.json")),
+        "--source-root", str(src), "--json",
+    ))
+
+
+def test_confirm_rejects_tampered_source_rel_path(tmp_path: Path) -> None:
+    data_dir, src, plan_data, prop = _one_photo_plan_and_prop(tmp_path)
+    prop["attachments"][0]["source_rel_path"] = "tampered/elsewhere.jpg"
+    res = _confirm_err(data_dir, plan_data, src)
+    assert res["error"]["code"] == "IMPORT_PLAN_INVALID"
+
+
+def test_confirm_rejects_tampered_source_ref(tmp_path: Path) -> None:
+    data_dir, src, plan_data, prop = _one_photo_plan_and_prop(tmp_path)
+    prop["attachments"][0]["source_ref"] = "source://media.photo_timeline/deadbeef"
+    res = _confirm_err(data_dir, plan_data, src)
+    assert res["error"]["code"] == "IMPORT_PLAN_INVALID"
+
+
+def test_confirm_rejects_tampered_media_type(tmp_path: Path) -> None:
+    data_dir, src, plan_data, prop = _one_photo_plan_and_prop(tmp_path)
+    prop["attachments"][0]["media_type"] = "image/png"
+    res = _confirm_err(data_dir, plan_data, src)
+    assert res["error"]["code"] == "IMPORT_PLAN_INVALID"
+
+
+def test_confirm_rejects_tampered_size_bytes(tmp_path: Path) -> None:
+    data_dir, src, plan_data, prop = _one_photo_plan_and_prop(tmp_path)
+    prop["attachments"][0]["size_bytes"] = prop["attachments"][0]["size_bytes"] + 999
+    res = _confirm_err(data_dir, plan_data, src)
+    assert res["error"]["code"] == "IMPORT_PLAN_INVALID"
+
+
+def test_confirm_rejects_tampered_attachment_id(tmp_path: Path) -> None:
+    data_dir, src, plan_data, prop = _one_photo_plan_and_prop(tmp_path)
+    prop["attachments"][0]["attachment_id"] = "att_deadbeefdead"
+    res = _confirm_err(data_dir, plan_data, src)
+    assert res["error"]["code"] == "IMPORT_PLAN_INVALID"
+
+
+def test_confirm_rejects_attachment_target_escape(tmp_path: Path) -> None:
+    data_dir, src, plan_data, prop = _one_photo_plan_and_prop(tmp_path)
+    prop["attachments"][0]["target_rel_path"] = "../evil.jpg"
+    res = _confirm_err(data_dir, plan_data, src)
+    assert res["error"]["code"] == "IMPORT_PLAN_INVALID"
+
+
+def test_confirm_rejects_journal_target_escape(tmp_path: Path) -> None:
+    data_dir, src, plan_data, prop = _one_photo_plan_and_prop(tmp_path)
+    prop["journal"]["target_rel_path"] = "../escape.md"
+    res = _confirm_err(data_dir, plan_data, src)
+    assert res["error"]["code"] == "IMPORT_PLAN_INVALID"
+
+
+def test_confirm_canonical_attachment_target_derived_not_trusted(tmp_path: Path) -> None:
+    """A GUI-injected (confined) attachment target is overwritten by the canonical one."""
+    data_dir, src, plan_data, prop = _one_photo_plan_and_prop(tmp_path)
+    sha = prop["attachments"][0]["source_sha256"]
+    prefix = sha.removeprefix("sha256:")[:12]
+    # inject a confined-but-wrong target (wrong prefix); confirm must re-derive it.
+    prop["attachments"][0]["target_rel_path"] = f"attachments/2024/06/import_deadbeef.jpg"
+    res = _confirm(data_dir, plan_data, source_root=src)["data"]
+    assert res["queue_counts"]["confirmed"] == 1
+    persisted = json.loads(
+        (data_dir / ".life-index" / "import-jobs" / res["parent_id"] / "review-plan.json")
+        .read_text("utf-8")
+    )
+    att = persisted["proposals"][0]["attachments"][0]
+    # canonical target derived from effective date + content, never the injected value
+    assert att["target_rel_path"] == f"attachments/2024/06/import_{prefix}.jpg"
+    assert "deadbeef" not in att["target_rel_path"]
+
+
+def test_confirm_canonical_journal_target_within_date_path(tmp_path: Path) -> None:
+    """Journal target is re-derived to the canonical date path/sequence, not trusted."""
+    data_dir, src, plan_data, prop = _one_photo_plan_and_prop(tmp_path)
+    # inject a confined-but-noncanonical journal target
+    prop["journal"]["target_rel_path"] = "Journals/2024/06/life-index_2024-06-15_042.md"
+    res = _confirm(data_dir, plan_data, source_root=src)["data"]
+    persisted = json.loads(
+        (data_dir / ".life-index" / "import-jobs" / res["parent_id"] / "review-plan.json")
+        .read_text("utf-8")
+    )
+    target = persisted["proposals"][0]["journal"]["target_rel_path"]
+    assert target.startswith("Journals/2024/06/life-index_2024-06-15_")
+    assert target != "Journals/2024/06/life-index_2024-06-15_042.md"
+
+
+def test_confirm_partial_selection_provenance_preserved(tmp_path: Path) -> None:
+    """Dropping one attachment from a multi-photo proposal keeps the remainder bound."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "a.jpg", color=(1, 2, 3))
+    _make_jpeg(src / "b.jpg", color=(4, 5, 6))
+    plan = _photo_plan(data_dir, src)
+    prop = plan["data"]["proposals"][0]
+    assert len(prop["attachments"]) == 2
+    prop["attachments"] = prop["attachments"][:1]  # partial selection
+    res = _confirm(data_dir, plan["data"], source_root=src)["data"]
+    assert res["queue_counts"]["confirmed"] == 1
+    assert res["queue_counts"]["skipped"] == 0
 
 
 # ===================================================================

@@ -2048,6 +2048,18 @@ timezone authority、GPS、source relation 与 attachment relation 都是 source
 用户只能编辑 journal `title` / `date` / `topic` / `tags` / `content` 与 proposal /
 attachment selection，用户编辑是最高事实但不能改写 source facts。
 
+**Immutable attachment provenance**：一个 selected attachment 必须绑定到同一不可变
+source fact —— `source_sha256`、`source_rel_path`、`source_ref`、`media_type`、
+`size_bytes` 与确定的 `attachment_id`（`att_<source content prefix>`）都要与本
+proposal 内绑定的 source fact 完全一致；`confirm` 做绑定交叉校验，任何篡改
+（source_rel_path / source_ref / media_type / size / attachment_id / target 逃逸）
+返回 `IMPORT_PLAN_INVALID` 并拒绝持久化。对非 frozen 可编辑 proposal，canonical
+attachment target 与 journal target 在 `confirm` 时由 effective date + content **重新
+派生 / 校验**，绝不信任 incoming GUI 编辑；journal target 必须落在 canonical date
+路径 / sequence 内。attachment target / journal target 必须 lexical confined（拒绝
+绝对路径与 `..` 段），并在 run 时再经 confinement 复核。部分取消选择 / 全部取消选择
+的既有语义保持不变。
+
 #### Proposal lifecycle
 
 `media.photo_timeline` proposal 增加 additive 状态字段 `state`，取值：
@@ -2064,6 +2076,13 @@ attachment selection，用户编辑是最高事实但不能改写 source facts�
 - `exif_authoritative`：可信 EXIF 提供日期（带 offset 用其本地 calendar date，
   无 offset 按相机本地日期，不猜时区；含 `authority` 来源）。proposal 的
   `journal.date` 与 journal / attachment `target_rel_path` 在 plan 阶段已派生。
+  **EXIF offset trust**：offset 只取与所选 capture tag **配对** 的 offset tag
+  （`OffsetTimeOriginal` ↔ `DateTimeOriginal`、`OffsetTimeDigitized` ↔ `CreateDate`、
+  `OffsetTime` ↔ `DateTime`），绝不借用兄弟 tag（如不用 `OffsetTimeDigitized` 配
+  `DateTimeOriginal`）。offset 必须有显式符号（`+`/`-`）、分钟合法（`00`–`59`）、且
+  落在真实世界 UTC 范围内（最多 ±14:00，`14` 仅配 `:00`）；否则视为不可信，日期仍按
+  相机本地 `exif_naive` 使用，**绝不换算**。`authority` 为 `exif_offset`（带可信
+  offset）或 `exif_naive`（无 offset）。
 - `user_confirmed`：用户在 `confirm` 时通过 `date_resolution.date` 显式给出
   `YYYY-MM-DD`。这是最高权威——可解析一条不可变的 EXIF capture-time 冲突，
   覆盖 EXIF 日期；`confirm` 校验日期合法性、派生 canonical journal target，然后
@@ -2110,6 +2129,26 @@ attachment ids；tamper（指纹/selected id 不匹配）返回 `IMPORT_PLAN_INV
 plan 到既有 review 状态：`imported` / `batching` proposal 冻结（内容权威不变、
 state 以 ledger 权威为准、绝不降级），其余 proposal（re-）派生 `date_resolution` 与
 canonical target。durable `next_batch_sequence` 在 re-confirm 时保留不变。
+
+**Crash-safe plan↔ledger 更新协议**：为消除「新 plan 已落盘但 ledger 仍是旧投影」
+的静默撕裂窗口，`confirm` 在 per-parent lock 内按 **intent → plan → finalize** 三步
+顺序更新，且 ledger 是唯一权威（不引入第二个 store）。先在内存中合并出最终 plan 与
+parent 投影，然后：
+
+1. **(I1) durable intent**：在 parent job 上原子写入一个 `pending_review_update`
+   intent（携带 `expected_plan_fingerprint` / `expected_plan_revision`、完整 finalize
+   投影字段、以及 prior 投影快照），保留既有权威字段（含 `next_batch_sequence`）；
+2. **(P) atomic plan replace**：temp + fsync + atomic replace 写入新 review-plan.json；
+3. **(F) finalize**：从 intent 把 parent 投影落盘并清除 intent，递增 `plan_revision`。
+
+confirm/status/run/rollback 都先做幂等 reconciliation 收敛三个 crash 窗口：intent
+的 `expected_plan_fingerprint` 与持久化 plan 指纹匹配 →（crash after plan / before
+finalize）幂等 finalize；intent 存在但 plan 仍是旧值/缺失 →（crash after intent /
+before plan）abandon intent，恢复 prior 投影（首次 confirm 的空 shell 直接移除）；
+**无 intent 但持久化 plan 指纹与 ledger `plan_fingerprint` 不一致** → fail closed
+（`recovery_required` + `authority_status = "plan_ledger_mismatch"`），绝不静默二选
+一。重复 status 收敛（幂等）。一次新的 `confirm` 用显式 incoming plan 重算指纹、可作
+为修复手段并在 finalize 后清除 `authority_status`。
 
 返回 `data.schema_version = "import_review.v1"`，含 `parent_id`、
 `source_root_identity`、各 proposal `state`、derived queue counts（`confirmed` /
@@ -2185,6 +2224,14 @@ transition intent（durable），并把 selected `confirmed` proposal 转为 `ba
   crash-after-batching-before-child、child-before-manifest、commit-before-projection、
   重复 reconciliation 四个窗口。
 
+除 child 投影外，reconciliation 还收敛 **confirm 的 plan↔ledger crash 窗口**（见
+`import confirm` 的 intent→plan→finalize 协议）：pending intent 与持久化 plan 指纹匹配
+→幂等 finalize；intent 存在但 plan 仍旧/缺失 → abandon intent、恢复 prior 投影（或移除
+首次 confirm 的空 shell）；**无 intent 但持久化 plan 指纹与 ledger `plan_fingerprint`
+不一致** → fail closed（`recovery_required` + `authority_status =
+"plan_ledger_mismatch"`），`run` 此时返回 `IMPORT_RECOVERY_REQUIRED` 而不在不一致的
+plan 上动作。
+
 stale 默认确定：batch 准备阶段对 selected proposal 重新哈希 source，changed /
 deleted 的 proposal 标 `stale` 并从本批排除，其余继续；全 stale / 无 runnable 则
 不创建 child，返回结构化 `IMPORT_NO_RUNNABLE_PROPOSALS`。实际复制时再次关闭
@@ -2202,16 +2249,21 @@ provenance、frontmatter `attachments` 为 SSOT），只发布 selected attachme
 #### `import status`（additive）
 
 对 parent review job，`status` 额外返回各 proposal `state`、derived queue counts、
-`active_child_id`、`recovery_required`、`source_root_identity`。既有 job（fixture /
-child batch）的 status 字段不变。
+`active_child_id`、`recovery_required`、`authority_status`（`null`，或 fail-closed 时
+`"plan_ledger_mismatch"`）、`plan_fingerprint`、`plan_revision`、
+`source_root_identity`。既有 job（fixture / child batch）的 status 字段不变。
 
 #### `import rollback`（additive）
 
 `import rollback --import-id <parent_id>` 明确返回
 `IMPORT_ROLLBACK_PARENT_NOT_ALLOWED`：parent review job 不可整体回滚，应回滚其
-child batch job。child batch job 的 rollback 复用既有 checksum-guarded rollback；
-成功后 parent reconciliation 把对应 proposal 恢复 `confirmed`，rescan 仍识别
-`confirmed` / `imported`，被 rollback 恢复的 `confirmed` 不重复。
+child batch job。child batch job 的 rollback **在 parent 的 per-parent lock 内**执行
+（与 `run` 同一把锁，parent↔child 锁序一致）：先做 plan/ledger authority
+reconciliation，再执行既有 checksum-guarded child rollback，然后用 child 自身精确
+`proposal_ids` 把对应 proposal 恢复 `confirmed`——投影由本 child 实际成员驱动，绝不
+复用 parent 的上一次选择。成功后 rescan 仍识别 `confirmed` / `imported`，被 rollback
+恢复的 `confirmed` 不重复。无 parent 的 legacy / standalone batch job 走既有 unlocked
+rollback 路径不变。
 
 #### Review/batch additive 错误码
 
@@ -2224,7 +2276,7 @@ child batch job。child batch job 的 rollback 复用既有 checksum-guarded rol
 | `IMPORT_SOURCE_ROOT_IDENTITY_MISMATCH` | 当前 locator 的 root identity 与 parent 记录不符 |
 | `IMPORT_REVIEW_PLAN_MISSING` | 缺少持久化 review-plan.json |
 | `IMPORT_PREVIEW_UNAVAILABLE` | preview 目标 unavailable（unsupported / stale / missing / unreferenced） |
-| `IMPORT_RECOVERY_REQUIRED` | parent 处于需要人工/补偿恢复的 `batching` 状态 |
+| `IMPORT_RECOVERY_REQUIRED` | parent 处于需要人工/补偿恢复的 `batching` 状态，或 plan/ledger 权威不一致（`authority_status = "plan_ledger_mismatch"`）拒绝 fail-closed |
 
 #### Review/batch additive schema versions
 
