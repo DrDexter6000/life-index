@@ -789,6 +789,7 @@ def execute_rollback(
     if unsafe_paths or invalid_ownership:
         now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
         manifest["state"] = "rollback_failed"
+        manifest["rollback_retryable"] = False
         manifest["errors"] = [
             *[f"Unsafe path (traversal/absolute): {p}" for p in unsafe_paths],
             *[
@@ -799,6 +800,7 @@ def execute_rollback(
         _write_manifest(manifest_abs, manifest)
 
         jobs[import_id]["state"] = "rollback_failed"
+        jobs[import_id]["rollback_retryable"] = False
         jobs[import_id]["updated_at"] = now_iso
         _write_ledger(data_dir, ledger)
 
@@ -976,27 +978,57 @@ def execute_rollback(
                 blocked=final_blocked,
             )
 
-        # --- 8. Delete only the unchanged, revalidated files ---
+        # --- 8. Persist restart-safe intent, then delete revalidated files ---
+        # Both existing authorities must say recovery is in progress before the
+        # first unlink. If the process stops mid-loop, a later status/rollback
+        # can recover from this durable fact instead of projecting committed.
+        rollback_started_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        manifest["state"] = "rollback_in_progress"
+        manifest["rollback_retryable"] = True
+        manifest["errors"] = []
+        _write_manifest(manifest_abs, manifest)
+        jobs[import_id]["state"] = "rollback_in_progress"
+        jobs[import_id]["rollback_retryable"] = True
+        jobs[import_id]["updated_at"] = rollback_started_at
+        _write_ledger(data_dir, ledger)
+
         deleted_count = 0
-        for entry in to_delete:
-            entry["path"].unlink()
-            deleted_count += 1
-        for staging_path in dict.fromkeys(staging_to_delete):
-            if staging_path.exists():
-                staging_path.unlink()
-            try:
-                staging_path.parent.rmdir()
-            except OSError:
-                pass
+        try:
+            for entry in to_delete:
+                entry["path"].unlink()
+                deleted_count += 1
+            for staging_path in dict.fromkeys(staging_to_delete):
+                if staging_path.exists():
+                    staging_path.unlink()
+                try:
+                    staging_path.parent.rmdir()
+                except OSError:
+                    pass
+        except OSError:
+            # ``rollback_in_progress`` was durably written to both authorities
+            # before deletion began. Preserve that restart point instead of
+            # introducing another two-write transition after partial deletion.
+            return _err(
+                "IMPORT_ROLLBACK_INTERRUPTED",
+                "Rollback was interrupted while removing owned files.",
+                {
+                    "import_id": import_id,
+                    "reason": "filesystem_delete_failed",
+                    "deleted_count": deleted_count,
+                },
+                retryable=True,
+            )
     finally:
         journals_lock.release()
 
     # --- 9. Preserve manifest as audit evidence, update ledger ---
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     manifest["state"] = "rolled_back"
+    manifest["rollback_retryable"] = False
     _write_manifest(manifest_abs, manifest)
 
     jobs[import_id]["state"] = "rolled_back"
+    jobs[import_id]["rollback_retryable"] = False
     jobs[import_id]["updated_at"] = now_iso
     _write_ledger(data_dir, ledger)
 
@@ -1529,6 +1561,7 @@ def _record_rollback_mismatch(
     """Persist one fail-closed rollback mismatch result."""
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     manifest["state"] = "rollback_failed"
+    manifest["rollback_retryable"] = False
     manifest["errors"] = [
         f"Rollback ownership/content mismatch: {item['rel_path']} ({item['reason']})"
         for item in blocked
@@ -1536,6 +1569,7 @@ def _record_rollback_mismatch(
     _write_manifest(manifest_abs, manifest)
 
     ledger["jobs"][import_id]["state"] = "rollback_failed"
+    ledger["jobs"][import_id]["rollback_retryable"] = False
     ledger["jobs"][import_id]["updated_at"] = now_iso
     _write_ledger(data_dir, ledger)
 

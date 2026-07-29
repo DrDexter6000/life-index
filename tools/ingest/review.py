@@ -2139,11 +2139,23 @@ def _batch_sort_key(child_id: str) -> tuple[tuple[int, int], str]:
     return ((1, 0), child_id)
 
 
-def _child_rollback_available(
-    data_dir: Path, parent_id: str, child_id: str, child_state: Any
+def _rollback_manifest_structurally_linked(
+    manifest: Any, parent_id: str, child_id: str
 ) -> bool:
-    """True only for a committed child backed by a well-formed, correctly-linked
-    committed rollback manifest.
+    """Whether a rollback manifest has the canonical safe linkage fields."""
+    return (
+        isinstance(manifest, dict)
+        and manifest.get("schema_version") == ROLLBACK_MANIFEST_SCHEMA_VERSION
+        and manifest.get("import_id") == child_id
+        and manifest.get("parent_review_job_id") == parent_id
+        and isinstance(manifest.get("created_files"), list)
+    )
+
+
+def _child_rollback_available(
+    data_dir: Path, parent_id: str, child_id: str, child: dict[str, Any]
+) -> bool:
+    """True only for a safely executable initial rollback or recovery retry.
 
     Read-only against the existing ledger/manifest authority — never reimplements
     rollback and never hashes / reads user journals or attachment files (it only
@@ -2152,31 +2164,37 @@ def _child_rollback_available(
     (False) so status never advertises safe rollback over a missing, malformed,
     or wrongly-linked manifest:
 
-    - its ledger state is ``committed``;
     - a rollback manifest dict exists with the canonical rollback-manifest
       ``schema_version``;
-    - the manifest ``state`` is ``committed``;
     - the manifest ``import_id`` is exactly *child_id*;
     - the manifest ``parent_review_job_id`` is exactly *parent_id*;
     - the manifest ``created_files`` is a list.
+    - child and manifest states agree on either ``committed`` or an explicit
+      retryable ``rollback_in_progress`` / ``rollback_failed`` state.
 
     ``parent_id`` is threaded in explicitly and matched verbatim — it is never
-    inferred from the child id string. ``rolled_back`` / ``rollback_failed`` /
-    a missing, non-committed, or malformed manifest / any other ledger state all
-    yield False.
+    inferred from the child id string. A non-retryable rollback failure,
+    ``rolled_back``, a missing/malformed/wrongly linked manifest, or any state
+    disagreement fails closed.
     """
-    if child_state != "committed":
-        return False
     from tools.ingest.runner import _read_rollback_manifest
 
     manifest = _read_rollback_manifest(data_dir, child_id)
+    if not _rollback_manifest_structurally_linked(
+        manifest, parent_id, child_id
+    ):
+        return False
+    assert isinstance(manifest, dict)
+
+    child_state = child.get("state")
+    manifest_state = manifest.get("state")
+    if child_state == manifest_state == "committed":
+        return True
     return (
-        isinstance(manifest, dict)
-        and manifest.get("schema_version") == ROLLBACK_MANIFEST_SCHEMA_VERSION
-        and manifest.get("state") == "committed"
-        and manifest.get("import_id") == child_id
-        and manifest.get("parent_review_job_id") == parent_id
-        and isinstance(manifest.get("created_files"), list)
+        child_state == manifest_state
+        and child_state in ("rollback_in_progress", "rollback_failed")
+        and child.get("rollback_retryable") is True
+        and manifest.get("rollback_retryable") is True
     )
 
 
@@ -2206,7 +2224,7 @@ def _child_batch_projection(
         "created_at": created,
         "updated_at": child.get("updated_at"),
         "rollback_available": _child_rollback_available(
-            data_dir, parent_id, child_id, child.get("state")
+            data_dir, parent_id, child_id, child
         ),
     }
 
@@ -2368,6 +2386,14 @@ def execute_review_rollback(import_id: str, data_dir: Path) -> dict[str, Any]:
                 _project_parent_after_child_rollback(
                     data_dir, parent_id, child_proposal_ids
                 )
+            else:
+                # A caught mid-delete interruption is durable retryable recovery,
+                # not a settled imported batch. Project the parent fail-closed
+                # under the same lock; non-retryable pre-delete failures remain
+                # unchanged because reconciliation will not select them.
+                recovery_ledger = _read_ledger(data_dir)
+                if _reconcile_parent(recovery_ledger, parent_id, data_dir):
+                    _write_ledger(data_dir, recovery_ledger)
             return result
 
     # Legacy / standalone batch job (no parent review job) — unchanged path.
@@ -2995,6 +3021,66 @@ def _validate_committed_manifest(
     return True, ""
 
 
+def _validate_rolled_back_manifest(
+    data_dir: Path,
+    child_id: str,
+    parent_id: str,
+    manifest: dict[str, Any] | None,
+) -> tuple[bool, str]:
+    """Validate durable rollback completion before restoring the parent.
+
+    The manifest is the first success authority written after all unlinks. Trust
+    it across the following ledger-write crash window only when linkage and
+    confinement are valid and every owned target/staging path is absent.
+    """
+    from tools.ingest.runner import _resolve_confined_file_path
+
+    if not isinstance(manifest, dict):
+        return False, "manifest_missing"
+    if manifest.get("schema_version") != ROLLBACK_MANIFEST_SCHEMA_VERSION:
+        return False, "schema_mismatch"
+    if manifest.get("state") != "rolled_back":
+        return False, "manifest_not_rolled_back"
+    if manifest.get("import_id") != child_id:
+        return False, "wrong_import_id"
+    if manifest.get("parent_review_job_id") != parent_id:
+        return False, "wrong_parent"
+    created = manifest.get("created_files")
+    if not isinstance(created, list):
+        return False, "no_created_files"
+    for entry in created:
+        if not isinstance(entry, dict) or not entry.get("created_by_import", False):
+            continue
+        rel = entry.get("rel_path")
+        if not isinstance(rel, str):
+            return False, "invalid_rel_path"
+        target = _resolve_confined_file_path(data_dir, rel)
+        if target is None:
+            return False, f"unconfined:{rel}"
+        try:
+            if target.exists():
+                return False, f"target_remaining:{rel}"
+        except OSError:
+            return False, f"target_unreadable:{rel}"
+        proof = entry.get("ownership_proof")
+        if proof is None:
+            continue
+        if not isinstance(proof, dict):
+            return False, f"invalid_ownership:{rel}"
+        staging_rel = proof.get("staging_rel_path")
+        if not isinstance(staging_rel, str):
+            return False, f"invalid_staging_path:{rel}"
+        staging = _resolve_confined_file_path(data_dir, staging_rel)
+        if staging is None:
+            return False, f"unconfined_staging:{rel}"
+        try:
+            if staging.exists():
+                return False, f"staging_remaining:{rel}"
+        except OSError:
+            return False, f"staging_unreadable:{rel}"
+    return True, ""
+
+
 def _reload_durable_child(
     ledger: dict[str, Any], data_dir: Path, child_id: str
 ) -> None:
@@ -3012,6 +3098,8 @@ def _reload_durable_child(
     child = ledger.get("jobs", {}).get(child_id)
     if isinstance(durable, dict) and isinstance(child, dict):
         child["state"] = durable.get("state", child.get("state"))
+        if "rollback_retryable" in durable:
+            child["rollback_retryable"] = durable["rollback_retryable"]
         if "updated_at" in durable:
             child["updated_at"] = durable["updated_at"]
 
@@ -3049,8 +3137,43 @@ def _reconcile_parent(
         return False
     child_id = job.get("active_child_id")
     if not child_id:
-        # Already settled (no active child): a pure no-op for convergence.
-        return False
+        # A manual rollback can crash after durable rollback intent but before
+        # its parent was projected. Recover the newest explicitly retryable
+        # child instead of leaving a partially deleted batch looking imported.
+        retryable_rollbacks: list[tuple[str, dict[str, Any]]] = []
+        for candidate_id, candidate in jobs.items():
+            if (
+                not isinstance(candidate_id, str)
+                or not isinstance(candidate, dict)
+                or candidate.get("kind") != "batch"
+                or candidate.get("parent_review_job_id") != parent_id
+            ):
+                continue
+            candidate_state = candidate.get("state")
+            ledger_retryable = (
+                candidate_state in ("rollback_in_progress", "rollback_failed")
+                and candidate.get("rollback_retryable") is True
+            )
+            candidate_manifest = _read_rollback_manifest(data_dir, candidate_id)
+            manifest_first_intent = (
+                candidate_state == "committed"
+                and isinstance(candidate_manifest, dict)
+                and _rollback_manifest_structurally_linked(
+                    candidate_manifest, parent_id, candidate_id
+                )
+                and candidate_manifest.get("state")
+                in ("rollback_in_progress", "rollback_failed")
+                and candidate_manifest.get("rollback_retryable") is True
+            )
+            if ledger_retryable or manifest_first_intent:
+                retryable_rollbacks.append((candidate_id, candidate))
+        if not retryable_rollbacks:
+            # Already settled (no active child): a pure no-op for convergence.
+            return False
+        child_id, _ = max(
+            retryable_rollbacks,
+            key=lambda item: (str(item[1].get("updated_at", "")), item[0]),
+        )
 
     proposal_states = dict(job.get("proposal_states", {}) or {})
     child_job = jobs.get(child_id)
@@ -3083,6 +3206,11 @@ def _reconcile_parent(
         for pid in selected:
             proposal_states[pid] = STATE_IMPORTED
 
+    def project_rollback_recovery() -> None:
+        for pid in selected:
+            if proposal_states.get(pid) == STATE_IMPORTED:
+                proposal_states[pid] = STATE_BATCHING
+
     def apply(*, active_child_id: str | None, recovery_required: bool) -> bool:
         changed = False
         if job.get("proposal_states") != proposal_states:
@@ -3102,6 +3230,46 @@ def _reconcile_parent(
             _bump_queue(job)
             job["updated_at"] = _now_iso()
         return changed
+
+    # -1. Intent is written manifest-first and ledger-second before unlink. A
+    #     restart between those durable writes carries the correctly linked
+    #     manifest intent into the child ledger; no deletion is inferred here.
+    if (
+        child_state == "committed"
+        and isinstance(child_manifest, dict)
+        and _rollback_manifest_structurally_linked(
+            child_manifest, parent_id, child_id
+        )
+        and child_manifest.get("state")
+        in ("rollback_in_progress", "rollback_failed")
+        and child_manifest.get("rollback_retryable") is True
+    ):
+        if isinstance(child_job, dict):
+            child_job["state"] = child_manifest["state"]
+            child_job["rollback_retryable"] = True
+            child_job["updated_at"] = _now_iso()
+        project_rollback_recovery()
+        return apply(active_child_id=child_id, recovery_required=True)
+
+    # 0. The rollback manifest is the first durable success fact after every
+    #    unlink. If the process stopped before the child-ledger projection, carry
+    #    that validated truth forward and restore the parent exactly once.
+    if (
+        isinstance(child_manifest, dict)
+        and child_manifest.get("state") == "rolled_back"
+    ):
+        valid, _reason = _validate_rolled_back_manifest(
+            data_dir, child_id, parent_id, child_manifest
+        )
+        if valid:
+            if isinstance(child_job, dict):
+                child_job["state"] = "rolled_back"
+                child_job["rollback_retryable"] = False
+                child_job["updated_at"] = _now_iso()
+            restore_confirmed()
+            return apply(active_child_id=None, recovery_required=False)
+        project_rollback_recovery()
+        return apply(active_child_id=child_id, recovery_required=True)
 
     # 1. A valid committed manifest is the durable commit fact. This covers a
     #    child whose ledger projection was interrupted (manifest committed, but
@@ -3128,14 +3296,11 @@ def _reconcile_parent(
         restore_confirmed()
         return apply(active_child_id=None, recovery_required=False)
 
-    # 2b. Child compensation already failed durably (``execute_rollback`` could
-    #     not safely remove an artifact) -> stay fail-closed and convergent.
-    #     Once the durable child transition is carried forward (see the reload
-    #     below), the child ledger and its rollback manifest both read
-    #     ``rollback_failed``; this terminal branch keeps recovery_required set
-    #     and the active child retained without re-attempting or silently
-    #     clearing, so repeated status is a no-op.
-    if child_state == "rollback_failed":
+    # 2b. Rollback intent/failure is durable recovery truth. Keep the exact
+    #     membership non-imported, retain the active child, and expose recovery
+    #     until an explicit checksum-guarded retry reaches ``rolled_back``.
+    if child_state in ("rollback_in_progress", "rollback_failed"):
+        project_rollback_recovery()
         return apply(active_child_id=child_id, recovery_required=True)
 
     # 3. Our write-failure states, or a crashed running child that left created

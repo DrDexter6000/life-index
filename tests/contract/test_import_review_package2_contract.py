@@ -910,6 +910,216 @@ def test_child_rollback_journals_lock_timeout_deletes_nothing(
     assert _ledger(data_dir)["jobs"][child_id]["state"] == "committed"
 
 
+def test_child_rollback_interrupted_on_second_unlink_resumes_without_false_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A partial delete is durable recovery truth and the next rollback resumes."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+    src = tmp_path / "photos"
+    source = _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    source_before = source.read_bytes()
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    proposal_id = plan["proposals"][0]["proposal_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+    child_id = _ok(_run_batch(data_dir, parent_id, src))["data"]["import_id"]
+    manifest = _manifest(data_dir, child_id)
+    owned_targets = [
+        data_dir / entry["rel_path"]
+        for entry in manifest["created_files"]
+        if entry.get("created_by_import") is True
+    ]
+    assert len(owned_targets) == 2
+    assert all(path.exists() for path in owned_targets)
+
+    real_unlink = Path.unlink
+    attempted_targets: list[Path] = []
+
+    def fail_second_owned_unlink(
+        path: Path, missing_ok: bool = False
+    ) -> None:
+        if path in owned_targets:
+            attempted_targets.append(path)
+            if len(attempted_targets) == 2:
+                raise OSError("synthetic second owned unlink interruption")
+        real_unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", fail_second_owned_unlink)
+    caught: OSError | None = None
+    interrupted: dict[str, Any] | None = None
+    try:
+        interrupted = review.execute_review_rollback(
+            import_id=child_id, data_dir=data_dir
+        )
+    except OSError as exc:
+        caught = exc
+    monkeypatch.setattr(Path, "unlink", real_unlink)
+
+    interrupted_ledger = _ledger(data_dir)
+    interrupted_manifest = _manifest(data_dir, child_id)
+    assert (
+        caught,
+        interrupted_ledger["jobs"][child_id]["state"],
+        interrupted_manifest["state"],
+    ) == (None, "rollback_in_progress", "rollback_in_progress")
+    assert interrupted is not None
+    assert interrupted["success"] is False
+    assert interrupted["error"] == {
+        "code": "IMPORT_ROLLBACK_INTERRUPTED",
+        "message": "Rollback was interrupted while removing owned files.",
+        "details": {
+            "import_id": child_id,
+            "reason": "filesystem_delete_failed",
+            "deleted_count": 1,
+        },
+        "retryable": True,
+    }
+    assert not owned_targets[0].exists()
+    assert owned_targets[1].exists()
+    interrupted_status = _status(data_dir, parent_id)
+    assert interrupted_status["proposal_states"][proposal_id] == "batching"
+    assert interrupted_status["active_child_id"] == child_id
+    assert interrupted_status["recovery_required"] is True
+    interrupted_batch = next(
+        item
+        for item in interrupted_status["batches"]
+        if item["import_id"] == child_id
+    )
+    assert interrupted_batch["state"] == "rollback_in_progress"
+    assert interrupted_batch["rollback_available"] is True
+    assert source.read_bytes() == source_before
+
+    resumed = review.execute_review_rollback(import_id=child_id, data_dir=data_dir)
+
+    assert resumed["success"] is True
+    assert resumed["data"]["state"] == "rolled_back"
+    assert not any(path.exists() for path in owned_targets)
+    assert _manifest(data_dir, child_id)["state"] == "rolled_back"
+    assert _ledger(data_dir)["jobs"][child_id]["state"] == "rolled_back"
+    final_status = _status(data_dir, parent_id)
+    assert final_status["proposal_states"][proposal_id] == "confirmed"
+    assert final_status["active_child_id"] is None
+    assert final_status["recovery_required"] is False
+    assert source.read_bytes() == source_before
+
+
+@pytest.mark.parametrize(
+    "rollback_state", ["rollback_in_progress", "rollback_failed"]
+)
+def test_status_recovers_orphaned_retryable_rollback_as_required_recovery(
+    tmp_path: Path, rollback_state: str
+) -> None:
+    """Restart projects durable rollback intent instead of stale imported state."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    proposal_id = plan["proposals"][0]["proposal_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+    child_id = _ok(_run_batch(data_dir, parent_id, src))["data"]["import_id"]
+
+    ledger = _ledger(data_dir)
+    assert ledger["jobs"][parent_id]["active_child_id"] is None
+    assert ledger["jobs"][parent_id]["proposal_states"][proposal_id] == "imported"
+    ledger["jobs"][child_id]["state"] = rollback_state
+    ledger["jobs"][child_id]["rollback_retryable"] = True
+    _save_ledger(data_dir, ledger)
+    manifest = _manifest(data_dir, child_id)
+    manifest["state"] = rollback_state
+    manifest["rollback_retryable"] = True
+    _save_manifest(data_dir, child_id, manifest)
+
+    status = _status(data_dir, parent_id)
+
+    assert status["proposal_states"][proposal_id] == "batching"
+    assert status["active_child_id"] == child_id
+    assert status["recovery_required"] is True
+    batch = next(item for item in status["batches"] if item["import_id"] == child_id)
+    assert batch["state"] == rollback_state
+    assert batch["rollback_available"] is True
+
+
+def test_status_finishes_rolled_back_manifest_before_child_ledger_restart_window(
+    tmp_path: Path,
+) -> None:
+    """A durable rolled-back manifest completes an interrupted ledger projection."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    proposal_id = plan["proposals"][0]["proposal_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+    child_id = _ok(_run_batch(data_dir, parent_id, src))["data"]["import_id"]
+
+    manifest = _manifest(data_dir, child_id)
+    owned_targets = [
+        data_dir / entry["rel_path"]
+        for entry in manifest["created_files"]
+        if entry.get("created_by_import") is True
+    ]
+    for path in owned_targets:
+        path.unlink()
+    manifest["state"] = "rolled_back"
+    manifest["rollback_retryable"] = False
+    _save_manifest(data_dir, child_id, manifest)
+    ledger = _ledger(data_dir)
+    ledger["jobs"][child_id]["state"] = "rollback_in_progress"
+    ledger["jobs"][child_id]["rollback_retryable"] = True
+    _save_ledger(data_dir, ledger)
+
+    status = _status(data_dir, parent_id)
+
+    assert status["proposal_states"][proposal_id] == "confirmed"
+    assert status["active_child_id"] is None
+    assert status["recovery_required"] is False
+    durable_ledger = _ledger(data_dir)
+    assert durable_ledger["jobs"][child_id]["state"] == "rolled_back"
+    assert durable_ledger["jobs"][child_id]["rollback_retryable"] is False
+    batch = next(item for item in status["batches"] if item["import_id"] == child_id)
+    assert batch["state"] == "rolled_back"
+    assert batch["rollback_available"] is False
+
+
+def test_status_carries_manifest_rollback_intent_into_committed_child_ledger(
+    tmp_path: Path,
+) -> None:
+    """Manifest-first intent remains executable if restart precedes ledger intent."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    proposal_id = plan["proposals"][0]["proposal_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+    child_id = _ok(_run_batch(data_dir, parent_id, src))["data"]["import_id"]
+
+    ledger = _ledger(data_dir)
+    assert ledger["jobs"][child_id]["state"] == "committed"
+    manifest = _manifest(data_dir, child_id)
+    manifest["state"] = "rollback_in_progress"
+    manifest["rollback_retryable"] = True
+    _save_manifest(data_dir, child_id, manifest)
+
+    status = _status(data_dir, parent_id)
+
+    assert status["proposal_states"][proposal_id] == "batching"
+    assert status["active_child_id"] == child_id
+    assert status["recovery_required"] is True
+    durable_child = _ledger(data_dir)["jobs"][child_id]
+    assert durable_child["state"] == "rollback_in_progress"
+    assert durable_child["rollback_retryable"] is True
+    batch = next(item for item in status["batches"] if item["import_id"] == child_id)
+    assert batch["state"] == "rollback_in_progress"
+    assert batch["rollback_available"] is True
+
+
 # ===================================================================
 # Crash-window reconciliation (under the per-parent lock)
 # ===================================================================

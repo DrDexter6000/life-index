@@ -2391,12 +2391,15 @@ legacy/malformed id 走稳定 fallback（不依赖 dict 插入序）。每个 ba
 `proposal_ids`（opaque ids）、`proposal_count`、`created_at`（legacy child 缺失时 fallback 到
 `updated_at` 或 `null`）、`updated_at`、`rollback_available`；**绝不**暴露
 `rollback_manifest_rel_path`、data-dir / source / journal 路径或 manifest 内容。`rollback_available`
-为 true 仅当 child 当前 `committed` 且其 rollback manifest **同时**满足：是 dict、`schema_version`
-为 canonical rollback-manifest 版本、`state == "committed"`、`import_id` 精确等于该 child id、
+为 true 仅当 child 与 rollback manifest **同时**满足：manifest 是 dict、`schema_version`
+为 canonical rollback-manifest 版本、`import_id` 精确等于该 child id、
 `parent_review_job_id` 精确等于该 parent id（显式传入、绝不从 child id 字符串推断）、`created_files`
-为 list；任一不满足即 fail closed 为 false——`rolled_back` / `rollback_failed` / manifest 缺失或非
-committed / schema 错或缺失 / import_id 或 parent_review_job_id 错链 / `created_files` 非 list / 其他
-状态均为 false（status 不重新实现 rollback、不 hash 用户文件、只读取既有 manifest 的结构 + 链接字段）。
+为 list，且两处 state 同为 `committed`，或同为显式可恢复的 `rollback_in_progress` /
+`rollback_failed` 并且两处 `rollback_retryable == true`。任一不满足即 fail closed 为 false——
+`rolled_back`、non-retryable rollback failure、manifest 缺失、schema 错或缺失、state 不一致、
+import_id 或 parent_review_job_id 错链、`created_files` 非 list、其他状态均为 false（status 不重新
+实现 rollback、不 hash 用户文件、只读取既有 manifest 的结构 + 链接字段；真正 retry 仍执行完整
+ownership / identity / hash / size revalidation）。
 该投影在既有 authority reconciliation 之后**只读派生**：不改写
 ledger、不递增 `queue_revision`、不重写文件；收敛后重复读为稳定 no-write。既有 job（fixture /
 child batch）的 status 字段不变。
@@ -2411,13 +2414,18 @@ reconciliation，再执行既有 checksum-guarded child rollback，然后用 chi
 `proposal_ids` 把对应 proposal 恢复 `confirmed`——投影由本 child 实际成员驱动，绝不
 复用 parent 的上一次选择。成功后 rescan 仍识别 `confirmed` / `imported`，被 rollback
 恢复的 `confirmed` 不重复。无 parent 的 legacy / standalone batch job 使用
-ledger → journals 锁序；不创建新 lock/store。
+ledger → journals 锁序；不创建新 lock/store。删除前 manifest 与 child ledger 都先 durable
+写入 `rollback_in_progress` + `rollback_retryable == true`；中途 unlink 失败返回 retryable
+`IMPORT_ROLLBACK_INTERRUPTED`，parent 保持 `batching` + `recovery_required`，重试跳过已缺失的
+owned target、重新验证仍存在目标后继续。仅所有删除完成且 manifest / ledger 收敛到
+`rolled_back` 后，parent 才恢复 `confirmed`。
 
 #### Review/batch additive 错误码
 
 | code | 说明 |
 |---|---|
 | `IMPORT_ROLLBACK_PARENT_NOT_ALLOWED` | 对 parent review job 调用 rollback 被拒绝 |
+| `IMPORT_ROLLBACK_INTERRUPTED` | owned target 顺序删除中断；retryable，durable rollback intent 保留并要求恢复 |
 | `IMPORT_BATCH_ALREADY_ACTIVE` | parent 已有未结算 active child batch |
 | `IMPORT_NO_RUNNABLE_PROPOSALS` | 本批无 runnable proposal（全 stale / 全 skipped） |
 | `IMPORT_SOURCE_ROOT_UNREADABLE` | source root 不可读或非目录 |
