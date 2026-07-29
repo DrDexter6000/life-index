@@ -27,8 +27,10 @@ import os
 import posixpath
 import re
 import tempfile
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from tools.ingest.fingerprint import (
     compute_attachment_fingerprint,
@@ -52,6 +54,7 @@ from tools.ingest.schemas import (
 from tools.lib.file_lock import FileLock
 from tools.lib.frontmatter import SCHEMA_VERSION, format_journal_content
 from tools.lib.topics import VALID_TOPICS
+from tools.ingest.runner import _ledger_serialized
 
 # ---------------------------------------------------------------------------
 # Review/batch error codes (additive)
@@ -404,6 +407,7 @@ def validate_source_root(source_root: str | Path) -> dict[str, Any]:
     )
 
 
+@_ledger_serialized
 def rebind_source_root(
     parent_id: str, source_root: str | Path, data_dir: Path
 ) -> dict[str, Any]:
@@ -1286,6 +1290,7 @@ def _reconcile_review_authority_locked(
     return changed
 
 
+@_ledger_serialized
 def reconcile_review_authority(data_dir: Path, parent_id: str) -> None:
     """Locking entry point: reconcile a parent's plan/ledger authority + child.
 
@@ -1363,6 +1368,7 @@ def _finalize_review_update(
     _write_ledger(data_dir, ledger)
 
 
+@_ledger_serialized
 def confirm_review(  # noqa: C901
     plan_path: str,
     data_dir: Path,
@@ -1657,6 +1663,7 @@ def stage_review(
     )
 
 
+@_ledger_serialized
 def edit_review(  # noqa: C901
     edit_path: str,
     parent_id: str,
@@ -1918,6 +1925,7 @@ def edit_review(  # noqa: C901
     )
 
 
+@_ledger_serialized
 def review_queue(
     parent_id: str,
     data_dir: Path,
@@ -2038,6 +2046,7 @@ def review_queue(
         )
 
 
+@_ledger_serialized
 def list_reviews(
     data_dir: Path,
     *,
@@ -2228,6 +2237,7 @@ def _derive_child_batches(
     return [_child_batch_projection(data_dir, parent_id, cid, jobs[cid]) for cid in child_ids]
 
 
+@_ledger_serialized
 def query_review_status(import_id: str, data_dir: Path) -> dict[str, Any]:
     """``import status`` for a parent review job (additive), else delegate."""
     # Reconcile the plan/ledger authority first so a crashed ledger can be
@@ -2305,6 +2315,7 @@ def _project_parent_after_child_rollback(
     _write_ledger(data_dir, ledger)
 
 
+@_ledger_serialized
 def execute_review_rollback(import_id: str, data_dir: Path) -> dict[str, Any]:
     """``import rollback`` dispatch: refuse parent review jobs, else delegate.
 
@@ -2610,6 +2621,10 @@ def _detect_stale(
 # copy never loads a whole file into memory: bytes flow read->hash->write in
 # fixed-size chunks, so even a very large source is published incrementally.
 _STREAM_CHUNK_SIZE = 64 * 1024
+_PUBLICATION_PROTOCOL = "hardlink_manifest_v1"
+_PUBLICATION_CONTEXT: ContextVar[dict[str, Any] | None] = ContextVar(
+    "life_index_import_publication_context", default=None
+)
 
 
 def _drain_source_to_staging(
@@ -2674,6 +2689,85 @@ def _file_identity(path: Path) -> tuple[int, int]:
     return st.st_dev, st.st_ino
 
 
+def _publication_staging_rel_path(
+    child_id: str, kind: str, target_rel_path: str
+) -> str:
+    digest = hashlib.sha256(
+        f"{kind}\0{target_rel_path}".encode("utf-8")
+    ).hexdigest()[:24]
+    return (
+        f".life-index/import-jobs/{child_id}/publication-staging/"
+        f"{kind}-{digest}.tmp"
+    )
+
+
+@contextmanager
+def _tracked_publication(
+    *,
+    child_id: str,
+    data_dir: Path,
+    rollback_abs: Path,
+    manifest: dict[str, Any],
+    kind: str,
+    target_rel_path: str,
+) -> Iterator[None]:
+    """Provide durable pre-publish evidence to the existing publish helpers."""
+    context = {
+        "child_id": child_id,
+        "data_dir": data_dir,
+        "rollback_abs": rollback_abs,
+        "manifest": manifest,
+        "kind": kind,
+        "target_rel_path": target_rel_path,
+        "staging_rel_path": _publication_staging_rel_path(
+            child_id, kind, target_rel_path
+        ),
+    }
+    token = _PUBLICATION_CONTEXT.set(context)
+    try:
+        yield
+    finally:
+        _PUBLICATION_CONTEXT.reset(token)
+
+
+def _record_prepared_publication(staging_abs: Path) -> dict[str, Any]:
+    """Persist target facts + staged-inode ownership before final publication."""
+    from tools.ingest.runner import _file_sha256, _write_manifest
+
+    context = _PUBLICATION_CONTEXT.get()
+    if context is None:
+        raise RuntimeError("tracked publication context is missing")
+    device, inode = _file_identity(staging_abs)
+    entry = {
+        "kind": context["kind"],
+        "rel_path": context["target_rel_path"],
+        "sha256_after": "sha256:" + _file_sha256(staging_abs),
+        "size_bytes": staging_abs.stat().st_size,
+        "created_by_import": True,
+        "publication_state": "prepared",
+        "ownership_proof": {
+            "method": "hardlink_identity",
+            "staging_rel_path": context["staging_rel_path"],
+            "device": device,
+            "inode": inode,
+        },
+    }
+    context["manifest"]["created_files"].append(entry)
+    _write_manifest(context["rollback_abs"], context["manifest"])
+    return entry
+
+
+def _record_published_publication(entry: dict[str, Any]) -> None:
+    """Durably mark a prepared inode as published before staging is unlinked."""
+    from tools.ingest.runner import _write_manifest
+
+    context = _PUBLICATION_CONTEXT.get()
+    if context is None:
+        raise RuntimeError("tracked publication context is missing")
+    entry["publication_state"] = "published"
+    _write_manifest(context["rollback_abs"], context["manifest"])
+
+
 def _publish_create_only(staging_abs: Path, target_abs: Path) -> None:
     """Atomically publish a staged file via a create-only hard link.
 
@@ -2720,24 +2814,40 @@ def _stream_copy(
     stay unchanged.
     """
     target_abs.parent.mkdir(parents=True, exist_ok=True)
-    staging_abs = _unique_staging(target_abs)
+    context = _PUBLICATION_CONTEXT.get()
+    if context is None:
+        staging_abs = _unique_staging(target_abs)
+    else:
+        staging_abs = context["data_dir"] / context["staging_rel_path"]
+        staging_abs.parent.mkdir(parents=True, exist_ok=True)
+        if staging_abs.exists():
+            return False, "staging_exists"
+        staging_abs.touch(exist_ok=False)
     try:
         ok, info = _stream_to_staging(
             source_abs, staging_abs, expected_sha, expected_size, chunk_size
         )
         if not ok:
             return False, info
+        entry = _record_prepared_publication(staging_abs) if context else None
         try:
             _publish_create_only(staging_abs, target_abs)
         except FileExistsError:
             return False, "target_exists"
         except OSError as exc:
             return False, f"publish_failed:{exc}"
+        if entry is not None:
+            _record_published_publication(entry)
         return True, info
     finally:
         if staging_abs.exists():
             try:
                 staging_abs.unlink()
+            except OSError:
+                pass
+        if context is not None:
+            try:
+                staging_abs.parent.rmdir()
             except OSError:
                 pass
 
@@ -2750,7 +2860,15 @@ def _publish_text_create_only(target_abs: Path, text: str) -> tuple[bool, str]:
     does not already exist. Staging is removed on every path.
     """
     target_abs.parent.mkdir(parents=True, exist_ok=True)
-    staging_abs = _unique_staging(target_abs)
+    context = _PUBLICATION_CONTEXT.get()
+    if context is None:
+        staging_abs = _unique_staging(target_abs)
+    else:
+        staging_abs = context["data_dir"] / context["staging_rel_path"]
+        staging_abs.parent.mkdir(parents=True, exist_ok=True)
+        if staging_abs.exists():
+            return False, "staging_exists"
+        staging_abs.touch(exist_ok=False)
     try:
         with open(staging_abs, "w", encoding="utf-8") as fh:
             fh.write(text)
@@ -2759,17 +2877,25 @@ def _publish_text_create_only(target_abs: Path, text: str) -> tuple[bool, str]:
                 os.fsync(fh.fileno())
             except OSError:
                 pass
+        entry = _record_prepared_publication(staging_abs) if context else None
         try:
             _publish_create_only(staging_abs, target_abs)
         except FileExistsError:
             return False, "target_exists"
         except OSError as exc:
             return False, f"publish_failed:{exc}"
+        if entry is not None:
+            _record_published_publication(entry)
         return True, ""
     finally:
         if staging_abs.exists():
             try:
                 staging_abs.unlink()
+            except OSError:
+                pass
+        if context is not None:
+            try:
+                staging_abs.parent.rmdir()
             except OSError:
                 pass
 
@@ -2853,6 +2979,17 @@ def _validate_committed_manifest(
         expected_size = entry.get("size_bytes")
         if expected_size is not None and confined.stat().st_size != expected_size:
             return False, f"size_mismatch:{rel}"
+        proof = entry.get("ownership_proof")
+        if proof is not None:
+            if (
+                not isinstance(proof, dict)
+                or proof.get("method") != "hardlink_identity"
+                or not isinstance(proof.get("device"), int)
+                or not isinstance(proof.get("inode"), int)
+                or _file_identity(confined)
+                != (proof.get("device"), proof.get("inode"))
+            ):
+                return False, f"ownership_mismatch:{rel}"
     return True, ""
 
 
@@ -3056,7 +3193,6 @@ def _execute_child_batch(  # noqa: C901
     are TOCTOU-copied via create-only staging + atomic publish.
     """
     from tools.ingest.runner import (
-        _file_sha256,
         _resolve_confined_file_path,
         _resolve_confined_source_path,
         _write_manifest,
@@ -3069,6 +3205,7 @@ def _execute_child_batch(  # noqa: C901
     jobs[child_id] = {
         "kind": "batch",
         "parent_review_job_id": parent_id,
+        "publication_protocol": _PUBLICATION_PROTOCOL,
         "state": "running",
         "rollback_manifest_rel_path": rollback_rel,
         # Exact batch membership so later rollback/reconciliation projects from
@@ -3091,6 +3228,7 @@ def _execute_child_batch(  # noqa: C901
         "parent_review_job_id": parent_id,
         "created_at": now,
         "state": "running",
+        "publication_protocol": _PUBLICATION_PROTOCOL,
         "created_files": created_files,
         "preexisting_files": [],
         "errors": [],
@@ -3121,21 +3259,19 @@ def _execute_child_batch(  # noqa: C901
                 src_abs = _resolve_confined_source_path(root, att.get("source_rel_path", ""))
                 if src_abs is None or not src_abs.exists():
                     raise RuntimeError(f"Attachment source missing: {att.get('source_rel_path')}")
-                ok_copy, info = _stream_copy(
-                    src_abs, att_abs, att["source_sha256"], att["size_bytes"]
-                )
+                with _tracked_publication(
+                    child_id=child_id,
+                    data_dir=data_dir,
+                    rollback_abs=rollback_abs,
+                    manifest=manifest,
+                    kind="attachment",
+                    target_rel_path=att_rel,
+                ):
+                    ok_copy, info = _stream_copy(
+                        src_abs, att_abs, att["source_sha256"], att["size_bytes"]
+                    )
                 if not ok_copy:
                     raise RuntimeError(f"stream copy failed for {att_rel}: {info}")
-                created_files.append(
-                    {
-                        "kind": "attachment",
-                        "rel_path": att_rel,
-                        "sha256_after": "sha256:" + _file_sha256(att_abs),
-                        "size_bytes": att_abs.stat().st_size,
-                        "created_by_import": True,
-                    }
-                )
-                _write_manifest(rollback_abs, manifest)
                 published.append(_canonical_attachment_entry(att, journal_rel))
 
             # Canonical journal: staged bytes -> create-only publish (never
@@ -3151,19 +3287,17 @@ def _execute_child_batch(  # noqa: C901
                 "content": journal.get("content", ""),
             }
             journal_text = format_journal_content(journal_data)
-            ok_j, j_info = _publish_text_create_only(journal_abs, journal_text)
+            with _tracked_publication(
+                child_id=child_id,
+                data_dir=data_dir,
+                rollback_abs=rollback_abs,
+                manifest=manifest,
+                kind="journal",
+                target_rel_path=journal_rel,
+            ):
+                ok_j, j_info = _publish_text_create_only(journal_abs, journal_text)
             if not ok_j:
                 raise RuntimeError(f"journal publish failed for {journal_rel}: {j_info}")
-            created_files.append(
-                {
-                    "kind": "journal",
-                    "rel_path": journal_rel,
-                    "sha256_after": "sha256:" + _file_sha256(journal_abs),
-                    "size_bytes": journal_abs.stat().st_size,
-                    "created_by_import": True,
-                }
-            )
-            _write_manifest(rollback_abs, manifest)
     except (OSError, RuntimeError) as exc:
         write_error = str(exc)
 
@@ -3223,6 +3357,7 @@ def _execute_child_batch(  # noqa: C901
     )
 
 
+@_ledger_serialized
 def run_batch(  # noqa: C901
     parent_id: str, data_dir: Path, source_root: str | None = None
 ) -> dict[str, Any]:
@@ -3398,4 +3533,3 @@ def run_batch(  # noqa: C901
             },
             retryable=True,
         )
-

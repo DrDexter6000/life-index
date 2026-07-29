@@ -138,6 +138,52 @@ def _run_batch(data_dir: Path, parent_id: str, src: Path) -> subprocess.Complete
     )
 
 
+def _run_batch_crashing_after_publish(
+    data_dir: Path, parent_id: str, src: Path, artifact_kind: str
+) -> subprocess.CompletedProcess[str]:
+    """Run the public CLI and hard-crash immediately after one final hard link."""
+    script = r"""
+import os
+import sys
+import tools.ingest.review as review
+
+kind = sys.argv[1]
+parent_id = sys.argv[2]
+source_root = sys.argv[3]
+real_publish = review._publish_create_only
+
+def crash_after_publish(staging_abs, target_abs):
+    real_publish(staging_abs, target_abs)
+    actual_kind = "journal" if target_abs.suffix.lower() == ".md" else "attachment"
+    if actual_kind == kind:
+        os._exit(91)
+
+review._publish_create_only = crash_after_publish
+sys.argv = [
+    "life-index import",
+    "run",
+    "--import-id",
+    parent_id,
+    "--source-root",
+    source_root,
+    "--json",
+]
+from tools.ingest.__main__ import main
+main()
+"""
+    env = os.environ.copy()
+    env["LIFE_INDEX_DATA_DIR"] = str(data_dir)
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    return subprocess.run(
+        [sys.executable, "-c", script, artifact_kind, parent_id, str(src)],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=120,
+    )
+
+
 def _ledger(data_dir: Path) -> dict[str, Any]:
     return json.loads(
         (data_dir / ".life-index" / "import-jobs" / "ledger.json").read_text("utf-8")
@@ -579,6 +625,113 @@ def test_run_batch_compensation_failure_requires_recovery(
     snap2 = json.dumps(_ledger(data_dir)["jobs"][parent_id], sort_keys=True)
     assert snap1 == snap2
     assert _ledger(data_dir)["jobs"][parent_id]["recovery_required"] is True
+
+
+@pytest.mark.parametrize("artifact_kind", ["attachment", "journal"])
+def test_child_rollback_does_not_claim_success_for_post_publish_pre_manifest_crash(
+    tmp_path: Path, artifact_kind: str
+) -> None:
+    """A hard crash after publish cannot leave an untracked owned survivor."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    proposal = plan["proposals"][0]
+    proposal_id = proposal["proposal_id"]
+    attachment_abs = data_dir / proposal["attachments"][0]["target_rel_path"]
+    journal_abs = data_dir / proposal["journal"]["target_rel_path"]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    crashed = _run_batch_crashing_after_publish(
+        data_dir, parent_id, src, artifact_kind
+    )
+    assert crashed.returncode == 91, (
+        f"expected hard crash after {artifact_kind} publish; "
+        f"stdout={crashed.stdout!r} stderr={crashed.stderr!r}"
+    )
+    assert attachment_abs.exists()
+    if artifact_kind == "journal":
+        assert journal_abs.exists()
+
+    child_id = next(
+        job_id
+        for job_id, job in _ledger(data_dir)["jobs"].items()
+        if job.get("parent_review_job_id") == parent_id
+    )
+    crash_manifest = _manifest(data_dir, child_id)
+    crashed_entry = next(
+        entry
+        for entry in crash_manifest["created_files"]
+        if entry["kind"] == artifact_kind
+    )
+    crashed_target = journal_abs if artifact_kind == "journal" else attachment_abs
+    proof = crashed_entry["ownership_proof"]
+    staging_abs = data_dir / proof["staging_rel_path"]
+    assert crashed_entry["publication_state"] == "prepared"
+    assert crashed_entry["sha256_after"].startswith("sha256:")
+    assert crashed_entry["size_bytes"] == crashed_target.stat().st_size
+    assert staging_abs.exists()
+    assert os.path.samefile(staging_abs, crashed_target)
+
+    status = _status(data_dir, parent_id)
+    child = _ledger(data_dir)["jobs"][child_id]
+    manifest = _manifest(data_dir, child_id)
+
+    assert child["state"] == "rolled_back"
+    assert manifest["state"] == "rolled_back"
+    assert status["proposal_states"][proposal_id] == "confirmed"
+    assert status["active_child_id"] is None
+    assert status["recovery_required"] is False
+    assert not attachment_abs.exists()
+    assert not journal_abs.exists()
+    assert {
+        entry["kind"] for entry in manifest["created_files"]
+    } >= ({artifact_kind} if artifact_kind == "attachment" else {"attachment", "journal"})
+    for entry in manifest["created_files"]:
+        assert entry["ownership_proof"]["method"] == "hardlink_identity"
+    _no_staging_leftovers(data_dir)
+
+
+def test_child_rollback_preserves_racing_identical_non_owned_target(
+    tmp_path: Path,
+) -> None:
+    """Checksum equality alone never authorizes deletion of a racing target."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    source = _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    proposal = plan["proposals"][0]
+    proposal_id = proposal["proposal_id"]
+    target = data_dir / proposal["attachments"][0]["target_rel_path"]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(source.read_bytes())
+    identity_before = (target.stat().st_dev, target.stat().st_ino)
+    result = _err(_run_batch(data_dir, parent_id, src))
+
+    assert result["error"]["code"] == "IMPORT_WRITE_FAILURE"
+    assert result["error"]["retryable"] is True
+    assert target.exists()
+    assert target.read_bytes() == source.read_bytes()
+    assert (target.stat().st_dev, target.stat().st_ino) == identity_before
+    status = _status(data_dir, parent_id)
+    assert status["proposal_states"][proposal_id] == "confirmed"
+    assert status["active_child_id"] is None
+    assert status["recovery_required"] is False
+    child_id = next(
+        job_id
+        for job_id, job in _ledger(data_dir)["jobs"].items()
+        if job.get("parent_review_job_id") == parent_id
+    )
+    manifest = _manifest(data_dir, child_id)
+    assert manifest["state"] == "rolled_back"
+    assert manifest["created_files"][0]["publication_state"] == "prepared"
+    _no_staging_leftovers(data_dir)
 
 
 # ===================================================================

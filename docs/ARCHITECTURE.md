@@ -627,11 +627,15 @@ Round 19 Phase 1-D 在搜索子系统中新增以下能力：
 additive 一个可恢复照片审阅队列。其权威架构有三条不变量（实现见 `tools/ingest/review.py`，
 权威契约见 `docs/API.md` 「Review queue & batch import」）：
 
-- **Per-parent single-writer 权威**：每个 parent review job 有一把 per-parent
-  `FileLock`（`.life-index/import-jobs/<parent_id>/review.lock`）。`confirm` / `run` /
-  `status` / child `rollback` 的 parent 投影都在该锁内进行，parent↔child 锁序一致
-  （只取 parent 锁，`execute_rollback` 自身不加锁，故无嵌套/死锁）。child rollback 的
-  parent 投影由 child 自身精确 `proposal_ids` 驱动，绝不复用 parent 上一次选择。
+- **Ledger transaction + per-parent single-writer 权威**：所有 import ledger 读改写
+  事务先取跨进程 `FileLock`（`.life-index/import-jobs/ledger.lock`），覆盖完整
+  read-modify-write；`ledger.json` 只用同目录 temp + fsync + atomic replace 更新，已存在
+  但 malformed/torn/unreadable 时 fail closed，绝不重置为空。需要 parent 投影的事务再
+  取 `.life-index/import-jobs/<parent_id>/review.lock`，全局固定锁序为 **ledger →
+  parent**；进程内嵌套 helper 复用外层 ledger transaction，避免重入死锁。`confirm` /
+  `rebind` / `run` / `status` / child `rollback` / reconciliation 均遵守该顺序。child
+  rollback 的 parent 投影由 child 自身精确 `proposal_ids` 驱动，绝不复用 parent 上一次
+  选择。
 
 - **Crash-safe plan↔ledger 更新（intent/reconciliation）**：ledger 是唯一权威（不引入
   第二个 store）。`confirm` 按 **durable intent → atomic plan replace → finalize** 三步
@@ -643,6 +647,15 @@ additive 一个可恢复照片审阅队列。其权威架构有三条不变量�
   空 shell 移除）；**无 intent 但 plan 与 ledger 指纹不一致** → fail closed
   （`recovery_required` + `authority_status = "plan_ledger_mismatch"`），`run` 返回
   `IMPORT_RECOVERY_REQUIRED`，绝不静默二选一。重复 status 收敛。
+
+- **Crash-safe child publication ownership**：M7 child 在既有 job 目录内使用确定性
+  staging 名。attachment/journal final path 出现前，既有 rollback manifest 已 durable
+  记录 target kind/path、expected hash/size 与 staging filesystem identity；final 只由
+  该 staging inode 以 create-only hard link 发布。故 post-publish/pre-manifest crash 可
+  在重启后由 identity + checksum 证明并补偿 owned artifact；相同 bytes 但不同 identity
+  的 preexisting/racing target 保留。committed manifest validation 与 rollback 都对新
+  ownership proof fail closed；commit/成功 rollback 清除 staging。该证据是
+  `import_rollback_manifest.v1` 的 additive 字段，不增加第二权威或 schema break。
 
 - **Immutable provenance 权威**：source facts（adapter/provenance、content SHA-256、size、
   source 相对路径/ref、capture time value/source/timezone authority、GPS）不可变；一个

@@ -7,11 +7,17 @@ update ledger) and ``query_status`` (read ledger + manifest, return status).
 from __future__ import annotations
 
 import datetime
+import functools
 import hashlib
+import inspect
 import json
+import os
 import shutil
+import tempfile
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Iterator, TypeVar
 
 from tools.ingest.fingerprint import (
     compute_attachment_fingerprint,
@@ -31,12 +37,80 @@ from tools.ingest.schemas import (
     STATUS_SCHEMA_VERSION,
 )
 from tools.lib.pending_writes import mark_pending
+from tools.lib.file_lock import FileLock
+
+
+class ImportLedgerCorruptError(RuntimeError):
+    """The durable import ledger exists but cannot be trusted or recovered."""
+
+    def __init__(self, ledger_path: Path, reason: str):
+        self.ledger_path = ledger_path
+        self.reason = reason
+        super().__init__(f"Import ledger is corrupt at {ledger_path}: {reason}")
+
+
+_LEDGER_LOCK_TIMEOUT_SECONDS = 30.0
+_LEDGER_LOCK_STACK: ContextVar[tuple[str, ...]] = ContextVar(
+    "life_index_import_ledger_lock_stack", default=()
+)
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+
+def _ledger_path(data_dir: Path) -> Path:
+    return data_dir / ".life-index" / "import-jobs" / "ledger.json"
+
+
+def _ledger_lock_path(data_dir: Path) -> Path:
+    return data_dir / ".life-index" / "import-jobs" / "ledger.lock"
+
+
+@contextmanager
+def _ledger_transaction(data_dir: Path) -> Iterator[None]:
+    """Hold the one cross-process import-ledger lock, re-entrantly per context.
+
+    Lock order is always ledger lock first, then an optional per-parent
+    ``review.lock``. Public runner/review transactions enter here before taking
+    a parent lock. Nested helpers reuse the outer ledger lock rather than trying
+    to acquire the non-reentrant file lock again.
+    """
+    key = str(data_dir.resolve())
+    stack = _LEDGER_LOCK_STACK.get()
+    if key in stack:
+        yield
+        return
+
+    lock = FileLock(
+        _ledger_lock_path(data_dir), timeout=_LEDGER_LOCK_TIMEOUT_SECONDS
+    )
+    with lock:
+        token = _LEDGER_LOCK_STACK.set((*stack, key))
+        try:
+            yield
+        finally:
+            _LEDGER_LOCK_STACK.reset(token)
+
+
+def _ledger_serialized(func: _F) -> _F:
+    """Decorate a public ledger operation as one complete locked transaction."""
+    signature = inspect.signature(func)
+
+    @functools.wraps(func)
+    def wrapped(*args: Any, **kwargs: Any) -> Any:
+        bound = signature.bind_partial(*args, **kwargs)
+        data_dir = bound.arguments.get("data_dir")
+        if not isinstance(data_dir, Path):
+            raise TypeError("ledger-serialized operation requires data_dir: Path")
+        with _ledger_transaction(data_dir):
+            return func(*args, **kwargs)
+
+    return wrapped  # type: ignore[return-value]
 
 # ---------------------------------------------------------------------------
 # execute_run
 # ---------------------------------------------------------------------------
 
 
+@_ledger_serialized
 def execute_run(  # noqa: C901
     plan_path: str,
     confirm_id: str,
@@ -553,6 +627,7 @@ def execute_run(  # noqa: C901
 # ---------------------------------------------------------------------------
 
 
+@_ledger_serialized
 def query_status(
     import_id: str,
     data_dir: Path,
@@ -617,6 +692,7 @@ def query_status(
 # ---------------------------------------------------------------------------
 
 
+@_ledger_serialized
 def execute_rollback(
     import_id: str,
     data_dir: Path,
@@ -670,21 +746,54 @@ def execute_rollback(
 
     # --- 4. First pass: verify all manifest paths are confined under data_dir ---
     unsafe_paths: list[str] = []
+    invalid_ownership: list[str] = []
     safe_paths: dict[str, Path] = {}
+    safe_staging_paths: dict[str, Path] = {}
+    ownership_proofs: dict[str, dict[str, Any]] = {}
     for file_entry in manifest.get("created_files", []):
         if not file_entry.get("created_by_import", False):
             continue
-        rel_path = file_entry["rel_path"]
+        rel_path = file_entry.get("rel_path", "")
         safe_path = _resolve_confined_file_path(data_dir, rel_path)
         if safe_path is None:
             unsafe_paths.append(rel_path)
         else:
             safe_paths[rel_path] = safe_path
+        proof = file_entry.get("ownership_proof")
+        if proof is None:
+            continue
+        if not isinstance(proof, dict) or proof.get("method") != "hardlink_identity":
+            invalid_ownership.append(rel_path)
+            continue
+        staging_rel = proof.get("staging_rel_path")
+        expected_prefix = (
+            f".life-index/import-jobs/{import_id}/publication-staging/"
+        )
+        if (
+            not isinstance(staging_rel, str)
+            or not staging_rel.startswith(expected_prefix)
+            or not isinstance(proof.get("device"), int)
+            or not isinstance(proof.get("inode"), int)
+        ):
+            invalid_ownership.append(rel_path)
+            continue
+        staging_path = _resolve_confined_file_path(data_dir, staging_rel)
+        if staging_path is None:
+            invalid_ownership.append(rel_path)
+            continue
+        ownership_proofs[rel_path] = proof
+        safe_staging_paths[rel_path] = staging_path
 
-    if unsafe_paths:
+    if unsafe_paths or invalid_ownership:
         now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
         manifest["state"] = "rollback_failed"
-        manifest["errors"] = [f"Unsafe path (traversal/absolute): {p}" for p in unsafe_paths]
+        manifest["errors"] = [
+            *[f"Unsafe path (traversal/absolute): {p}" for p in unsafe_paths],
+            *[
+                f"Invalid hardlink ownership proof: {p}"
+                for p in invalid_ownership
+            ],
+        ]
         _write_manifest(manifest_abs, manifest)
 
         jobs[import_id]["state"] = "rollback_failed"
@@ -693,16 +802,17 @@ def execute_rollback(
 
         return _err(
             "IMPORT_ROLLBACK_UNSAFE",
-            (
-                f"Rollback aborted: {len(unsafe_paths)} manifest path(s) "
-                f"resolve outside the data directory."
-            ),
-            {"unsafe_paths": unsafe_paths},
+            "Rollback aborted: manifest path or ownership proof is unsafe.",
+            {
+                "unsafe_paths": unsafe_paths,
+                "invalid_ownership": invalid_ownership,
+            },
             retryable=False,
         )
 
     # --- 5. Second pass: check all checksums (PRD §10) ---
     to_delete: list[dict[str, Any]] = []
+    staging_to_delete: list[Path] = []
     blocked: list[dict[str, Any]] = []
 
     for file_entry in manifest.get("created_files", []):
@@ -711,19 +821,66 @@ def execute_rollback(
 
         rel_path = file_entry["rel_path"]
         expected_sha256 = file_entry["sha256_after"]
+        expected_size = file_entry.get("size_bytes")
         file_path = safe_paths[rel_path]
+        proof = ownership_proofs.get(rel_path)
+
+        if proof is not None:
+            expected_identity = (proof["device"], proof["inode"])
+            staging_path = safe_staging_paths[rel_path]
+            if staging_path.exists():
+                staging_identity = _path_identity(staging_path)
+                staging_sha256 = f"sha256:{_file_sha256(staging_path)}"
+                staging_size = staging_path.stat().st_size
+                if (
+                    staging_identity != expected_identity
+                    or staging_sha256 != expected_sha256
+                    or (
+                        expected_size is not None
+                        and staging_size != expected_size
+                    )
+                ):
+                    blocked.append(
+                        {
+                            "rel_path": rel_path,
+                            "reason": "staging_ownership_mismatch",
+                        }
+                    )
+                else:
+                    staging_to_delete.append(staging_path)
 
         if not file_path.exists():
             # Already removed — idempotent, skip
             continue
 
         current_sha256 = f"sha256:{_file_sha256(file_path)}"
-        if current_sha256 != expected_sha256:
+        current_size = file_path.stat().st_size
+        if proof is not None and _path_identity(file_path) != (
+            proof["device"],
+            proof["inode"],
+        ):
+            # A prepared entry may encounter a create-only collision. The final
+            # path is provably not our staged inode, so preserve it. A durable
+            # "published" claim whose identity changed fails closed.
+            if file_entry.get("publication_state") == "prepared":
+                continue
+            blocked.append(
+                {
+                    "rel_path": rel_path,
+                    "reason": "target_ownership_mismatch",
+                }
+            )
+        elif current_sha256 != expected_sha256 or (
+            expected_size is not None and current_size != expected_size
+        ):
             blocked.append(
                 {
                     "rel_path": rel_path,
                     "expected_sha256": expected_sha256,
                     "current_sha256": current_sha256,
+                    "expected_size": expected_size,
+                    "current_size": current_size,
+                    "reason": "content_mismatch",
                 }
             )
         else:
@@ -740,11 +897,7 @@ def execute_rollback(
         now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
         manifest["state"] = "rollback_failed"
         manifest["errors"] = [
-            (
-                f"Checksum mismatch: {b['rel_path']} "
-                f"expected {b['expected_sha256']} "
-                f"got {b['current_sha256']}"
-            )
+            f"Rollback ownership/content mismatch: {b['rel_path']} ({b['reason']})"
             for b in blocked
         ]
         _write_manifest(manifest_abs, manifest)
@@ -755,7 +908,10 @@ def execute_rollback(
 
         return _err(
             "IMPORT_ROLLBACK_CHECKSUM_MISMATCH",
-            (f"Rollback blocked: {len(blocked)} file(s) have " f"checksum mismatches."),
+            (
+                f"Rollback blocked: {len(blocked)} file(s) have "
+                "ownership or content mismatches."
+            ),
             {"blocked_files": blocked},
             retryable=False,
         )
@@ -782,6 +938,13 @@ def execute_rollback(
     for entry in to_delete:
         entry["path"].unlink()
         deleted_count += 1
+    for staging_path in dict.fromkeys(staging_to_delete):
+        if staging_path.exists():
+            staging_path.unlink()
+        try:
+            staging_path.parent.rmdir()
+        except OSError:
+            pass
 
     # --- 9. Preserve manifest as audit evidence, update ledger ---
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -1092,44 +1255,82 @@ def _resolve_confined_source_path(source_root: Path, rel_path: str) -> Path | No
 
 
 def _read_ledger(data_dir: Path) -> dict[str, Any]:
-    """Read the import job ledger, returning defaults if it doesn't exist."""
-    ledger_path = data_dir / ".life-index" / "import-jobs" / "ledger.json"
-    if not ledger_path.exists():
+    """Read one stable ledger snapshot; malformed durable state fails closed."""
+    ledger_path = _ledger_path(data_dir)
+    lock_key = str(data_dir.resolve())
+    # Preserve plan/dry-run no-write semantics. If no ledger exists and this is
+    # not already a mutation transaction, the empty snapshot linearizes before
+    # any later creator; no lock file or import-jobs directory is created.
+    if lock_key not in _LEDGER_LOCK_STACK.get() and not ledger_path.exists():
         return {
             "schema_version": LEDGER_SCHEMA_VERSION,
             "jobs": {},
             "idempotency_index": {},
         }
-    try:
-        ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
-        if isinstance(ledger, dict):
-            return ledger
-    except (json.JSONDecodeError, OSError):
-        pass
-    return {
-        "schema_version": LEDGER_SCHEMA_VERSION,
-        "jobs": {},
-        "idempotency_index": {},
-    }
+    with _ledger_transaction(data_dir):
+        if not ledger_path.exists():
+            return {
+                "schema_version": LEDGER_SCHEMA_VERSION,
+                "jobs": {},
+                "idempotency_index": {},
+            }
+        try:
+            ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
+            raise ImportLedgerCorruptError(ledger_path, str(exc)) from exc
+        if not isinstance(ledger, dict):
+            raise ImportLedgerCorruptError(ledger_path, "root must be a JSON object")
+        if not isinstance(ledger.get("jobs"), dict):
+            raise ImportLedgerCorruptError(ledger_path, "jobs must be a JSON object")
+        if not isinstance(ledger.get("idempotency_index"), dict):
+            raise ImportLedgerCorruptError(
+                ledger_path, "idempotency_index must be a JSON object"
+            )
+        return ledger
 
 
 def _write_ledger(data_dir: Path, ledger: dict[str, Any]) -> None:
-    """Write the import job ledger."""
-    ledger.setdefault("schema_version", LEDGER_SCHEMA_VERSION)
-    ledger_path = data_dir / ".life-index" / "import-jobs" / "ledger.json"
-    ledger_path.parent.mkdir(parents=True, exist_ok=True)
-    ledger_path.write_text(
-        json.dumps(ledger, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    """Atomically and durably replace the ledger while holding its lock."""
+    with _ledger_transaction(data_dir):
+        ledger.setdefault("schema_version", LEDGER_SCHEMA_VERSION)
+        _atomic_write_json(_ledger_path(data_dir), ledger)
 
 
 def _write_manifest(path: Path, manifest: dict[str, Any]) -> None:
-    """Write the rollback manifest to the given path."""
-    path.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2),
-        encoding="utf-8",
+    """Atomically and durably replace a rollback manifest."""
+    _atomic_write_json(path, manifest)
+
+
+def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    """Write JSON through a same-directory temp file, fsync, and atomic replace."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(
+        dir=str(path.parent), prefix=f".{path.name}.tmp-"
     )
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+        try:
+            directory_fd = os.open(path.parent, os.O_RDONLY)
+        except OSError:
+            directory_fd = None
+        if directory_fd is not None:
+            try:
+                os.fsync(directory_fd)
+            except OSError:
+                pass
+            finally:
+                os.close(directory_fd)
+    finally:
+        if temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
 
 
 def _read_rollback_manifest(data_dir: Path, import_id: str) -> dict[str, Any] | None:
@@ -1149,6 +1350,12 @@ def _read_rollback_manifest(data_dir: Path, import_id: str) -> dict[str, Any] | 
 def _file_sha256(path: Path) -> str:
     """Compute raw hex sha256 of a file."""
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _path_identity(path: Path) -> tuple[int, int]:
+    """Return the filesystem identity used by hard-link ownership proofs."""
+    stat = path.stat()
+    return stat.st_dev, stat.st_ino
 
 
 def _ok(data: dict[str, Any]) -> dict[str, Any]:

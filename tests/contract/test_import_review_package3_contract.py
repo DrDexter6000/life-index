@@ -1659,3 +1659,133 @@ def test_review_plan_warning_projection_stable_no_write(tmp_path: Path) -> None:
     assert "trip.heic" not in blob
     assert "source_rel_path" not in blob
     assert str(src) not in blob
+
+
+def test_concurrent_cli_rebind_and_batch_run_preserve_parent_child_ledger(
+    tmp_path: Path,
+) -> None:
+    """Different-parent CLI writers preserve both complete ledger transactions."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src_rebind = tmp_path / "photos-rebind"
+    src_run = tmp_path / "photos-run"
+    _make_jpeg(src_rebind / "rebind.jpg", color=(1, 2, 3))
+    _make_jpeg(src_run / "run.jpg", color=(4, 5, 6))
+
+    rebind_plan = _photo_plan(data_dir, src_rebind)
+    run_plan = _photo_plan(data_dir, src_run)
+    rebind_parent = rebind_plan["import_id"]
+    run_parent = run_plan["import_id"]
+    _confirm(data_dir, rebind_plan, src_rebind, tmp_path)
+    _confirm(data_dir, run_plan, src_run, tmp_path)
+
+    before = _ledger(data_dir)
+    rebind_before = dict(before["jobs"][rebind_parent])
+    before["jobs"][rebind_parent]["source_root_identity"] = ""
+    _save_ledger(data_dir, before)
+
+    barrier_dir = tmp_path / "ledger-write-barrier"
+    barrier_dir.mkdir()
+    script = r"""
+import os
+import sys
+import time
+from pathlib import Path
+import tools.ingest.runner as runner
+
+role, barrier, *cli_args = sys.argv[1:]
+barrier = Path(barrier)
+real_write = runner._write_ledger
+first = True
+
+def barrier_write(data_dir, ledger):
+    global first
+    if first:
+        first = False
+        (barrier / role).write_text("ready", encoding="utf-8")
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:
+            if (barrier / "rebind").exists() and (barrier / "run").exists():
+                break
+            time.sleep(0.01)
+    return real_write(data_dir, ledger)
+
+runner._write_ledger = barrier_write
+sys.argv = ["life-index import", *cli_args]
+from tools.ingest.__main__ import main
+main()
+"""
+    env = os.environ.copy()
+    env["LIFE_INDEX_DATA_DIR"] = str(data_dir)
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    rebind_proc = subprocess.Popen(
+        [
+            sys.executable, "-c", script, "rebind", str(barrier_dir), "rebind",
+            "--import-id", rebind_parent, "--source-root", str(src_rebind), "--json",
+        ],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env,
+    )
+    run_proc = subprocess.Popen(
+        [
+            sys.executable, "-c", script, "run", str(barrier_dir), "run",
+            "--import-id", run_parent, "--source-root", str(src_run), "--json",
+        ],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env,
+    )
+    rebind_out, rebind_err = rebind_proc.communicate(timeout=120)
+    run_out, run_err = run_proc.communicate(timeout=120)
+    assert rebind_proc.returncode == 0, (
+        f"rebind stdout={rebind_out!r} stderr={rebind_err!r}"
+    )
+    assert run_proc.returncode == 0, f"run stdout={run_out!r} stderr={run_err!r}"
+
+    ledger = _ledger(data_dir)
+    assert {rebind_parent, run_parent} <= set(ledger["jobs"])
+    rebound = ledger["jobs"][rebind_parent]
+    assert rebound["source_root_identity"] == review.compute_source_root_identity(
+        src_rebind
+    )
+    assert rebound["queue_revision"] == rebind_before["queue_revision"] + 1
+    assert rebound["plan_revision"] == rebind_before["plan_revision"]
+    assert rebound["idempotency_key"] == rebind_before["idempotency_key"]
+
+    run_job = ledger["jobs"][run_parent]
+    child_id = next(
+        job_id
+        for job_id, job in ledger["jobs"].items()
+        if job.get("parent_review_job_id") == run_parent
+    )
+    assert run_job["active_child_id"] is None
+    assert set(run_job["proposal_states"].values()) == {"imported"}
+    assert ledger["jobs"][child_id]["state"] == "committed"
+    assert run_job["idempotency_key"] == run_plan["idempotency_key"]
+
+
+def test_malformed_ledger_fails_closed_without_reset_or_overwrite(
+    tmp_path: Path,
+) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    ledger_path = data_dir / ".life-index" / "import-jobs" / "ledger.json"
+    torn = b'{"schema_version":"import_job_ledger.v1","jobs":'
+    ledger_path.write_bytes(torn)
+    result = _run_import(
+        data_dir,
+        "rebind",
+        "--import-id",
+        parent_id,
+        "--source-root",
+        str(src),
+        "--json",
+    )
+
+    payload = _err(result)
+    assert payload["error"]["code"] == "IMPORT_LEDGER_CORRUPT"
+    assert ledger_path.read_bytes() == torn

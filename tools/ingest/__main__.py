@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from tools.ingest.runner import (
+    ImportLedgerCorruptError,
     _read_ledger,
     _read_rollback_manifest,
     execute_run,
@@ -1110,37 +1111,49 @@ def _print_json(payload: dict[str, Any]) -> None:
 def main() -> None:
     args = _parse_args()
 
-    if args.subcommand == "plan":
-        _cmd_plan(args)
-    elif args.subcommand == "run":
-        _cmd_run(args)
-    elif args.subcommand == "status":
-        _cmd_status(args)
-    elif args.subcommand == "rollback":
-        _cmd_rollback(args)
-    elif args.subcommand == "confirm":
-        _cmd_confirm(args)
-    elif args.subcommand == "stage":
-        _cmd_stage(args)
-    elif args.subcommand == "review":
-        _cmd_review(args)
-    elif args.subcommand == "reviews":
-        _cmd_reviews(args)
-    elif args.subcommand == "validate":
-        _cmd_validate(args)
-    elif args.subcommand == "rebind":
-        _cmd_rebind(args)
-    elif args.subcommand == "preview":
-        _cmd_preview(args)
-    elif args.subcommand in _NOT_IMPLEMENTED:
-        _cmd_not_implemented(args.subcommand)
-    else:
-        # Should not happen (argparse validates subcommand).
+    try:
+        if args.subcommand == "plan":
+            _cmd_plan(args)
+        elif args.subcommand == "run":
+            _cmd_run(args)
+        elif args.subcommand == "status":
+            _cmd_status(args)
+        elif args.subcommand == "rollback":
+            _cmd_rollback(args)
+        elif args.subcommand == "confirm":
+            _cmd_confirm(args)
+        elif args.subcommand == "stage":
+            _cmd_stage(args)
+        elif args.subcommand == "review":
+            _cmd_review(args)
+        elif args.subcommand == "reviews":
+            _cmd_reviews(args)
+        elif args.subcommand == "validate":
+            _cmd_validate(args)
+        elif args.subcommand == "rebind":
+            _cmd_rebind(args)
+        elif args.subcommand == "preview":
+            _cmd_preview(args)
+        elif args.subcommand in _NOT_IMPLEMENTED:
+            _cmd_not_implemented(args.subcommand)
+        else:
+            # Should not happen (argparse validates subcommand).
+            _print_json(
+                error_envelope(
+                    "import",
+                    "IMPORT_INTERNAL_ERROR",
+                    f"Unknown subcommand: {args.subcommand}",
+                )
+            )
+            sys.exit(1)
+    except ImportLedgerCorruptError as exc:
         _print_json(
             error_envelope(
                 "import",
-                "IMPORT_INTERNAL_ERROR",
-                f"Unknown subcommand: {args.subcommand}",
+                "IMPORT_LEDGER_CORRUPT",
+                "The import ledger is malformed or unreadable; no state was changed.",
+                {"reason": exc.reason},
+                retryable=False,
             )
         )
         sys.exit(1)

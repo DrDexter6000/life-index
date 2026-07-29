@@ -1937,15 +1937,20 @@ create-only / fail-closed 策略写入 plan 中的 journal 和 attachment path�
 
 ```text
 .life-index/import-jobs/ledger.json
+.life-index/import-jobs/ledger.lock
 .life-index/import-jobs/<import_id>/rollback-manifest.json
 ```
+
+所有 import ledger 读改写事务共用 `ledger.lock` 跨进程串行化；`ledger.json` 通过同目录
+temp + fsync + atomic replace 更新。已存在但 malformed/torn/unreadable 的 ledger 返回
+`IMPORT_LEDGER_CORRUPT`，绝不按空 ledger 重置或覆盖。
 
 返回 `data.schema_version = "import_run.v1"`，核心字段：
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `state` | string | `committed` / `already_committed` / `partially_committed` |
-| `created_files[]` | array | 实际创建文件；每项含 `kind`、`rel_path`、`sha256_after`、`created_by_import` |
+| `created_files[]` | array | 实际创建文件；每项含 `kind`、`rel_path`、`sha256_after`、`created_by_import`；M7 hard-link publish 还含 additive `size_bytes`、`publication_state` 与 `ownership_proof` |
 | `rollback_manifest_rel_path` | string | 固定 rollback manifest 相对路径 |
 | `post_run_actions.index_rebuild_recommended` | bool | Tranche A 不自动 index，只建议后续重建 |
 
@@ -1981,8 +1986,12 @@ create-only / fail-closed 策略写入 plan 中的 journal 和 attachment path�
 ### `import rollback`
 
 `rollback` 只处理 manifest 中 `created_by_import=true` 的文件。删除前重新计算
-当前 SHA-256，并与 manifest 的 `sha256_after` 精确匹配；任何 mismatch 都会拒绝
-整个 rollback，返回 `IMPORT_ROLLBACK_CHECKSUM_MISMATCH`，不会删除部分文件。
+当前 SHA-256 / size，并与 manifest 证据精确匹配；带 `ownership_proof` 的 M7 条目还
+必须匹配 manifest 在 publish 前记录的 hard-link filesystem identity。任何已发布条目
+的 checksum / size / identity mismatch 都会拒绝整个 rollback，返回
+`IMPORT_ROLLBACK_CHECKSUM_MISMATCH`，不会删除部分文件。`prepared` 条目若遇到
+create-only racing target 且 identity 不同，该 target 被证明不是 import-owned，rollback
+只清理自己的 staging 并保留该 target，即使两者 bytes/checksum 相同。
 
 rollback 还会 resolve 每个 manifest path，确认目标仍在 `LIFE_INDEX_DATA_DIR`
 内；路径遍历、绝对路径、非普通文件等 unsafe path 返回
@@ -2013,6 +2022,7 @@ rollback 还会 resolve 每个 manifest path，确认目标仍在 `LIFE_INDEX_DA
 | `IMPORT_ROLLBACK_MANIFEST_MISSING` | 缺失 rollback evidence |
 | `IMPORT_ROLLBACK_CHECKSUM_MISMATCH` | rollback 文件当前 hash 与 manifest 不一致 |
 | `IMPORT_ROLLBACK_UNSAFE` | rollback 会触碰非安全 import-owned 文件或逃逸 data dir |
+| `IMPORT_LEDGER_CORRUPT` | 固定 ledger malformed/torn/unreadable；fail closed 且不重置/覆盖 |
 | `IMPORT_INTERNAL_ERROR` | 未归类内部错误 |
 
 ### schema_version Policy
@@ -2124,8 +2134,9 @@ life-index import confirm --edit <review-edit.json> --import-id <parent_id> --ex
 把完整 review plan 原子持久化到固定路径
 `.life-index/import-jobs/<parent_id>/review-plan.json`，并在同一 ledger 记录一个
 parent review job（additive `kind: "review"`）。写入采用 temp 文件 + fsync +
-atomic replace；并发安全由 per-parent single-writer lock 保证（复用 repo 既有
-`FileLock`）。`confirm` 必须重新计算 / 校验 immutable fingerprints 与 selected
+atomic replace；并发安全由全局 import-ledger transaction lock + per-parent
+single-writer lock 保证（均复用 repo 既有 `FileLock`，固定锁序为 ledger → parent）。
+`confirm` 必须重新计算 / 校验 immutable fingerprints 与 selected
 attachment ids；tamper（指纹/selected id 不匹配）返回 `IMPORT_PLAN_INVALID` 并
 拒绝持久化。
 
@@ -2167,6 +2178,7 @@ before plan）abandon intent，恢复 prior 投影（首次 confirm 的空 shell
 固定路径：
 
 ```text
+.life-index/import-jobs/ledger.lock              (cross-process ledger transaction lock)
 .life-index/import-jobs/<parent_id>/review-plan.json
 .life-index/import-jobs/<parent_id>/review.lock   (per-parent single-writer lock)
 ```
@@ -2347,8 +2359,13 @@ deleted 的 proposal 标 `stale` 并从本批排除，其余继续；全 stale /
 不创建 child，返回结构化 `IMPORT_NO_RUNNABLE_PROPOSALS`。实际复制时再次关闭
 TOCTOU：source 以只读流式复制到 create-only staging，同时计算 SHA-256 / size；
 匹配后才 atomic 发布 final attachment；journal frontmatter 在发布前不得引用
-staging；不匹配触发 child failure + manifest compensation。源 hash / mtime 保持
-不变。
+staging；不匹配触发 child failure + manifest compensation。M7 staging 使用 child job
+目录内的确定性名字。final path 出现前，rollback manifest 已 durable 记录 target
+`kind` / `rel_path` / expected SHA-256 / size，以及 staging inode 的
+`hardlink_identity` ownership proof；publish 只通过该 staging inode 的 create-only
+hard link 完成。故进程在 final publish 后、下一次 manifest 更新前崩溃时，新进程仍能
+证明并补偿 owned final；相同 bytes 但不同 identity 的预先存在/racing target 绝不删除。
+commit 或成功 rollback 后不保留 staging 文件/目录。源 hash / mtime 保持不变。
 
 child batch journal 必须符合 canonical journal schema（`schema_version`、合法
 `topic`——photo 默认 `life`，不扩展 canonical topic 集合、`field_sources`、
