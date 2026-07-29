@@ -2306,6 +2306,7 @@ def _project_parent_rollback_pending(
     parent_id: str,
     child_id: str,
     child_proposal_ids: list[str],
+    rollback_started_from: str | None,
 ) -> bool:
     """Durably mark a child's exact membership as rollback-pending.
 
@@ -2319,6 +2320,7 @@ def _project_parent_rollback_pending(
     if not isinstance(parent, dict) or parent.get("kind") != "review":
         return False
     before = {field: parent.get(field) for field in _QUEUE_VISIBLE_FIELDS}
+    prior_origin = parent.get("rollback_started_from")
     proposal_states = dict(parent.get("proposal_states", {}) or {})
     for proposal_id in child_proposal_ids:
         if proposal_states.get(proposal_id) == STATE_IMPORTED:
@@ -2326,13 +2328,19 @@ def _project_parent_rollback_pending(
     parent["proposal_states"] = proposal_states
     parent["active_child_id"] = child_id
     parent["recovery_required"] = True
+    if isinstance(rollback_started_from, str):
+        parent["rollback_started_from"] = rollback_started_from
+    else:
+        parent.pop("rollback_started_from", None)
     after = {field: parent.get(field) for field in _QUEUE_VISIBLE_FIELDS}
-    changed = before != after
-    if changed:
+    visible_changed = before != after
+    origin_changed = prior_origin != parent.get("rollback_started_from")
+    if visible_changed:
         _bump_queue(parent)
+    if visible_changed or origin_changed:
         parent["updated_at"] = _now_iso()
         _write_ledger(data_dir, ledger)
-    return changed
+    return visible_changed
 
 
 def _restore_parent_after_predelete_rollback_refusal(
@@ -2352,6 +2360,7 @@ def _restore_parent_after_predelete_rollback_refusal(
     if not isinstance(parent, dict) or parent.get("kind") != "review":
         return
     before = {field: parent.get(field) for field in _QUEUE_VISIBLE_FIELDS}
+    prior_origin = parent.get("rollback_started_from")
     proposal_states = dict(parent.get("proposal_states", {}) or {})
     for proposal_id in child_proposal_ids:
         if proposal_states.get(proposal_id) == STATE_BATCHING:
@@ -2360,9 +2369,13 @@ def _restore_parent_after_predelete_rollback_refusal(
     if parent.get("active_child_id") == child_id:
         parent["active_child_id"] = None
         parent["recovery_required"] = False
+        parent.pop("rollback_started_from", None)
     after = {field: parent.get(field) for field in _QUEUE_VISIBLE_FIELDS}
-    if before != after:
+    visible_changed = before != after
+    origin_changed = prior_origin != parent.get("rollback_started_from")
+    if visible_changed:
         _bump_queue(parent)
+    if visible_changed or origin_changed:
         parent["updated_at"] = _now_iso()
         _write_ledger(data_dir, ledger)
 
@@ -2389,6 +2402,7 @@ def _project_parent_after_child_rollback(
     parent["proposal_states"] = proposal_states
     parent["active_child_id"] = None
     parent["recovery_required"] = False
+    parent.pop("rollback_started_from", None)
     after = {f: parent.get(f) for f in _QUEUE_VISIBLE_FIELDS}
     # Restoring a rolled-back child's membership to confirmed is one atomic
     # parent-visible change -> one token bump, but only when something actually
@@ -2452,6 +2466,7 @@ def execute_review_rollback(import_id: str, data_dir: Path) -> dict[str, Any]:
                 parent_id,
                 import_id,
                 child_proposal_ids,
+                rollback_started_from,
             )
 
             # Checksum-guarded child rollback takes the shared journals lock only
@@ -3305,25 +3320,35 @@ def _reconcile_parent(
             if proposal_states.get(pid) == STATE_IMPORTED:
                 proposal_states[pid] = STATE_BATCHING
 
-    def apply(*, active_child_id: str | None, recovery_required: bool) -> bool:
-        changed = False
+    def apply(
+        *,
+        active_child_id: str | None,
+        recovery_required: bool,
+        clear_rollback_origin: bool = False,
+    ) -> bool:
+        visible_changed = False
+        internal_changed = False
         if job.get("proposal_states") != proposal_states:
             job["proposal_states"] = proposal_states
-            changed = True
+            visible_changed = True
         if job.get("active_child_id") != active_child_id:
             job["active_child_id"] = active_child_id
-            changed = True
+            visible_changed = True
         if bool(job.get("recovery_required", False)) != recovery_required:
             job["recovery_required"] = recovery_required
-            changed = True
-        if changed:
+            visible_changed = True
+        if clear_rollback_origin and "rollback_started_from" in job:
+            job.pop("rollback_started_from", None)
+            internal_changed = True
+        if visible_changed:
             # A child commit/rollback/failure that moves a queue-visible field
             # (proposal states / active child / recovery) is exactly one atomic
             # parent-visible change -> one token bump. ``updated_at`` alone never
             # bumps (it is not in the authoritative projection).
             _bump_queue(job)
+        if visible_changed or internal_changed:
             job["updated_at"] = _now_iso()
-        return changed
+        return visible_changed or internal_changed
 
     # -1. Intent is written manifest-first and ledger-second before unlink. A
     #     restart between those durable writes carries the correctly linked
@@ -3361,7 +3386,11 @@ def _reconcile_parent(
                 child_job["rollback_retryable"] = False
                 child_job["updated_at"] = _now_iso()
             restore_confirmed()
-            return apply(active_child_id=None, recovery_required=False)
+            return apply(
+                active_child_id=None,
+                recovery_required=False,
+                clear_rollback_origin=True,
+            )
         project_rollback_recovery()
         return apply(active_child_id=child_id, recovery_required=True)
 
@@ -3382,15 +3411,45 @@ def _reconcile_parent(
                 child_job["state"] = "committed"
                 child_job["updated_at"] = _now_iso()
             project_imported()
-            return apply(active_child_id=None, recovery_required=False)
+            return apply(
+                active_child_id=None,
+                recovery_required=False,
+                clear_rollback_origin=True,
+            )
         return apply(active_child_id=child_id, recovery_required=True)
 
     # 2. Child rolled back -> restore confirmed.
     if child_state == "rolled_back":
         restore_confirmed()
-        return apply(active_child_id=None, recovery_required=False)
+        return apply(
+            active_child_id=None,
+            recovery_required=False,
+            clear_rollback_origin=True,
+        )
 
-    # 2b. Rollback intent/failure is durable recovery truth. Keep the exact
+    # 2b. A first-attempt non-retryable refusal happened before delete intent.
+    #     The internal parent origin is trustworthy only when the linked child
+    #     and manifest durable facts agree on that refusal.
+    if (
+        child_state == "rollback_failed"
+        and isinstance(child_job, dict)
+        and child_job.get("rollback_retryable") is False
+        and job.get("rollback_started_from") == "committed"
+        and isinstance(child_manifest, dict)
+        and _rollback_manifest_structurally_linked(
+            child_manifest, parent_id, child_id
+        )
+        and child_manifest.get("state") == "rollback_failed"
+        and child_manifest.get("rollback_retryable") is False
+    ):
+        project_imported()
+        return apply(
+            active_child_id=None,
+            recovery_required=False,
+            clear_rollback_origin=True,
+        )
+
+    # 2c. Rollback intent/failure is durable recovery truth. Keep the exact
     #     membership non-imported, retain the active child, and expose recovery
     #     until an explicit checksum-guarded retry reaches ``rolled_back``.
     if child_state in ("rollback_in_progress", "rollback_failed"):
@@ -3424,10 +3483,18 @@ def _reconcile_parent(
             _reload_durable_child(ledger, data_dir, child_id)
             if comp["success"]:
                 restore_confirmed()
-                return apply(active_child_id=None, recovery_required=False)
+                return apply(
+                    active_child_id=None,
+                    recovery_required=False,
+                    clear_rollback_origin=True,
+                )
             return apply(active_child_id=child_id, recovery_required=True)
         restore_confirmed()
-        return apply(active_child_id=None, recovery_required=False)
+        return apply(
+            active_child_id=None,
+            recovery_required=False,
+            clear_rollback_origin=True,
+        )
 
     # 4. running with no evidence is ambiguous (possible live writer): fail
     #    closed and retain the active child rather than auto-clearing.
@@ -3436,7 +3503,11 @@ def _reconcile_parent(
 
     # 5. No child job / unknown settled state -> restore confirmed + clear.
     restore_confirmed()
-    return apply(active_child_id=None, recovery_required=False)
+    return apply(
+        active_child_id=None,
+        recovery_required=False,
+        clear_rollback_origin=True,
+    )
 
 
 def _execute_child_batch(  # noqa: C901

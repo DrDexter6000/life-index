@@ -2424,8 +2424,12 @@ owned target、重新验证仍存在目标后继续。仅所有删除完成且 m
 中断，status 看到仍有效的 committed child 会恢复 `imported` 并清除 marker；若 child 已
 `rolled_back`、但 final parent 投影前中断，status 会在确认 owned artifacts 已消失后恢复
 `confirmed` 并清除 marker。首次 rollback 在任何删除 intent 前因 checksum 等 non-retryable
-校验失败，会撤销本次 pending 投影并恢复 `imported`；从 durable
-`rollback_in_progress` 开始的 retry 若失败则继续 fail closed 保持 recovery。
+校验失败，会撤销本次 pending 投影并恢复 `imported`；parent pending 投影内部同时记录本次
+rollback 开始时的 child state（不进入 status / GUI 投影，也不形成第二个 public state/store；
+仅此内部 marker 改变时持久化但不递增 `queue_revision`）。若进程在同步撤销前中断，status 仅在
+child 与正确链接 manifest **同时**为 non-retryable `rollback_failed` 且内部 origin 为
+`committed` 时判定为 pre-delete refusal、恢复 `imported` 并清除 marker；从 durable
+`rollback_in_progress` 开始的 retry 或缺失/不可信 origin 继续 fail closed 保持 recovery。
 
 #### Review/batch additive 错误码
 

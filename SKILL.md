@@ -135,7 +135,11 @@ parent review job 的 batch 路径。crash/重启后用 `import reviews` 发现 
   rollback。仅 artifacts 全部消失且 child durable `rolled_back` 后才恢复 exact membership 为
   `confirmed`；child 开始前中断会恢复 `imported`，child 已完成但 final parent 投影前中断会由 status
   收敛到 `confirmed`。首次 pre-delete non-retryable refusal 撤销 pending 投影；从 durable
-  rollback recovery 开始的失败继续 fail closed。pending 与最终收敛各至多递增一次
+  rollback recovery 开始的失败继续 fail closed。parent 仅用不公开的 durable origin marker 区分
+  两者：只有 child + 正确链接 manifest 均为 non-retryable `rollback_failed` 且 origin 为
+  `committed` 才在 restart 恢复 `imported`；retry / legacy / 不可信 origin 保持 recovery。marker
+  不进入 status / GUI，也不形成第二 state/store；marker-only 更新不递增 `queue_revision`。
+  pending 与最终收敛各至多递增一次
   `queue_revision`；parent 不可整体回滚。
 - parent status 的 `batches[]` 是 **ledger-derived、restart-safe、locator-free** 的 durable child batch
   历史：每次读从 ledger 中 `kind == "batch"` 且 `parent_review_job_id == <parent>` 派生（GUI 绝不缓存

@@ -1174,6 +1174,7 @@ def test_child_rollback_crash_after_child_finalization_converges_parent_on_statu
     assert crashed_parent["proposal_states"][proposal_id] == "batching"
     assert crashed_parent["active_child_id"] == child_id
     assert crashed_parent["recovery_required"] is True
+    assert crashed_parent["rollback_started_from"] == "committed"
     assert crashed_parent["queue_revision"] == committed_revision + 1
 
     recovered = _status(data_dir, parent_id)
@@ -1181,6 +1182,8 @@ def test_child_rollback_crash_after_child_finalization_converges_parent_on_statu
     assert recovered["active_child_id"] is None
     assert recovered["recovery_required"] is False
     assert recovered["queue_revision"] == committed_revision + 2
+    assert "rollback_started_from" not in recovered
+    assert "rollback_started_from" not in _ledger(data_dir)["jobs"][parent_id]
     batch = next(
         item for item in recovered["batches"] if item["import_id"] == child_id
     )
@@ -1236,6 +1239,7 @@ def test_first_rollback_checksum_refusal_restores_imported_parent_projection(
     }
     assert refused_parent["active_child_id"] is None
     assert refused_parent["recovery_required"] is False
+    assert "rollback_started_from" not in refused_parent
     assert refused_parent["queue_revision"] == committed_revision + 2
 
     stable = _status(data_dir, parent_id)
@@ -1243,6 +1247,89 @@ def test_first_rollback_checksum_refusal_restores_imported_parent_projection(
     assert stable["active_child_id"] is None
     assert stable["recovery_required"] is False
     assert stable["queue_revision"] == committed_revision + 2
+
+
+def test_first_rollback_refusal_crash_converges_imported_parent_on_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Restart distinguishes a no-delete refusal from partial rollback."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    proposal_id = plan["proposals"][0]["proposal_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+    child_id = _ok(_run_batch(data_dir, parent_id, src))["data"]["import_id"]
+
+    committed_revision = _status(data_dir, parent_id)["queue_revision"]
+    manifest = _manifest(data_dir, child_id)
+    owned_targets = [
+        data_dir / entry["rel_path"]
+        for entry in manifest["created_files"]
+        if entry.get("created_by_import") is True
+    ]
+    assert owned_targets
+    assert all(path.exists() for path in owned_targets)
+    owned_targets[0].write_bytes(owned_targets[0].read_bytes() + b"-changed")
+
+    def crash_before_refusal_projection(
+        _data_dir: Path,
+        _parent_id: str,
+        _child_id: str,
+        _proposal_ids: list[str],
+    ) -> None:
+        raise SystemExit("synthetic crash before refusal parent projection")
+
+    monkeypatch.setattr(
+        review,
+        "_restore_parent_after_predelete_rollback_refusal",
+        crash_before_refusal_projection,
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match="synthetic crash before refusal parent projection",
+    ):
+        review.execute_review_rollback(import_id=child_id, data_dir=data_dir)
+
+    crashed_ledger = _ledger(data_dir)
+    crashed_parent = crashed_ledger["jobs"][parent_id]
+    crashed_child = crashed_ledger["jobs"][child_id]
+    assert crashed_child["state"] == "rollback_failed"
+    assert crashed_child["rollback_retryable"] is False
+    assert _manifest(data_dir, child_id)["state"] == "rollback_failed"
+    assert _manifest(data_dir, child_id)["rollback_retryable"] is False
+    assert all(path.exists() for path in owned_targets)
+    assert crashed_parent["proposal_states"][proposal_id] == "batching"
+    assert crashed_parent["active_child_id"] == child_id
+    assert crashed_parent["recovery_required"] is True
+    assert crashed_parent["rollback_started_from"] == "committed"
+    assert crashed_parent["queue_revision"] == committed_revision + 1
+
+    recovered = _status(data_dir, parent_id)
+    assert recovered["proposal_states"][proposal_id] == "imported"
+    assert recovered["active_child_id"] is None
+    assert recovered["recovery_required"] is False
+    assert recovered["queue_revision"] == committed_revision + 2
+    assert "rollback_started_from" not in recovered
+    durable_parent = _ledger(data_dir)["jobs"][parent_id]
+    assert "rollback_started_from" not in durable_parent
+    batch = next(
+        item for item in recovered["batches"] if item["import_id"] == child_id
+    )
+    assert batch["state"] == "rollback_failed"
+    assert batch["rollback_available"] is False
+
+    ledger_path = data_dir / ".life-index" / "import-jobs" / "ledger.json"
+    settled_bytes = ledger_path.read_bytes()
+    stable = _status(data_dir, parent_id)
+    assert stable == recovered
+    assert stable["queue_revision"] == committed_revision + 2
+    assert ledger_path.read_bytes() == settled_bytes
 
 
 def test_retry_checksum_refusal_keeps_parent_recovery_fail_closed(
@@ -1268,6 +1355,7 @@ def test_retry_checksum_refusal_keeps_parent_recovery_fail_closed(
     parent["proposal_states"][proposal_id] = "batching"
     parent["active_child_id"] = child_id
     parent["recovery_required"] = True
+    parent["rollback_started_from"] = "committed"
     parent["queue_revision"] = committed_revision + 1
     child["state"] = "rollback_in_progress"
     child["rollback_retryable"] = True
@@ -1301,6 +1389,7 @@ def test_retry_checksum_refusal_keeps_parent_recovery_fail_closed(
     assert refused_parent["proposal_states"][proposal_id] == "batching"
     assert refused_parent["active_child_id"] == child_id
     assert refused_parent["recovery_required"] is True
+    assert refused_parent["rollback_started_from"] == "rollback_in_progress"
     assert refused_parent["queue_revision"] == committed_revision + 1
 
 
@@ -1417,6 +1506,8 @@ def test_crash_window_manifest_committed_before_ledger_projects_imported(tmp_pat
     ledger["jobs"][child_id]["state"] = "running"
     ledger["jobs"][parent_id]["active_child_id"] = child_id
     ledger["jobs"][parent_id]["proposal_states"][pid] = "batching"
+    ledger["jobs"][parent_id]["recovery_required"] = True
+    ledger["jobs"][parent_id]["rollback_started_from"] = "committed"
     _save_ledger(data_dir, ledger)
 
     # reconcile trusts the durable committed manifest -> re-projects imported
@@ -1425,6 +1516,7 @@ def test_crash_window_manifest_committed_before_ledger_projects_imported(tmp_pat
     assert status["active_child_id"] is None
     assert status["recovery_required"] is False
     assert _ledger(data_dir)["jobs"][child_id]["state"] == "committed"
+    assert "rollback_started_from" not in _ledger(data_dir)["jobs"][parent_id]
 
 
 def test_crash_window_committed_ledger_missing_manifest_fails_closed(tmp_path: Path) -> None:
@@ -1447,6 +1539,8 @@ def test_crash_window_committed_ledger_missing_manifest_fails_closed(tmp_path: P
     }
     ledger["jobs"][parent_id]["active_child_id"] = child_id
     ledger["jobs"][parent_id]["proposal_states"][pid] = "batching"
+    ledger["jobs"][parent_id]["recovery_required"] = True
+    ledger["jobs"][parent_id]["rollback_started_from"] = "committed"
     _save_ledger(data_dir, ledger)
     # NOTE: deliberately no manifest on disk for child_id.
 
@@ -1454,6 +1548,7 @@ def test_crash_window_committed_ledger_missing_manifest_fails_closed(tmp_path: P
     assert status["recovery_required"] is True
     assert status["active_child_id"] == child_id  # retained, fail closed
     assert status["proposal_states"][pid] == "batching"  # NOT projected imported
+    assert _ledger(data_dir)["jobs"][parent_id]["rollback_started_from"] == "committed"
 
 
 def test_crash_window_committed_ledger_invalid_manifest_fails_closed(tmp_path: Path) -> None:
