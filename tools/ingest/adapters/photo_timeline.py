@@ -40,9 +40,7 @@ _HEIC_EXTENSIONS = frozenset({".heic", ".heif"})
 # Conflict codes that mark a photo's capture time as unresolved. Such records
 # carry an empty date/target and an explicit ``date_resolution`` so the review
 # queue keeps them pending until the user supplies a date.
-_CAPTURE_CONFLICT_CODES = frozenset(
-    {"PHOTO_CAPTURE_TIME_MISSING", "PHOTO_CAPTURE_TIME_AMBIGUOUS"}
-)
+_CAPTURE_CONFLICT_CODES = frozenset({"PHOTO_CAPTURE_TIME_MISSING", "PHOTO_CAPTURE_TIME_AMBIGUOUS"})
 
 # ---------------------------------------------------------------------------
 # Public API

@@ -30,7 +30,7 @@ import tempfile
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, TypeGuard, cast
 
 from tools.ingest.fingerprint import (
     compute_attachment_fingerprint,
@@ -176,9 +176,7 @@ def _now_iso() -> str:
 _JOURNAL_SEQ_RE = re.compile(r"^life-index_(\d{4}-\d{2}-\d{2})_(\d+)\.md$")
 
 
-def next_seq_for_date(
-    date: str, data_dir: Path, used_seqs: dict[str, int]
-) -> int:
+def next_seq_for_date(date: str, data_dir: Path, used_seqs: dict[str, int]) -> int:
     """Return the next available sequence number for *date*.
 
     Considers existing journal files in *data_dir* and sequences already
@@ -233,8 +231,7 @@ def is_valid_calendar_date(value: Any) -> bool:
 
 def _has_capture_conflict(proposal: dict[str, Any]) -> bool:
     return any(
-        c.get("code") in _PHOTO_CAPTURE_CONFLICT_CODES
-        for c in proposal.get("conflicts", [])
+        c.get("code") in _PHOTO_CAPTURE_CONFLICT_CODES for c in proposal.get("conflicts", [])
     )
 
 
@@ -284,8 +281,8 @@ def _get_job(ledger: dict[str, Any], import_id: str) -> dict[str, Any] | None:
     return job if isinstance(job, dict) else None
 
 
-def _is_review_job(job: dict[str, Any] | None) -> bool:
-    return bool(job) and job.get("kind") == "review"
+def _is_review_job(job: dict[str, Any] | None) -> TypeGuard[dict[str, Any]]:
+    return isinstance(job, dict) and job.get("kind") == "review"
 
 
 # The durable parent-projection fields a review job carries. These are the only
@@ -341,9 +338,7 @@ def _queue_revision_of(job: dict[str, Any] | None) -> int:
     return int((job or {}).get("queue_revision", 1) or 1)
 
 
-def _visible_projection_changed(
-    before: dict[str, Any] | None, after: dict[str, Any]
-) -> bool:
+def _visible_projection_changed(before: dict[str, Any] | None, after: dict[str, Any]) -> bool:
     """True iff any queue-visible projection field differs between two jobs."""
     before = before or {}
     return any(before.get(f) != after.get(f) for f in _QUEUE_VISIBLE_FIELDS)
@@ -408,9 +403,7 @@ def validate_source_root(source_root: str | Path) -> dict[str, Any]:
 
 
 @_ledger_serialized
-def rebind_source_root(
-    parent_id: str, source_root: str | Path, data_dir: Path
-) -> dict[str, Any]:
+def rebind_source_root(parent_id: str, source_root: str | Path, data_dir: Path) -> dict[str, Any]:
     """``import rebind``: re-validate that a locator is the same root identity."""
     ledger = _read_ledger(data_dir)
     job = _get_job(ledger, parent_id)
@@ -462,9 +455,7 @@ def rebind_source_root(
 # ---------------------------------------------------------------------------
 
 
-def _write_review_plan_atomic(
-    data_dir: Path, parent_id: str, plan: dict[str, Any]
-) -> Path:
+def _write_review_plan_atomic(data_dir: Path, parent_id: str, plan: dict[str, Any]) -> Path:
     """Persist the review plan via temp file + fsync + atomic replace."""
     target = _review_plan_path(data_dir, parent_id)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -728,7 +719,7 @@ def _find_blocking_stage_job(
             # The exact job we are re-staging is finished -> does not block.
             continue
         if _blocks_restage(job):
-            return import_id
+            return cast(str, import_id)
     return None
 
 
@@ -791,8 +782,7 @@ def _validate_edit_payload(
 
     selected = payload.get("selected_attachment_ids")
     if selected is not None and (
-        not isinstance(selected, list)
-        or not all(isinstance(s, str) for s in selected)
+        not isinstance(selected, list) or not all(isinstance(s, str) for s in selected)
     ):
         return None, IMPORT_REVIEW_EDIT_INVALID
     # Duplicate selected ids would rebuild (and later publish) the same source
@@ -853,9 +843,7 @@ def _available_attachments(proposal: dict[str, Any]) -> list[dict[str, Any]]:
     attachments remain visible so a client can reselect them by id alone.
     """
     facts = proposal.get("source_facts") or []
-    selected_ids = {
-        a.get("attachment_id") for a in (proposal.get("attachments") or [])
-    }
+    selected_ids = {a.get("attachment_id") for a in (proposal.get("attachments") or [])}
     out: list[dict[str, Any]] = []
     for fact in facts:
         if not isinstance(fact, dict):
@@ -899,9 +887,7 @@ def _apply_edit_decision(
         journal["target_rel_path"] = ""
         for att in attachments:
             att["target_rel_path"] = ""
-        reason = (
-            None if decision == STATE_SKIPPED else IMPORT_REVIEW_EMPTY_SELECTION_SKIPPED
-        )
+        reason = None if decision == STATE_SKIPPED else IMPORT_REVIEW_EMPTY_SELECTION_SKIPPED
         return STATE_SKIPPED, reason
 
     if decision == STATE_SKIPPED:
@@ -914,7 +900,6 @@ def _apply_edit_decision(
         return STATE_PENDING, None
 
     # decision == confirmed: a date is required to promote.
-    has_conflict = _has_capture_conflict(proposal)
     existing_dr = proposal.get("date_resolution") or {}
     existing_dr_status = existing_dr.get("status")
     effective_date: str | None = None
@@ -929,11 +914,7 @@ def _apply_edit_decision(
         # rather than clearing the user's date or downgrading a user_confirmed
         # resolution to exif_authoritative.
         effective_date = journal.get("date", "")
-        dr_status = (
-            DATE_STATUS_USER
-            if existing_dr_status == DATE_STATUS_USER
-            else DATE_STATUS_EXIF
-        )
+        dr_status = DATE_STATUS_USER if existing_dr_status == DATE_STATUS_USER else DATE_STATUS_EXIF
 
     if effective_date is not None:
         journal["date"] = effective_date
@@ -1137,9 +1118,7 @@ def _rebuild_review_job_from_plan(
     }
 
 
-def _apply_intent_finalize(
-    jobs: dict[str, Any], parent_id: str, intent: dict[str, Any]
-) -> None:
+def _apply_intent_finalize(jobs: dict[str, Any], parent_id: str, intent: dict[str, Any]) -> None:
     """Apply a finalized projection from *intent* in place (caller persists).
 
     Idempotent: replaying a finalize whose projection is already applied yields
@@ -1161,9 +1140,7 @@ def _apply_intent_finalize(
     job["next_batch_sequence"] = projection.get("next_batch_sequence", 1)
     job["idempotency_key"] = projection.get("idempotency_key", "")
     job["plan_fingerprint"] = projection.get("plan_fingerprint", "")
-    job["plan_revision"] = intent.get(
-        "expected_plan_revision", job.get("plan_revision", 1) or 1
-    )
+    job["plan_revision"] = intent.get("expected_plan_revision", job.get("plan_revision", 1) or 1)
     # The intent carries the exact target queue_revision computed once at plan
     # time, so replaying a finalize (crash recovery) sets the same value and
     # never double-bumps the concurrency token.
@@ -1175,9 +1152,7 @@ def _apply_intent_finalize(
     job["updated_at"] = _now_iso()
 
 
-def _apply_intent_abort(
-    jobs: dict[str, Any], parent_id: str, intent: dict[str, Any]
-) -> None:
+def _apply_intent_abort(jobs: dict[str, Any], parent_id: str, intent: dict[str, Any]) -> None:
     """Abort a pending intent whose plan replace never happened (caller persists).
 
     - No prior projection (``intent.prior`` is None) → remove the empty
@@ -1484,9 +1459,7 @@ def confirm_review(  # noqa: C901
         # (skipped/imported/stale, no active child) may be staged fresh. Zero
         # writes occur on the blocked path when the queue was already converged.
         if stage and source_root_identity:
-            blocking = _find_blocking_stage_job(
-                ledger, source_root_identity, parent_id
-            )
+            blocking = _find_blocking_stage_job(ledger, source_root_identity, parent_id)
             if blocking is not None:
                 if reconciled:
                     _write_ledger(data_dir, ledger)  # persist convergence only
@@ -1594,9 +1567,7 @@ def confirm_review(  # noqa: C901
         # creation (no prior review job) initialises the token to 1 — matching
         # ``stage`` — rather than bumping the default-of-1 to 2.
         is_first_creation = existing_job is None
-        new_queue_revision = (
-            1 if is_first_creation else _queue_revision_of(existing_job) + 1
-        )
+        new_queue_revision = 1 if is_first_creation else _queue_revision_of(existing_job) + 1
 
         intent = {
             "expected_plan_fingerprint": plan_fingerprint,
@@ -1752,7 +1723,7 @@ def edit_review(  # noqa: C901
         if changed:
             _write_ledger(data_dir, raw_ledger)
         ledger = _read_ledger(data_dir)
-        job = _get_job(ledger, parent_id)
+        job = cast(dict[str, Any], _get_job(ledger, parent_id))
 
         # Re-check the token against the CONVERGED job. If reconciliation advanced
         # queue_revision (e.g. a pending intent finalized under the lock), the
@@ -1911,7 +1882,7 @@ def edit_review(  # noqa: C901
         _finalize_review_update(data_dir, ledger, parent_id, intent)
 
     final_proposal = plan["proposals"][target_index]
-    final_state = final_proposal.get("state", STATE_PENDING)
+    final_state = cast(str, final_proposal.get("state", STATE_PENDING))
     return _ok(
         {
             "schema_version": REVIEW_SCHEMA_VERSION,
@@ -2002,15 +1973,16 @@ def review_queue(
 
         prop_states = job.get("proposal_states", {}) or {}
         state_filter = set(states) if states else None
-        all_proposals = [
-            p for p in (plan.get("proposals", []) or []) if isinstance(p, dict)
-        ]
+        all_proposals = [p for p in (plan.get("proposals", []) or []) if isinstance(p, dict)]
         total_all = len(all_proposals)
 
         projected: list[dict[str, Any]] = []
         for prop in all_proposals:
             pid = prop.get("proposal_id", "")
-            state = prop_states.get(pid, prop.get("state", STATE_PENDING))
+            state = cast(
+                str,
+                prop_states.get(pid, prop.get("state", STATE_PENDING)),
+            )
             if state_filter is not None and state not in state_filter:
                 continue
             projected.append(_proposal_review_projection(prop, state))
@@ -2032,9 +2004,7 @@ def review_queue(
                 # Restart-safe disclosure of persisted scan-level plan warnings
                 # (e.g. HEIC/HEIF PHOTO_UNSUPPORTED_FORMAT). Safe allowlist only;
                 # the locator-bearing adapter ``message`` is never projected.
-                "warnings": [
-                    _public_plan_warning(w) for w in (plan.get("warnings") or [])
-                ],
+                "warnings": [_public_plan_warning(w) for w in (plan.get("warnings") or [])],
                 "total_all": total_all,
                 "total_filtered": total_filtered,
                 "offset": off,
@@ -2139,9 +2109,7 @@ def _batch_sort_key(child_id: str) -> tuple[tuple[int, int], str]:
     return ((1, 0), child_id)
 
 
-def _rollback_manifest_structurally_linked(
-    manifest: Any, parent_id: str, child_id: str
-) -> bool:
+def _rollback_manifest_structurally_linked(manifest: Any, parent_id: str, child_id: str) -> bool:
     """Whether a rollback manifest has the canonical safe linkage fields."""
     return (
         isinstance(manifest, dict)
@@ -2180,9 +2148,7 @@ def _child_rollback_available(
     from tools.ingest.runner import _read_rollback_manifest
 
     manifest = _read_rollback_manifest(data_dir, child_id)
-    if not _rollback_manifest_structurally_linked(
-        manifest, parent_id, child_id
-    ):
+    if not _rollback_manifest_structurally_linked(manifest, parent_id, child_id):
         return False
     assert isinstance(manifest, dict)
 
@@ -2223,9 +2189,7 @@ def _child_batch_projection(
         "proposal_count": len(proposal_ids),
         "created_at": created,
         "updated_at": child.get("updated_at"),
-        "rollback_available": _child_rollback_available(
-            data_dir, parent_id, child_id, child
-        ),
+        "rollback_available": _child_rollback_available(data_dir, parent_id, child_id, child),
     }
 
 
@@ -2432,7 +2396,8 @@ def execute_review_rollback(import_id: str, data_dir: Path) -> dict[str, Any]:
     if _is_review_job(job):
         return _err(
             IMPORT_ROLLBACK_PARENT_NOT_ALLOWED,
-            "A parent review job cannot be rolled back as a whole; roll back its child batch job instead.",
+            "A parent review job cannot be rolled back as a whole; "
+            "roll back its child batch job instead.",
             {"import_id": import_id},
             retryable=False,
         )
@@ -2441,9 +2406,7 @@ def execute_review_rollback(import_id: str, data_dir: Path) -> dict[str, Any]:
     # The rolled-back job is a child batch; capture its exact membership so the
     # parent projection is driven by what THIS child batch touched, never by the
     # parent's last selection.
-    child_proposal_ids = (
-        job.get("proposal_ids") if isinstance(job, dict) else None
-    ) or []
+    child_proposal_ids = (job.get("proposal_ids") if isinstance(job, dict) else None) or []
     parent_id = job.get("parent_review_job_id") if isinstance(job, dict) else None
 
     # A child batch job rolls back + re-projects its parent under the parent's
@@ -2457,9 +2420,7 @@ def execute_review_rollback(import_id: str, data_dir: Path) -> dict[str, Any]:
                 _write_ledger(data_dir, pre_ledger)
             durable_child = _get_job(pre_ledger, import_id)
             rollback_started_from = (
-                durable_child.get("state")
-                if isinstance(durable_child, dict)
-                else None
+                durable_child.get("state") if isinstance(durable_child, dict) else None
             )
             pending_introduced = _project_parent_rollback_pending(
                 data_dir,
@@ -2476,9 +2437,7 @@ def execute_review_rollback(import_id: str, data_dir: Path) -> dict[str, Any]:
 
             # Exact child.proposal_ids projection under the same lock.
             if result["success"]:
-                _project_parent_after_child_rollback(
-                    data_dir, parent_id, child_proposal_ids
-                )
+                _project_parent_after_child_rollback(data_dir, parent_id, child_proposal_ids)
             else:
                 durable_after = _get_job(_read_ledger(data_dir), import_id)
                 first_attempt_predelete_refusal = (
@@ -2629,6 +2588,7 @@ def preview_attachment(  # noqa: C901
     root, err = _resolve_source_root(parent_id, source_root, data_dir)
     if err is not None:
         return err
+    root = cast(Path, root)
 
     from tools.ingest.runner import _resolve_confined_source_path
 
@@ -2814,9 +2774,7 @@ def _stream_to_staging(
     """Open source + staging and stream bounded chunks into ``staging_abs``."""
     try:
         with open(source_abs, "rb") as src, open(staging_abs, "wb") as dst:
-            return _drain_source_to_staging(
-                src, dst, expected_sha, expected_size, chunk_size
-            )
+            return _drain_source_to_staging(src, dst, expected_sha, expected_size, chunk_size)
     except OSError as exc:
         return False, f"unreadable:{exc}"
 
@@ -2826,16 +2784,9 @@ def _file_identity(path: Path) -> tuple[int, int]:
     return st.st_dev, st.st_ino
 
 
-def _publication_staging_rel_path(
-    child_id: str, kind: str, target_rel_path: str
-) -> str:
-    digest = hashlib.sha256(
-        f"{kind}\0{target_rel_path}".encode("utf-8")
-    ).hexdigest()[:24]
-    return (
-        f".life-index/import-jobs/{child_id}/publication-staging/"
-        f"{kind}-{digest}.tmp"
-    )
+def _publication_staging_rel_path(child_id: str, kind: str, target_rel_path: str) -> str:
+    digest = hashlib.sha256(f"{kind}\0{target_rel_path}".encode("utf-8")).hexdigest()[:24]
+    return f".life-index/import-jobs/{child_id}/publication-staging/" f"{kind}-{digest}.tmp"
 
 
 @contextmanager
@@ -2856,9 +2807,7 @@ def _tracked_publication(
         "manifest": manifest,
         "kind": kind,
         "target_rel_path": target_rel_path,
-        "staging_rel_path": _publication_staging_rel_path(
-            child_id, kind, target_rel_path
-        ),
+        "staging_rel_path": _publication_staging_rel_path(child_id, kind, target_rel_path),
     }
     token = _PUBLICATION_CONTEXT.set(context)
     try:
@@ -3047,9 +2996,7 @@ def _journal_relative_path(journal_rel: str, att_rel: str) -> str:
     return posixpath.relpath(att_rel, start=posixpath.dirname(journal_rel))
 
 
-def _canonical_attachment_entry(
-    att: dict[str, Any], journal_rel: str
-) -> dict[str, Any]:
+def _canonical_attachment_entry(att: dict[str, Any], journal_rel: str) -> dict[str, Any]:
     """Build the canonical stored attachment object for journal frontmatter.
 
     Matches ``tools/write_journal/attachments.process_attachments`` exactly:
@@ -3063,9 +3010,7 @@ def _canonical_attachment_entry(
         "filename": posixpath.basename(att_rel),
         "rel_path": _journal_relative_path(journal_rel, att_rel),
         "description": "",
-        "original_name": posixpath.basename(
-            att.get("source_rel_path", "") or att_rel
-        ),
+        "original_name": posixpath.basename(att.get("source_rel_path", "") or att_rel),
         "auto_detected": False,
         "content_type": att.get("media_type", ""),
         "size": att.get("size_bytes"),
@@ -3106,7 +3051,7 @@ def _validate_committed_manifest(
         if not isinstance(entry, dict) or not entry.get("created_by_import", False):
             continue
         rel = entry.get("rel_path")
-        confined = _resolve_confined_file_path(data_dir, rel)
+        confined = _resolve_confined_file_path(data_dir, cast(str, rel))
         if confined is None:
             return False, f"unconfined:{rel}"
         if not confined.exists():
@@ -3123,8 +3068,7 @@ def _validate_committed_manifest(
                 or proof.get("method") != "hardlink_identity"
                 or not isinstance(proof.get("device"), int)
                 or not isinstance(proof.get("inode"), int)
-                or _file_identity(confined)
-                != (proof.get("device"), proof.get("inode"))
+                or _file_identity(confined) != (proof.get("device"), proof.get("inode"))
             ):
                 return False, f"ownership_mismatch:{rel}"
     return True, ""
@@ -3190,9 +3134,7 @@ def _validate_rolled_back_manifest(
     return True, ""
 
 
-def _reload_durable_child(
-    ledger: dict[str, Any], data_dir: Path, child_id: str
-) -> None:
+def _reload_durable_child(ledger: dict[str, Any], data_dir: Path, child_id: str) -> None:
     """Merge the durable child transition written by ``execute_rollback``.
 
     ``execute_rollback`` reads and persists its own ledger snapshot, so the
@@ -3213,9 +3155,7 @@ def _reload_durable_child(
             child["updated_at"] = durable["updated_at"]
 
 
-def _reconcile_parent(
-    ledger: dict[str, Any], parent_id: str, data_dir: Path
-) -> bool:
+def _reconcile_parent(ledger: dict[str, Any], parent_id: str, data_dir: Path) -> bool:
     """Idempotently reconcile a parent's active child across crash windows.
 
     Returns True iff the parent projection changed; callers persist only then,
@@ -3270,8 +3210,7 @@ def _reconcile_parent(
                 and _rollback_manifest_structurally_linked(
                     candidate_manifest, parent_id, candidate_id
                 )
-                and candidate_manifest.get("state")
-                in ("rollback_in_progress", "rollback_failed")
+                and candidate_manifest.get("state") in ("rollback_in_progress", "rollback_failed")
                 and candidate_manifest.get("rollback_retryable") is True
             )
             if ledger_retryable or manifest_first_intent:
@@ -3356,11 +3295,8 @@ def _reconcile_parent(
     if (
         child_state == "committed"
         and isinstance(child_manifest, dict)
-        and _rollback_manifest_structurally_linked(
-            child_manifest, parent_id, child_id
-        )
-        and child_manifest.get("state")
-        in ("rollback_in_progress", "rollback_failed")
+        and _rollback_manifest_structurally_linked(child_manifest, parent_id, child_id)
+        and child_manifest.get("state") in ("rollback_in_progress", "rollback_failed")
         and child_manifest.get("rollback_retryable") is True
     ):
         if isinstance(child_job, dict):
@@ -3373,10 +3309,7 @@ def _reconcile_parent(
     # 0. The rollback manifest is the first durable success fact after every
     #    unlink. If the process stopped before the child-ledger projection, carry
     #    that validated truth forward and restore the parent exactly once.
-    if (
-        isinstance(child_manifest, dict)
-        and child_manifest.get("state") == "rolled_back"
-    ):
+    if isinstance(child_manifest, dict) and child_manifest.get("state") == "rolled_back":
         valid, _reason = _validate_rolled_back_manifest(
             data_dir, child_id, parent_id, child_manifest
         )
@@ -3403,9 +3336,7 @@ def _reconcile_parent(
     if (
         isinstance(child_manifest, dict) and child_manifest.get("state") == "committed"
     ) or child_state == "committed":
-        valid, _reason = _validate_committed_manifest(
-            data_dir, child_id, parent_id, child_manifest
-        )
+        valid, _reason = _validate_committed_manifest(data_dir, child_id, parent_id, child_manifest)
         if valid:
             if isinstance(child_job, dict) and child_state != "committed":
                 child_job["state"] = "committed"
@@ -3436,9 +3367,7 @@ def _reconcile_parent(
         and child_job.get("rollback_retryable") is False
         and job.get("rollback_started_from") == "committed"
         and isinstance(child_manifest, dict)
-        and _rollback_manifest_structurally_linked(
-            child_manifest, parent_id, child_id
-        )
+        and _rollback_manifest_structurally_linked(child_manifest, parent_id, child_id)
         and child_manifest.get("state") == "rollback_failed"
         and child_manifest.get("rollback_retryable") is False
     ):
@@ -3717,7 +3646,7 @@ def run_batch(  # noqa: C901
         _reconcile_review_authority_locked(ledger, parent_id, data_dir)
         _reconcile_parent(ledger, parent_id, data_dir)
         _write_ledger(data_dir, ledger)
-        job = _get_job(ledger, parent_id)
+        job = cast(dict[str, Any], _get_job(ledger, parent_id))
 
         # 1b. Fail closed when the persisted plan and ledger disagree with no
         #     durable intent to explain it — running would act on an untrusted
@@ -3758,6 +3687,7 @@ def run_batch(  # noqa: C901
         root, err = _resolve_source_root(parent_id, source_root, data_dir)
         if err is not None:
             return err
+        root = cast(Path, root)
 
         # 5. Select confirmed proposals.
         proposal_states = dict(job.get("proposal_states", {}) or {})
@@ -3772,7 +3702,7 @@ def run_batch(  # noqa: C901
         if stale_ids:
             for pid in stale_ids:
                 proposal_states[pid] = STATE_STALE
-            job = _get_job(ledger, parent_id)
+            job = cast(dict[str, Any], _get_job(ledger, parent_id))
             job["proposal_states"] = proposal_states
             # The stale transition is its own atomic parent write -> exactly one
             # token bump (state-only: plan_revision is never touched by run).
@@ -3785,11 +3715,7 @@ def run_batch(  # noqa: C901
                 {
                     "import_id": parent_id,
                     "stale": stale_ids,
-                    "skipped": [
-                        pid
-                        for pid, st in proposal_states.items()
-                        if st == STATE_SKIPPED
-                    ],
+                    "skipped": [pid for pid, st in proposal_states.items() if st == STATE_SKIPPED],
                 },
                 retryable=False,
             )
@@ -3803,7 +3729,7 @@ def run_batch(  # noqa: C901
         seq = int(job.get("next_batch_sequence", 1))
         child_id = _child_id_for_seq(parent_id, seq)
         proposal_ids = [p.get("proposal_id", "") for p in runnable]
-        job = _get_job(ledger, parent_id)
+        job = cast(dict[str, Any], _get_job(ledger, parent_id))
         for proposal in runnable:
             proposal_states[proposal.get("proposal_id", "")] = STATE_BATCHING
         job["next_batch_sequence"] = seq + 1
@@ -3858,9 +3784,7 @@ def run_batch(  # noqa: C901
             {
                 "import_id": parent_id,
                 "child_id": child_id,
-                "queue_counts": _queue_counts(
-                    parent_after.get("proposal_states", {}) or {}
-                ),
+                "queue_counts": _queue_counts(parent_after.get("proposal_states", {}) or {}),
                 "original_error": result["error"],
             },
             retryable=True,

@@ -91,82 +91,21 @@ triggers:
 .venv/bin/python -m tools.build_index
 ```
 
-**历史照片冷启动（import review queue，additive）**：照片导入走可恢复审阅队列，
-GUI/host agent 只消费 plan、请求 confirm、流式 preview、触发 batch run、查 status、
-按需 rollback child batch；不直接写 `Journals/` 或 `attachments/`。source facts
-（content SHA-256、size、source 相对路径、capture time authority、GPS、provenance）
-不可变；用户只编辑 journal `title`/`date`/`topic`/`tags`/`content` 与 proposal/attachment
-选择。典型流程（详见 `docs/API.md` 的 Review queue & batch import 节）：
+**历史照片冷启动（import review queue，additive）**：先读
+[Historical photo import review playbook](references/PHOTO_IMPORT_REVIEW_PLAYBOOK.md)，再按需查看
+`docs/API.md` 的精确参数与错误码。核心流程是 plan → validate/stage → confirm/edit → review/preview
+→ run/status → rollback child batch。
 
-```bash
-.venv/bin/life-index import plan --source media.photo_timeline --input <photo-dir> --json   # 递归只读扫描→按日聚合 editable proposals（dry-run，不写）
-.venv/bin/life-index import validate --source-root <photo-dir> --json                      # canonical readable dir + root identity fingerprint
-.venv/bin/life-index import stage --plan <review-plan.json> --source-root <photo-dir> --json   # 初始 pending 队列（不复制字节；重复 source root→IMPORT_REVIEW_ALREADY_STAGED）
-.venv/bin/life-index import confirm --plan <review-plan.json> --source-root <photo-dir> --json  # 原子持久化 review-plan.json + parent review job（confirmed 队列权威）
-.venv/bin/life-index import confirm --edit <review-edit.json> --import-id <parent_id> --expected-queue-revision <q> --json  # 单 proposal 原子 edit（import_review_edit.v1；从 source_facts 重建选择）
-.venv/bin/life-index import review --import-id <parent_id> [--offset 0] [--limit 20] [--state …] --json   # 有界分页只读投影（ledger 权威 state；不暴露 source 定位；响应 warnings[] 如实披露持久化 scan-level 警告）
-.venv/bin/life-index import reviews [--after <import_id>] [--limit 20] --json               # 发现 parent review job（排除 child batch；排他游标）
-.venv/bin/life-index import status --import-id <parent_id> --json                          # proposal states + derived queue counts + plan_revision + queue_revision + recovery + durable batches[]（ledger-derived、restart-safe、locator-free；rollback 发现的唯一 GUI 来源）
-.venv/bin/life-index import preview --import-id <parent_id> --attachment <att_id> [--proposal-id <pid>] --source-root <photo-dir> --output - --json  # 只读流式 bytes/metadata（钉到 proposal；可预览已取消选择的附件），不改源
-.venv/bin/life-index import run --import-id <parent_id> --source-root <photo-dir> --json    # single active child batch；confirmed→batching→imported；TOCTOU 安全复制
-.venv/bin/life-index import rollback --import-id <child_batch_id> --json                    # 回滚 child batch；parent reconciliation 恢复 confirmed（parent 本身不可回滚→IMPORT_ROLLBACK_PARENT_NOT_ALLOWED）
-```
-
-注意：`import run --plan … --confirm …`（fixture / 直连）行为不变；`--import-id` 才进入
-parent review job 的 batch 路径。crash/重启后用 `import reviews` 发现 id、`import-id` 恢复
-队列，但 confirm/run/preview 必须用当前 `--source-root` 重新验证同一 root identity。
-`queue_revision` 是 parent-ledger 拥有的客户端并发令牌（初始 1，每次 parent 可见原子变更递增
-一次），与 review-plan 内容权威 `plan_revision` 分离；单 proposal edit 用
-`--expected-queue-revision` 做乐观并发（过期→retryable `IMPORT_REVIEW_REVISION_CONFLICT`，
-零写入）。
-**审阅队列日期权威 / 状态纪律（M7 package 1）**：
-- 日期只来自可信 EXIF（offset 用本地 calendar date、naive 按相机本地，不猜时区）或用户显式
-  `date_resolution`（`user_confirmed` 可解析不可变 EXIF 冲突）；**绝不**用文件 mtime，**无 1970-01-01
-  sentinel**。缺日期/冲突的 proposal `journal.date`/`target_rel_path` 为空、
-  `date_resolution.status=unresolved`，停在显式 `pending` 区，直到用户给出 `user_confirmed` date。
-  EXIF offset 只取与所选 capture tag 配对的 offset tag（不借用兄弟 tag），且必须有显式符号、合法分钟、
-  落在 ±14:00 内，否则按相机本地 naive 使用、绝不换算。
-- re-confirm 安全：`imported`/`batching` proposal 冻结（内容不变、state 以 ledger 权威为准、绝不降级）；
-  `pending`/`confirmed`/`skipped` 接受安全编辑（含 attachment selection）。有未结算 active child 时
-  confirm 被拒（`IMPORT_BATCH_ALREADY_ACTIVE`）。
-- child batch id 单调 `<parent_id>#batch-<seq>`（parent 存 durable `next_batch_sequence`），每个 child
-  记录精确 `proposal_ids`；rollback 在 parent 的 per-parent lock 内、reconcile 后，先把 child 自身成员
-  durable 投影为 `batching` + `active_child_id=<child>` + `recovery_required=true`，之后才开始 child
-  rollback。仅 artifacts 全部消失且 child durable `rolled_back` 后才恢复 exact membership 为
-  `confirmed`；child 开始前中断会恢复 `imported`，child 已完成但 final parent 投影前中断会由 status
-  收敛到 `confirmed`。首次 pre-delete non-retryable refusal 撤销 pending 投影；从 durable
-  rollback recovery 开始的失败继续 fail closed。parent 仅用不公开的 durable origin marker 区分
-  两者：只有 child + 正确链接 manifest 均为 non-retryable `rollback_failed` 且 origin 为
-  `committed` 才在 restart 恢复 `imported`；retry / legacy / 不可信 origin 保持 recovery。marker
-  不进入 status / GUI，也不形成第二 state/store；marker-only 更新不递增 `queue_revision`。
-  pending 与最终收敛各至多递增一次
-  `queue_revision`；parent 不可整体回滚。
-- parent status 的 `batches[]` 是 **ledger-derived、restart-safe、locator-free** 的 durable child batch
-  历史：每次读从 ledger 中 `kind == "batch"` 且 `parent_review_job_id == <parent>` 派生（GUI 绝不缓存
-  child id 作为第二真相；这是发现可回滚 batch 的**唯一来源**）。稳定排序 oldest/lowest numeric 在前，
-  legacy/malformed id 走稳定 fallback；每个 batch 仅含安全字段（`import_id`（`#` 原样保留）、`state`、
-  `proposal_ids`、`proposal_count`、`created_at`、`updated_at`、`rollback_available`），**绝不**暴露 manifest
-  路径 / source / journal 路径 / manifest 内容。`rollback_available` 仅当 child + manifest 结构/链接正确，且两处 state
-  同为 `committed`，或同为 `rollback_in_progress` / `rollback_failed` 并且两处
-  `rollback_retryable == true`，才为 true；`rolled_back`、non-retryable failure、state 不一致、
-  manifest 缺失、schema / import_id / parent_review_job_id / `created_files` 无效均 fail closed 为 false。
-  recoverable rollback 可显式重试；重试仍执行完整 ownership / identity / hash / size revalidation。
-  status 不重新实现 rollback、不 hash 用户文件、只读取既有 manifest 的结构 + 链接字段，且在既有
-  reconcile 之后**只读派生**——不改写 ledger、不递增 `queue_revision`、不重写文件。
-- crash / 权威纪律：confirm 按 durable intent→plan→finalize 更新，confirm/status/run/rollback 都先幂等
-  reconcile 收敛 crash 窗口。若 `status` 报 `recovery_required: true` +
-  `authority_status: "plan_ledger_mismatch"`（plan 与 ledger 不一致、无 intent 解释），**向用户报告、不要盲目
-  重试 run**——`run` 此时返回 `IMPORT_RECOVERY_REQUIRED`。一次新的 `confirm`（显式 incoming plan）可作为修复
-  手段。child 仍 `batching` 的 `recovery_required` 同理需人工/补偿恢复。
-- rescan 去重集合 = committed manifest 的 attachment SHA + authoritative state 为
-  `confirmed`/`batching`/`imported` 的 review proposal 的 attachment SHA（被 rollback 恢复为
-  `confirmed` 的仍排除）；同名不同字节视为不同记录。
-- restart-safe 顶层 plan-warning 投影：`import review` 响应的 `warnings[]` 投影持久化
-  review-plan 顶层 scan-level warning（如 `.heic`/`.heif` 的 `PHOTO_UNSUPPORTED_FORMAT`，
-  标记 unsupported + preview unavailable）。GUI/CLI 重启后从持久化 plan 重新读回并如实披露，
-  **绝不静默遗漏**受影响照片。只走显式安全 allowlist（`code`/`severity`/`runnable`/`format`/
-  `preview_available`），**绝不**投影 adapter `message`（内嵌 source 路径定位符）或盲目透传任意
-  扩展字段；文件名 / source 路径 / 含定位符的 message 均不进入响应。重复读稳定且 no-write。
+- CLI 是唯一写 authority；GUI/host agent 不直接写 `Journals/` / `attachments/`。source facts
+  不可变，用户只编辑 journal 字段与 proposal/attachment 选择；日期只信可信 EXIF 或用户确认，
+  绝不用 mtime/sentinel。
+- confirm/run/preview 必须用当前 `--source-root` 复验同一 root identity。`queue_revision` 是
+  parent-ledger 并发令牌，与 review-plan 的 `plan_revision` 分离；过期 edit 零写入、retryable。
+- parent 不可整体 rollback；只回滚 ledger-derived `batches[]` 中的 child。仅 child + 正确链接
+  manifest 的 durable facts 可驱动恢复；ownership / identity / hash / size 不匹配一律 fail closed。
+  内部 rollback origin marker 不进入 status/GUI、不形成第二 state/store，marker-only 更新不 bump。
+- `status/review` 不暴露 source/manifest/journal 路径；持久化 scan warning 只投影安全 allowlist。
+  `recovery_required` 或 plan/ledger mismatch 要如实报告，不要盲目重试 run。
 **安装 / 首次验证 / 故障恢复指针**：
 - 首次安装、upgrade、repair、fresh install 判断 → 读 `AGENT_ONBOARDING.md`，运行 `bootstrap --json`，按 `execution_policy` / `needs_human` / `safe_next_steps` 执行
 - `ModuleNotFoundError`、venv 损坏、`health` 异常、Windows 首次写入转义问题 → 先回到 `bootstrap --json` 输出，不自行扩写 repair 决策树

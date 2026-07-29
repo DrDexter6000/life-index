@@ -81,9 +81,7 @@ def _ledger_transaction(data_dir: Path) -> Iterator[None]:
         yield
         return
 
-    lock = FileLock(
-        _ledger_lock_path(data_dir), timeout=_LEDGER_LOCK_TIMEOUT_SECONDS
-    )
+    lock = FileLock(_ledger_lock_path(data_dir), timeout=_LEDGER_LOCK_TIMEOUT_SECONDS)
     with lock:
         token = _LEDGER_LOCK_STACK.set((*stack, key))
         try:
@@ -106,6 +104,7 @@ def _ledger_serialized(func: _F) -> _F:
             return func(*args, **kwargs)
 
     return wrapped  # type: ignore[return-value]
+
 
 # ---------------------------------------------------------------------------
 # execute_run
@@ -768,9 +767,7 @@ def execute_rollback(
             invalid_ownership.append(rel_path)
             continue
         staging_rel = proof.get("staging_rel_path")
-        expected_prefix = (
-            f".life-index/import-jobs/{import_id}/publication-staging/"
-        )
+        expected_prefix = f".life-index/import-jobs/{import_id}/publication-staging/"
         if (
             not isinstance(staging_rel, str)
             or not staging_rel.startswith(expected_prefix)
@@ -792,10 +789,7 @@ def execute_rollback(
         manifest["rollback_retryable"] = False
         manifest["errors"] = [
             *[f"Unsafe path (traversal/absolute): {p}" for p in unsafe_paths],
-            *[
-                f"Invalid hardlink ownership proof: {p}"
-                for p in invalid_ownership
-            ],
+            *[f"Invalid hardlink ownership proof: {p}" for p in invalid_ownership],
         ]
         _write_manifest(manifest_abs, manifest)
 
@@ -840,10 +834,7 @@ def execute_rollback(
                 if (
                     staging_evidence["identity"] != expected_identity
                     or staging_evidence["sha256"] != expected_sha256
-                    or (
-                        expected_size is not None
-                        and staging_evidence["size"] != expected_size
-                    )
+                    or (expected_size is not None and staging_evidence["size"] != expected_size)
                 ):
                     blocked.append(
                         {
@@ -915,9 +906,7 @@ def execute_rollback(
     # Global order: import ledger -> optional parent review -> journals. Initial
     # validation stays outside this innermost lock; after acquisition we queue
     # pending removals, revalidate every target/staging fact, then unlink.
-    journals_lock = FileLock(
-        get_journals_lock_path(), timeout=FILE_LOCK_TIMEOUT_DEFAULT
-    )
+    journals_lock = FileLock(get_journals_lock_path(), timeout=FILE_LOCK_TIMEOUT_DEFAULT)
     try:
         journals_lock.acquire(blocking=True)
     except LockTimeoutError:
@@ -1360,9 +1349,7 @@ def _read_ledger(data_dir: Path) -> dict[str, Any]:
         if not isinstance(ledger.get("jobs"), dict):
             raise ImportLedgerCorruptError(ledger_path, "jobs must be a JSON object")
         if not isinstance(ledger.get("idempotency_index"), dict):
-            raise ImportLedgerCorruptError(
-                ledger_path, "idempotency_index must be a JSON object"
-            )
+            raise ImportLedgerCorruptError(ledger_path, "idempotency_index must be a JSON object")
         return ledger
 
 
@@ -1381,9 +1368,7 @@ def _write_manifest(path: Path, manifest: dict[str, Any]) -> None:
 def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     """Write JSON through a same-directory temp file, fsync, and atomic replace."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temp_name = tempfile.mkstemp(
-        dir=str(path.parent), prefix=f".{path.name}.tmp-"
-    )
+    fd, temp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.tmp-")
     temp_path = Path(temp_name)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
@@ -1472,40 +1457,28 @@ def _final_rollback_revalidation(
         expected_path = safe_paths[rel_path]
         current_path = _resolve_confined_file_path(data_dir, rel_path)
         if current_path is None or current_path != expected_path:
-            blocked.append(
-                {"rel_path": rel_path, "reason": "target_path_changed_after_validation"}
-            )
+            blocked.append({"rel_path": rel_path, "reason": "target_path_changed_after_validation"})
             continue
         try:
             target_evidence = _rollback_path_evidence(current_path)
         except OSError:
-            blocked.append(
-                {"rel_path": rel_path, "reason": "target_unreadable_after_validation"}
-            )
+            blocked.append({"rel_path": rel_path, "reason": "target_unreadable_after_validation"})
             continue
         if target_evidence != target_baselines.get(rel_path):
-            blocked.append(
-                {"rel_path": rel_path, "reason": "target_changed_after_validation"}
-            )
+            blocked.append({"rel_path": rel_path, "reason": "target_changed_after_validation"})
             continue
 
         proof = ownership_proofs.get(rel_path)
         if rel_path in delete_rel_paths and target_evidence is not None:
             if (
                 target_evidence["sha256"] != expected_sha256
-                or (
-                    expected_size is not None
-                    and target_evidence["size"] != expected_size
-                )
+                or (expected_size is not None and target_evidence["size"] != expected_size)
                 or (
                     proof is not None
-                    and target_evidence["identity"]
-                    != (proof["device"], proof["inode"])
+                    and target_evidence["identity"] != (proof["device"], proof["inode"])
                 )
             ):
-                blocked.append(
-                    {"rel_path": rel_path, "reason": "target_revalidation_mismatch"}
-                )
+                blocked.append({"rel_path": rel_path, "reason": "target_revalidation_mismatch"})
                 continue
 
         if proof is None:
@@ -1513,10 +1486,7 @@ def _final_rollback_revalidation(
         staging_rel = proof["staging_rel_path"]
         expected_staging_path = safe_staging_paths[rel_path]
         current_staging_path = _resolve_confined_file_path(data_dir, staging_rel)
-        if (
-            current_staging_path is None
-            or current_staging_path != expected_staging_path
-        ):
+        if current_staging_path is None or current_staging_path != expected_staging_path:
             blocked.append(
                 {"rel_path": rel_path, "reason": "staging_path_changed_after_validation"}
             )
@@ -1524,27 +1494,18 @@ def _final_rollback_revalidation(
         try:
             staging_evidence = _rollback_path_evidence(current_staging_path)
         except OSError:
-            blocked.append(
-                {"rel_path": rel_path, "reason": "staging_unreadable_after_validation"}
-            )
+            blocked.append({"rel_path": rel_path, "reason": "staging_unreadable_after_validation"})
             continue
         if staging_evidence != staging_baselines.get(rel_path):
-            blocked.append(
-                {"rel_path": rel_path, "reason": "staging_changed_after_validation"}
-            )
+            blocked.append({"rel_path": rel_path, "reason": "staging_changed_after_validation"})
             continue
         if current_staging_path in staging_delete_paths and staging_evidence is not None:
             if (
                 staging_evidence["identity"] != (proof["device"], proof["inode"])
                 or staging_evidence["sha256"] != expected_sha256
-                or (
-                    expected_size is not None
-                    and staging_evidence["size"] != expected_size
-                )
+                or (expected_size is not None and staging_evidence["size"] != expected_size)
             ):
-                blocked.append(
-                    {"rel_path": rel_path, "reason": "staging_revalidation_mismatch"}
-                )
+                blocked.append({"rel_path": rel_path, "reason": "staging_revalidation_mismatch"})
 
     return blocked
 
@@ -1575,10 +1536,7 @@ def _record_rollback_mismatch(
 
     return _err(
         "IMPORT_ROLLBACK_CHECKSUM_MISMATCH",
-        (
-            f"Rollback blocked: {len(blocked)} file(s) have "
-            "ownership or content mismatches."
-        ),
+        (f"Rollback blocked: {len(blocked)} file(s) have " "ownership or content mismatches."),
         {"blocked_files": blocked},
         retryable=False,
     )

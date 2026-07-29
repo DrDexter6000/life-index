@@ -42,7 +42,6 @@ from tools.ingest.fingerprint import (
     compute_proposal_fingerprint,
     compute_source_fingerprint,
     group_source_fingerprint,
-    sha256_hash,
 )
 from tools.ingest.adapters.photo_timeline import scan_photo_directory
 from tools.ingest import review as review_module
@@ -982,14 +981,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     # --- run ---
     run_p = sub.add_parser("run", help="Execute a confirmed import plan.")
-    run_p.add_argument("--plan", required=False, default=None, help="Path to plan JSON (legacy path).")
+    run_p.add_argument(
+        "--plan", required=False, default=None, help="Path to plan JSON (legacy path)."
+    )
     run_p.add_argument(
         "--import-id",
         required=False,
         default=None,
         help="Parent review job id (additive batch path).",
     )
-    run_p.add_argument("--confirm", required=False, default=None, help="import_id to confirm (legacy path).")
+    run_p.add_argument(
+        "--confirm", required=False, default=None, help="import_id to confirm (legacy path)."
+    )
     run_p.add_argument(
         "--source-root",
         required=False,
@@ -1015,7 +1018,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     confirm_mx.add_argument(
         "--edit", default=None, help="Path to an import_review_edit.v1 JSON (single-proposal edit)."
     )
-    confirm_p.add_argument("--source-root", required=False, default=None, help="Source root directory.")
+    confirm_p.add_argument(
+        "--source-root", required=False, default=None, help="Source root directory."
+    )
     confirm_p.add_argument(
         "--import-id", required=False, default=None, help="Override parent review job id."
     )
@@ -1040,9 +1045,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     review_p = sub.add_parser("review", help="Bounded read of a review queue.")
     review_p.add_argument("--import-id", required=True, help="Parent review job id.")
     review_p.add_argument("--offset", type=int, default=0, help="Zero-based page offset.")
-    review_p.add_argument(
-        "--limit", type=int, default=20, help="Page size (clamped to 1..100)."
-    )
+    review_p.add_argument("--limit", type=int, default=20, help="Page size (clamped to 1..100).")
     review_p.add_argument(
         "--state",
         action="append",
@@ -1053,12 +1056,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     # --- reviews (additive): discover persisted review jobs ---
     reviews_p = sub.add_parser("reviews", help="Discover persisted parent review jobs.")
-    reviews_p.add_argument(
-        "--after", default=None, help="Exclusive cursor import_id."
-    )
-    reviews_p.add_argument(
-        "--limit", type=int, default=20, help="Page size (clamped to 1..100)."
-    )
+    reviews_p.add_argument("--after", default=None, help="Exclusive cursor import_id.")
+    reviews_p.add_argument("--limit", type=int, default=20, help="Page size (clamped to 1..100).")
     reviews_p.add_argument("--json", action="store_true")
 
     # --- validate (additive) ---
@@ -1082,12 +1081,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Pin the attachment to a proposal (enables deselected-attachment preview).",
     )
-    preview_p.add_argument("--source-root", required=False, default=None, help="Source root directory.")
+    preview_p.add_argument(
+        "--source-root", required=False, default=None, help="Source root directory."
+    )
     preview_p.add_argument(
         "--output", required=False, default=None, help="- for stdout raw bytes, or an output path."
     )
     preview_p.add_argument(
-        "--metadata-output", required=False, default=None, help="Path to write preview metadata JSON."
+        "--metadata-output",
+        required=False,
+        default=None,
+        help="Path to write preview metadata JSON.",
     )
     preview_p.add_argument("--json", action="store_true")
 

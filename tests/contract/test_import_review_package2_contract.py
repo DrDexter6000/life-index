@@ -502,7 +502,7 @@ def test_run_batch_mid_write_failure_fully_compensates(
 
 
 def test_run_batch_mid_write_failure_child_and_manifest_converge_to_rolled_back(
-    tmp_path: Path,
+    isolated_data_dir: Path, tmp_path: Path,
 ) -> None:
     """A fully compensated mid-write failure leaves ONE durable recovery truth.
 
@@ -517,8 +517,7 @@ def test_run_batch_mid_write_failure_child_and_manifest_converge_to_rolled_back(
     job lingering behind a rolled_back manifest. Repeated status is a stable
     no-op. This is the focused contract for the stale-ledger overwrite.
     """
-    data_dir = tmp_path / "Life-Index"
-    data_dir.mkdir(parents=True, exist_ok=True)
+    data_dir = isolated_data_dir
     src = tmp_path / "photos"
     _make_jpeg(src / "a.jpg", color=(1, 2, 3))
     _make_jpeg(src / "b.jpg", color=(4, 5, 6), date_original="2024:07:01 09:00:00")

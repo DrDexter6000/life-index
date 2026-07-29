@@ -36,9 +36,7 @@ def group_source_fingerprint(member_fingerprints: list[str]) -> str:
     """
     if len(member_fingerprints) == 1:
         return member_fingerprints[0]
-    return sha256_hash(
-        "life-index.photo-group.v1\0" + ",".join(sorted(member_fingerprints))
-    )
+    return sha256_hash("life-index.photo-group.v1\0" + ",".join(sorted(member_fingerprints)))
 
 
 # Backwards-compatible private alias used by older callers.
