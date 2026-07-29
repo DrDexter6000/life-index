@@ -2410,15 +2410,22 @@ child batch）的 status 字段不变。
 `IMPORT_ROLLBACK_PARENT_NOT_ALLOWED`：parent review job 不可整体回滚，应回滚其
 child batch job。child batch job 的 rollback **在 parent 的 per-parent lock 内**执行
 （与 `run` 同一把锁，固定锁序为 ledger → parent → journals）：先做 plan/ledger authority
-reconciliation，再执行既有 checksum-guarded child rollback，然后用 child 自身精确
-`proposal_ids` 把对应 proposal 恢复 `confirmed`——投影由本 child 实际成员驱动，绝不
+reconciliation，再把 child 自身精确 `proposal_ids` durable 投影为 `batching` +
+`active_child_id=<child>` + `recovery_required=true`（一次 `queue_revision` 递增），之后才执行既有
+checksum-guarded child rollback，然后用同一 membership 把对应 proposal 恢复 `confirmed`——
+投影由本 child 实际成员驱动，绝不
 复用 parent 的上一次选择。成功后 rescan 仍识别 `confirmed` / `imported`，被 rollback
 恢复的 `confirmed` 不重复。无 parent 的 legacy / standalone batch job 使用
 ledger → journals 锁序；不创建新 lock/store。删除前 manifest 与 child ledger 都先 durable
 写入 `rollback_in_progress` + `rollback_retryable == true`；中途 unlink 失败返回 retryable
 `IMPORT_ROLLBACK_INTERRUPTED`，parent 保持 `batching` + `recovery_required`，重试跳过已缺失的
 owned target、重新验证仍存在目标后继续。仅所有删除完成且 manifest / ledger 收敛到
-`rolled_back` 后，parent 才恢复 `confirmed`。
+`rolled_back` 后，parent 才恢复 `confirmed`（再递增一次 `queue_revision`）。若在 child 开始前
+中断，status 看到仍有效的 committed child 会恢复 `imported` 并清除 marker；若 child 已
+`rolled_back`、但 final parent 投影前中断，status 会在确认 owned artifacts 已消失后恢复
+`confirmed` 并清除 marker。首次 rollback 在任何删除 intent 前因 checksum 等 non-retryable
+校验失败，会撤销本次 pending 投影并恢复 `imported`；从 durable
+`rollback_in_progress` 开始的 retry 若失败则继续 fail closed 保持 recovery。
 
 #### Review/batch additive 错误码
 

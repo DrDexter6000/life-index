@@ -2301,6 +2301,72 @@ def query_review_status(import_id: str, data_dir: Path) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _project_parent_rollback_pending(
+    data_dir: Path,
+    parent_id: str,
+    child_id: str,
+    child_proposal_ids: list[str],
+) -> bool:
+    """Durably mark a child's exact membership as rollback-pending.
+
+    The caller holds the parent's per-parent lock. This projection must precede
+    the child's rollback intent/deletes so a restart can distinguish a rollback
+    attempt from a settled imported batch. Returns True only when this call
+    introduced the parent-visible pending transition.
+    """
+    ledger = _read_ledger(data_dir)
+    parent = _get_job(ledger, parent_id)
+    if not isinstance(parent, dict) or parent.get("kind") != "review":
+        return False
+    before = {field: parent.get(field) for field in _QUEUE_VISIBLE_FIELDS}
+    proposal_states = dict(parent.get("proposal_states", {}) or {})
+    for proposal_id in child_proposal_ids:
+        if proposal_states.get(proposal_id) == STATE_IMPORTED:
+            proposal_states[proposal_id] = STATE_BATCHING
+    parent["proposal_states"] = proposal_states
+    parent["active_child_id"] = child_id
+    parent["recovery_required"] = True
+    after = {field: parent.get(field) for field in _QUEUE_VISIBLE_FIELDS}
+    changed = before != after
+    if changed:
+        _bump_queue(parent)
+        parent["updated_at"] = _now_iso()
+        _write_ledger(data_dir, ledger)
+    return changed
+
+
+def _restore_parent_after_predelete_rollback_refusal(
+    data_dir: Path,
+    parent_id: str,
+    child_id: str,
+    child_proposal_ids: list[str],
+) -> None:
+    """Undo this call's pending projection after a first-attempt refusal.
+
+    This is only used when the child began ``committed`` and the runner refused
+    before durable delete intent. Retry failures that began from rollback
+    recovery never use this path and remain fail-closed.
+    """
+    ledger = _read_ledger(data_dir)
+    parent = _get_job(ledger, parent_id)
+    if not isinstance(parent, dict) or parent.get("kind") != "review":
+        return
+    before = {field: parent.get(field) for field in _QUEUE_VISIBLE_FIELDS}
+    proposal_states = dict(parent.get("proposal_states", {}) or {})
+    for proposal_id in child_proposal_ids:
+        if proposal_states.get(proposal_id) == STATE_BATCHING:
+            proposal_states[proposal_id] = STATE_IMPORTED
+    parent["proposal_states"] = proposal_states
+    if parent.get("active_child_id") == child_id:
+        parent["active_child_id"] = None
+        parent["recovery_required"] = False
+    after = {field: parent.get(field) for field in _QUEUE_VISIBLE_FIELDS}
+    if before != after:
+        _bump_queue(parent)
+        parent["updated_at"] = _now_iso()
+        _write_ledger(data_dir, ledger)
+
+
 def _project_parent_after_child_rollback(
     data_dir: Path, parent_id: str, child_proposal_ids: list[str]
 ) -> None:
@@ -2375,6 +2441,18 @@ def execute_review_rollback(import_id: str, data_dir: Path) -> dict[str, Any]:
             pre_ledger = _read_ledger(data_dir)
             if _reconcile_review_authority_locked(pre_ledger, parent_id, data_dir):
                 _write_ledger(data_dir, pre_ledger)
+            durable_child = _get_job(pre_ledger, import_id)
+            rollback_started_from = (
+                durable_child.get("state")
+                if isinstance(durable_child, dict)
+                else None
+            )
+            pending_introduced = _project_parent_rollback_pending(
+                data_dir,
+                parent_id,
+                import_id,
+                child_proposal_ids,
+            )
 
             # Checksum-guarded child rollback takes the shared journals lock only
             # for its final queue/revalidate/unlink section. The global order is
@@ -2387,13 +2465,29 @@ def execute_review_rollback(import_id: str, data_dir: Path) -> dict[str, Any]:
                     data_dir, parent_id, child_proposal_ids
                 )
             else:
+                durable_after = _get_job(_read_ledger(data_dir), import_id)
+                first_attempt_predelete_refusal = (
+                    pending_introduced
+                    and rollback_started_from == "committed"
+                    and isinstance(durable_after, dict)
+                    and durable_after.get("state") == "rollback_failed"
+                    and durable_after.get("rollback_retryable") is False
+                )
                 # A caught mid-delete interruption is durable retryable recovery,
-                # not a settled imported batch. Project the parent fail-closed
-                # under the same lock; non-retryable pre-delete failures remain
-                # unchanged because reconciliation will not select them.
-                recovery_ledger = _read_ledger(data_dir)
-                if _reconcile_parent(recovery_ledger, parent_id, data_dir):
-                    _write_ledger(data_dir, recovery_ledger)
+                # not a settled imported batch. A non-retryable refusal on the
+                # first attempt happened before delete intent, so undo only the
+                # pending projection introduced by this call.
+                if first_attempt_predelete_refusal:
+                    _restore_parent_after_predelete_rollback_refusal(
+                        data_dir,
+                        parent_id,
+                        import_id,
+                        child_proposal_ids,
+                    )
+                else:
+                    recovery_ledger = _read_ledger(data_dir)
+                    if _reconcile_parent(recovery_ledger, parent_id, data_dir):
+                        _write_ledger(data_dir, recovery_ledger)
             return result
 
     # Legacy / standalone batch job (no parent review job) — unchanged path.
