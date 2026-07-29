@@ -36,8 +36,9 @@ from tools.ingest.schemas import (
     RUN_SCHEMA_VERSION,
     STATUS_SCHEMA_VERSION,
 )
+from tools.lib.config import FILE_LOCK_TIMEOUT_DEFAULT
 from tools.lib.pending_writes import mark_pending
-from tools.lib.file_lock import FileLock
+from tools.lib.file_lock import FileLock, LockTimeoutError, get_journals_lock_path
 
 
 class ImportLedgerCorruptError(RuntimeError):
@@ -69,9 +70,10 @@ def _ledger_transaction(data_dir: Path) -> Iterator[None]:
     """Hold the one cross-process import-ledger lock, re-entrantly per context.
 
     Lock order is always ledger lock first, then an optional per-parent
-    ``review.lock``. Public runner/review transactions enter here before taking
-    a parent lock. Nested helpers reuse the outer ledger lock rather than trying
-    to acquire the non-reentrant file lock again.
+    ``review.lock``, then the shared journals lock when rollback reaches its
+    final delete critical section. Public runner/review transactions enter here
+    before taking narrower locks. Nested helpers reuse the outer ledger lock
+    rather than trying to acquire the non-reentrant file lock again.
     """
     key = str(data_dir.resolve())
     stack = _LEDGER_LOCK_STACK.get()
@@ -814,6 +816,8 @@ def execute_rollback(
     to_delete: list[dict[str, Any]] = []
     staging_to_delete: list[Path] = []
     blocked: list[dict[str, Any]] = []
+    target_baselines: dict[str, dict[str, Any] | None] = {}
+    staging_baselines: dict[str, dict[str, Any] | None] = {}
 
     for file_entry in manifest.get("created_files", []):
         if not file_entry.get("created_by_import", False):
@@ -828,16 +832,15 @@ def execute_rollback(
         if proof is not None:
             expected_identity = (proof["device"], proof["inode"])
             staging_path = safe_staging_paths[rel_path]
-            if staging_path.exists():
-                staging_identity = _path_identity(staging_path)
-                staging_sha256 = f"sha256:{_file_sha256(staging_path)}"
-                staging_size = staging_path.stat().st_size
+            staging_evidence = _rollback_path_evidence(staging_path)
+            staging_baselines[rel_path] = staging_evidence
+            if staging_evidence is not None:
                 if (
-                    staging_identity != expected_identity
-                    or staging_sha256 != expected_sha256
+                    staging_evidence["identity"] != expected_identity
+                    or staging_evidence["sha256"] != expected_sha256
                     or (
                         expected_size is not None
-                        and staging_size != expected_size
+                        and staging_evidence["size"] != expected_size
                     )
                 ):
                     blocked.append(
@@ -849,13 +852,15 @@ def execute_rollback(
                 else:
                     staging_to_delete.append(staging_path)
 
-        if not file_path.exists():
+        target_evidence = _rollback_path_evidence(file_path)
+        target_baselines[rel_path] = target_evidence
+        if target_evidence is None:
             # Already removed — idempotent, skip
             continue
 
-        current_sha256 = f"sha256:{_file_sha256(file_path)}"
-        current_size = file_path.stat().st_size
-        if proof is not None and _path_identity(file_path) != (
+        current_sha256 = target_evidence["sha256"]
+        current_size = target_evidence["size"]
+        if proof is not None and target_evidence["identity"] != (
             proof["device"],
             proof["inode"],
         ):
@@ -889,62 +894,102 @@ def execute_rollback(
                     "rel_path": rel_path,
                     "path": file_path,
                     "kind": file_entry.get("kind", ""),
+                    "identity": target_evidence["identity"],
                 }
             )
 
     # --- 6. If any blocked, refuse entire rollback (PRD §10) ---
     if blocked:
-        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        manifest["state"] = "rollback_failed"
-        manifest["errors"] = [
-            f"Rollback ownership/content mismatch: {b['rel_path']} ({b['reason']})"
-            for b in blocked
-        ]
-        _write_manifest(manifest_abs, manifest)
-
-        jobs[import_id]["state"] = "rollback_failed"
-        jobs[import_id]["updated_at"] = now_iso
-        _write_ledger(data_dir, ledger)
-
-        return _err(
-            "IMPORT_ROLLBACK_CHECKSUM_MISMATCH",
-            (
-                f"Rollback blocked: {len(blocked)} file(s) have "
-                "ownership or content mismatches."
-            ),
-            {"blocked_files": blocked},
-            retryable=False,
+        return _record_rollback_mismatch(
+            data_dir=data_dir,
+            import_id=import_id,
+            manifest_abs=manifest_abs,
+            manifest=manifest,
+            ledger=ledger,
+            blocked=blocked,
         )
 
-    # --- 7. Queue journal removals before deletion ---
-    # A successful rollback must let the next normal search remove any stale
-    # FTS rows. Queue only after all path/checksum validation has passed, and
-    # before deletion so a queue persistence failure cannot leave an untracked
-    # source deletion behind.
+    # --- 7. Serialize the final rollback critical section with journal edits ---
+    # Global order: import ledger -> optional parent review -> journals. Initial
+    # validation stays outside this innermost lock; after acquisition we queue
+    # pending removals, revalidate every target/staging fact, then unlink.
+    journals_lock = FileLock(
+        get_journals_lock_path(), timeout=FILE_LOCK_TIMEOUT_DEFAULT
+    )
     try:
-        for file_entry in manifest.get("created_files", []):
-            if file_entry.get("created_by_import", False) and file_entry.get("kind") == "journal":
-                mark_pending(file_entry["rel_path"])
-    except OSError as exc:
+        journals_lock.acquire(blocking=True)
+    except LockTimeoutError:
         return _err(
             "IMPORT_INTERNAL_ERROR",
-            "Rollback could not queue journal removals for index update.",
-            {"import_id": import_id, "error": str(exc)},
+            "Rollback could not acquire the journals lock.",
+            {"import_id": import_id, "reason": "journals_lock_timeout"},
+            retryable=True,
+        )
+    except OSError:
+        return _err(
+            "IMPORT_INTERNAL_ERROR",
+            "Rollback could not acquire the journals lock.",
+            {"import_id": import_id, "reason": "journals_lock_unavailable"},
             retryable=True,
         )
 
-    # --- 8. Third pass: delete all matching files ---
-    deleted_count = 0
-    for entry in to_delete:
-        entry["path"].unlink()
-        deleted_count += 1
-    for staging_path in dict.fromkeys(staging_to_delete):
-        if staging_path.exists():
-            staging_path.unlink()
+    try:
+        # A successful rollback must let the next normal search remove stale FTS
+        # rows. Queue under the journals lock, before any deletion.
         try:
-            staging_path.parent.rmdir()
-        except OSError:
-            pass
+            for file_entry in manifest.get("created_files", []):
+                if (
+                    file_entry.get("created_by_import", False)
+                    and file_entry.get("kind") == "journal"
+                ):
+                    mark_pending(file_entry["rel_path"])
+        except OSError as exc:
+            return _err(
+                "IMPORT_INTERNAL_ERROR",
+                "Rollback could not queue journal removals for index update.",
+                {"import_id": import_id, "error": str(exc)},
+                retryable=True,
+            )
+
+        # Immediately before the first unlink, repeat confinement, presence,
+        # filesystem identity, checksum, and size validation for EVERY manifest
+        # target and prepared-ownership staging path. Any drift aborts the whole
+        # rollback before a single file is deleted.
+        final_blocked = _final_rollback_revalidation(
+            data_dir=data_dir,
+            manifest=manifest,
+            safe_paths=safe_paths,
+            safe_staging_paths=safe_staging_paths,
+            ownership_proofs=ownership_proofs,
+            target_baselines=target_baselines,
+            staging_baselines=staging_baselines,
+            to_delete=to_delete,
+            staging_to_delete=staging_to_delete,
+        )
+        if final_blocked:
+            return _record_rollback_mismatch(
+                data_dir=data_dir,
+                import_id=import_id,
+                manifest_abs=manifest_abs,
+                manifest=manifest,
+                ledger=ledger,
+                blocked=final_blocked,
+            )
+
+        # --- 8. Delete only the unchanged, revalidated files ---
+        deleted_count = 0
+        for entry in to_delete:
+            entry["path"].unlink()
+            deleted_count += 1
+        for staging_path in dict.fromkeys(staging_to_delete):
+            if staging_path.exists():
+                staging_path.unlink()
+            try:
+                staging_path.parent.rmdir()
+            except OSError:
+                pass
+    finally:
+        journals_lock.release()
 
     # --- 9. Preserve manifest as audit evidence, update ledger ---
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -1356,6 +1401,153 @@ def _path_identity(path: Path) -> tuple[int, int]:
     """Return the filesystem identity used by hard-link ownership proofs."""
     stat = path.stat()
     return stat.st_dev, stat.st_ino
+
+
+def _rollback_path_evidence(path: Path) -> dict[str, Any] | None:
+    """Snapshot the identity, content hash, and size used by rollback validation."""
+    if not path.exists():
+        return None
+    return {
+        "identity": _path_identity(path),
+        "sha256": f"sha256:{_file_sha256(path)}",
+        "size": path.stat().st_size,
+    }
+
+
+def _final_rollback_revalidation(
+    *,
+    data_dir: Path,
+    manifest: dict[str, Any],
+    safe_paths: dict[str, Path],
+    safe_staging_paths: dict[str, Path],
+    ownership_proofs: dict[str, dict[str, Any]],
+    target_baselines: dict[str, dict[str, Any] | None],
+    staging_baselines: dict[str, dict[str, Any] | None],
+    to_delete: list[dict[str, Any]],
+    staging_to_delete: list[Path],
+) -> list[dict[str, Any]]:
+    """Revalidate every rollback target immediately before the first unlink."""
+    blocked: list[dict[str, Any]] = []
+    delete_rel_paths = {entry["rel_path"] for entry in to_delete}
+    staging_delete_paths = set(staging_to_delete)
+
+    for file_entry in manifest.get("created_files", []):
+        if not file_entry.get("created_by_import", False):
+            continue
+        rel_path = file_entry["rel_path"]
+        expected_sha256 = file_entry["sha256_after"]
+        expected_size = file_entry.get("size_bytes")
+        expected_path = safe_paths[rel_path]
+        current_path = _resolve_confined_file_path(data_dir, rel_path)
+        if current_path is None or current_path != expected_path:
+            blocked.append(
+                {"rel_path": rel_path, "reason": "target_path_changed_after_validation"}
+            )
+            continue
+        try:
+            target_evidence = _rollback_path_evidence(current_path)
+        except OSError:
+            blocked.append(
+                {"rel_path": rel_path, "reason": "target_unreadable_after_validation"}
+            )
+            continue
+        if target_evidence != target_baselines.get(rel_path):
+            blocked.append(
+                {"rel_path": rel_path, "reason": "target_changed_after_validation"}
+            )
+            continue
+
+        proof = ownership_proofs.get(rel_path)
+        if rel_path in delete_rel_paths and target_evidence is not None:
+            if (
+                target_evidence["sha256"] != expected_sha256
+                or (
+                    expected_size is not None
+                    and target_evidence["size"] != expected_size
+                )
+                or (
+                    proof is not None
+                    and target_evidence["identity"]
+                    != (proof["device"], proof["inode"])
+                )
+            ):
+                blocked.append(
+                    {"rel_path": rel_path, "reason": "target_revalidation_mismatch"}
+                )
+                continue
+
+        if proof is None:
+            continue
+        staging_rel = proof["staging_rel_path"]
+        expected_staging_path = safe_staging_paths[rel_path]
+        current_staging_path = _resolve_confined_file_path(data_dir, staging_rel)
+        if (
+            current_staging_path is None
+            or current_staging_path != expected_staging_path
+        ):
+            blocked.append(
+                {"rel_path": rel_path, "reason": "staging_path_changed_after_validation"}
+            )
+            continue
+        try:
+            staging_evidence = _rollback_path_evidence(current_staging_path)
+        except OSError:
+            blocked.append(
+                {"rel_path": rel_path, "reason": "staging_unreadable_after_validation"}
+            )
+            continue
+        if staging_evidence != staging_baselines.get(rel_path):
+            blocked.append(
+                {"rel_path": rel_path, "reason": "staging_changed_after_validation"}
+            )
+            continue
+        if current_staging_path in staging_delete_paths and staging_evidence is not None:
+            if (
+                staging_evidence["identity"] != (proof["device"], proof["inode"])
+                or staging_evidence["sha256"] != expected_sha256
+                or (
+                    expected_size is not None
+                    and staging_evidence["size"] != expected_size
+                )
+            ):
+                blocked.append(
+                    {"rel_path": rel_path, "reason": "staging_revalidation_mismatch"}
+                )
+
+    return blocked
+
+
+def _record_rollback_mismatch(
+    *,
+    data_dir: Path,
+    import_id: str,
+    manifest_abs: Path,
+    manifest: dict[str, Any],
+    ledger: dict[str, Any],
+    blocked: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Persist one fail-closed rollback mismatch result."""
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    manifest["state"] = "rollback_failed"
+    manifest["errors"] = [
+        f"Rollback ownership/content mismatch: {item['rel_path']} ({item['reason']})"
+        for item in blocked
+    ]
+    _write_manifest(manifest_abs, manifest)
+
+    ledger["jobs"][import_id]["state"] = "rollback_failed"
+    ledger["jobs"][import_id]["updated_at"] = now_iso
+    _write_ledger(data_dir, ledger)
+
+    return _err(
+        "IMPORT_ROLLBACK_CHECKSUM_MISMATCH",
+        (
+            f"Rollback blocked: {len(blocked)} file(s) have "
+            "ownership or content mismatches."
+        ),
+        {"blocked_files": blocked},
+        retryable=False,
+    )
 
 
 def _ok(data: dict[str, Any]) -> dict[str, Any]:

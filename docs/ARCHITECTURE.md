@@ -632,10 +632,10 @@ additive 一个可恢复照片审阅队列。其权威架构有三条不变量�
   read-modify-write；`ledger.json` 只用同目录 temp + fsync + atomic replace 更新，已存在
   但 malformed/torn/unreadable 时 fail closed，绝不重置为空。需要 parent 投影的事务再
   取 `.life-index/import-jobs/<parent_id>/review.lock`，全局固定锁序为 **ledger →
-  parent**；进程内嵌套 helper 复用外层 ledger transaction，避免重入死锁。`confirm` /
-  `rebind` / `run` / `status` / child `rollback` / reconciliation 均遵守该顺序。child
-  rollback 的 parent 投影由 child 自身精确 `proposal_ids` 驱动，绝不复用 parent 上一次
-  选择。
+  parent → journals**（journals 仅为 rollback 最终删除段的 innermost lock）；进程内嵌套
+  helper 复用外层 ledger transaction，避免重入死锁。`confirm` / `rebind` / `run` /
+  `status` / child `rollback` / reconciliation 均遵守该顺序。child rollback 的 parent
+  投影由 child 自身精确 `proposal_ids` 驱动，绝不复用 parent 上一次选择。
 
 - **Crash-safe plan↔ledger 更新（intent/reconciliation）**：ledger 是唯一权威（不引入
   第二个 store）。`confirm` 按 **durable intent → atomic plan replace → finalize** 三步
@@ -654,7 +654,9 @@ additive 一个可恢复照片审阅队列。其权威架构有三条不变量�
   该 staging inode 以 create-only hard link 发布。故 post-publish/pre-manifest crash 可
   在重启后由 identity + checksum 证明并补偿 owned artifact；相同 bytes 但不同 identity
   的 preexisting/racing target 保留。committed manifest validation 与 rollback 都对新
-  ownership proof fail closed；commit/成功 rollback 清除 staging。该证据是
+  ownership proof fail closed；rollback 初检后在 shared journals lock 内排队 pending，
+  紧邻首次 unlink 前对所有 target / staging 再做 confinement / identity / hash / size
+  复检，任一变化则零删除失败；commit/成功 rollback 清除 staging。该证据是
   `import_rollback_manifest.v1` 的 additive 字段，不增加第二权威或 schema break。
 
 - **Immutable provenance 权威**：source facts（adapter/provenance、content SHA-256、size、

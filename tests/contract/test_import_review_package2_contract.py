@@ -734,6 +734,182 @@ def test_child_rollback_preserves_racing_identical_non_owned_target(
     _no_staging_leftovers(data_dir)
 
 
+def test_child_rollback_preserves_concurrent_journal_replacement_between_check_and_unlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A journal replaced after validation must survive with every sibling artifact."""
+    import tools.ingest.runner as runner
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    proposal_id = plan["proposals"][0]["proposal_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+    child_id = _ok(_run_batch(data_dir, parent_id, src))["data"]["import_id"]
+
+    manifest = _manifest(data_dir, child_id)
+    journal_entry = next(
+        entry for entry in manifest["created_files"] if entry["kind"] == "journal"
+    )
+    sibling_entry = next(
+        entry for entry in manifest["created_files"] if entry["kind"] == "attachment"
+    )
+    journal_path = data_dir / journal_entry["rel_path"]
+    sibling_path = data_dir / sibling_entry["rel_path"]
+    replacement = b"concurrent editor replacement"
+    real_mark_pending = runner.mark_pending
+    replaced = False
+
+    def replace_validated_journal(rel_path: str) -> None:
+        nonlocal replaced
+        if not replaced:
+            replacement_path = journal_path.with_suffix(".replacement")
+            replacement_path.write_bytes(replacement)
+            os.replace(replacement_path, journal_path)
+            replaced = True
+        real_mark_pending(rel_path)
+
+    monkeypatch.setattr(runner, "mark_pending", replace_validated_journal)
+
+    result = review.execute_review_rollback(import_id=child_id, data_dir=data_dir)
+
+    assert replaced is True
+    assert result["success"] is False
+    assert result["error"]["code"] == "IMPORT_ROLLBACK_CHECKSUM_MISMATCH"
+    assert result["error"]["details"]["blocked_files"]
+    assert journal_path.read_bytes() == replacement
+    assert sibling_path.exists(), "final revalidation failure must precede every unlink"
+    assert _ledger(data_dir)["jobs"][child_id]["state"] != "rolled_back"
+    assert _status(data_dir, parent_id)["proposal_states"][proposal_id] != "confirmed"
+
+
+def test_child_rollback_revalidates_prepared_staging_identity_before_any_unlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Prepared staging replacement with identical bytes must fail closed."""
+    import tools.ingest.runner as runner
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+    crashed = _run_batch_crashing_after_publish(data_dir, parent_id, src, "journal")
+    assert crashed.returncode == 91
+
+    child_id = next(
+        job_id
+        for job_id, job in _ledger(data_dir)["jobs"].items()
+        if job.get("parent_review_job_id") == parent_id
+    )
+    manifest = _manifest(data_dir, child_id)
+    prepared = next(
+        entry
+        for entry in manifest["created_files"]
+        if entry["kind"] == "journal" and entry["publication_state"] == "prepared"
+    )
+    staging_path = data_dir / prepared["ownership_proof"]["staging_rel_path"]
+    target_paths = [
+        data_dir / entry["rel_path"]
+        for entry in manifest["created_files"]
+        if entry.get("created_by_import") is True
+    ]
+    assert all(path.exists() for path in target_paths)
+    original_staging_bytes = staging_path.read_bytes()
+    real_mark_pending = runner.mark_pending
+    replaced = False
+
+    def replace_prepared_staging(rel_path: str) -> None:
+        nonlocal replaced
+        if not replaced:
+            replacement_path = staging_path.with_suffix(".replacement")
+            replacement_path.write_bytes(original_staging_bytes)
+            os.replace(replacement_path, staging_path)
+            replaced = True
+        real_mark_pending(rel_path)
+
+    monkeypatch.setattr(runner, "mark_pending", replace_prepared_staging)
+
+    result = runner.execute_rollback(import_id=child_id, data_dir=data_dir)
+
+    assert replaced is True
+    assert result["success"] is False
+    assert result["error"]["code"] == "IMPORT_ROLLBACK_CHECKSUM_MISMATCH"
+    assert all(path.exists() for path in target_paths)
+    assert staging_path.read_bytes() == original_staging_bytes
+    assert _ledger(data_dir)["jobs"][child_id]["state"] != "rolled_back"
+
+
+def test_child_rollback_journals_lock_timeout_deletes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Lock acquisition failure is retryable, path-safe, and mutation-free."""
+    import tools.ingest.runner as runner
+    from tools.lib.file_lock import LockTimeoutError, get_journals_lock_path
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+    child_id = _ok(_run_batch(data_dir, parent_id, src))["data"]["import_id"]
+    target_paths = [
+        data_dir / entry["rel_path"]
+        for entry in _manifest(data_dir, child_id)["created_files"]
+        if entry.get("created_by_import") is True
+    ]
+
+    real_file_lock = runner.FileLock
+    journals_lock_path = get_journals_lock_path()
+
+    class TimedOutJournalsLock:
+        def __init__(self, path: Path, timeout: float):
+            self.path = Path(path)
+            self.timeout = timeout
+            self.delegate = real_file_lock(path, timeout=timeout)
+
+        def acquire(self, blocking: bool = True) -> bool:
+            if self.path != journals_lock_path:
+                return self.delegate.acquire(blocking=blocking)
+            assert blocking is True
+            raise LockTimeoutError("C:\\private\\journals.lock", self.timeout)
+
+        def release(self) -> None:
+            self.delegate.release()
+
+        def __enter__(self) -> "TimedOutJournalsLock":
+            self.delegate.__enter__()
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            self.delegate.__exit__(*args)
+
+    monkeypatch.setattr(runner, "FileLock", TimedOutJournalsLock)
+
+    result = runner.execute_rollback(import_id=child_id, data_dir=data_dir)
+
+    assert result["success"] is False
+    assert result["error"]["code"] == "IMPORT_INTERNAL_ERROR"
+    assert result["error"]["retryable"] is True
+    assert result["error"]["details"] == {
+        "import_id": child_id,
+        "reason": "journals_lock_timeout",
+    }
+    assert "private" not in json.dumps(result)
+    assert all(path.exists() for path in target_paths)
+    assert _ledger(data_dir)["jobs"][child_id]["state"] == "committed"
+
+
 # ===================================================================
 # Crash-window reconciliation (under the per-parent lock)
 # ===================================================================

@@ -2322,10 +2322,12 @@ def execute_review_rollback(import_id: str, data_dir: Path) -> dict[str, Any]:
     A child batch job is rolled back and re-projected onto its parent **under the
     parent's per-parent lock** — the same lock ``run`` takes — so the parent↔
     child lock order stays consistent and the projection cannot race a concurrent
-    confirm/run/status. The plan/ledger authority is reconciled first, then the
-    checksum-guarded child rollback runs, then the exact ``child.proposal_ids``
-    projection restores the touched proposals to ``confirmed``. This is what
-    makes "rollback restores confirmed" observable via ``import status``.
+    confirm/run/status. The rollback's final delete section then takes the shared
+    journals lock innermost. The plan/ledger authority is reconciled first, then
+    the checksum-guarded child rollback runs, then the exact
+    ``child.proposal_ids`` projection restores the touched proposals to
+    ``confirmed``. This is what makes "rollback restores confirmed" observable
+    via ``import status``.
     """
     ledger = _read_ledger(data_dir)
     job = _get_job(ledger, import_id)
@@ -2356,9 +2358,9 @@ def execute_review_rollback(import_id: str, data_dir: Path) -> dict[str, Any]:
             if _reconcile_review_authority_locked(pre_ledger, parent_id, data_dir):
                 _write_ledger(data_dir, pre_ledger)
 
-            # Checksum-guarded child rollback. execute_rollback holds no lock of
-            # its own, so running it under the parent lock preserves a single
-            # lock order (parent only) shared with run.
+            # Checksum-guarded child rollback takes the shared journals lock only
+            # for its final queue/revalidate/unlink section. The global order is
+            # therefore ledger -> parent -> journals.
             result = execute_rollback(import_id=import_id, data_dir=data_dir)
 
             # Exact child.proposal_ids projection under the same lock.

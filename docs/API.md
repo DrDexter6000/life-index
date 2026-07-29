@@ -1992,6 +1992,10 @@ temp + fsync + atomic replace 更新。已存在但 malformed/torn/unreadable �
 `IMPORT_ROLLBACK_CHECKSUM_MISMATCH`，不会删除部分文件。`prepared` 条目若遇到
 create-only racing target 且 identity 不同，该 target 被证明不是 import-owned，rollback
 只清理自己的 staging 并保留该 target，即使两者 bytes/checksum 相同。
+初检通过后，rollback 在既有 shared journals lock 内完成 pending queue、所有 target /
+staging 的最终 confinement / identity / SHA-256 / size 复检以及全部 unlink；任一最终
+证据变化都在第一次删除前 fail closed。journals lock timeout/unavailable 返回可重试的
+既有 `IMPORT_INTERNAL_ERROR`，删除数为零。
 
 rollback 还会 resolve 每个 manifest path，确认目标仍在 `LIFE_INDEX_DATA_DIR`
 内；路径遍历、绝对路径、非普通文件等 unsafe path 返回
@@ -2402,12 +2406,12 @@ child batch）的 status 字段不变。
 `import rollback --import-id <parent_id>` 明确返回
 `IMPORT_ROLLBACK_PARENT_NOT_ALLOWED`：parent review job 不可整体回滚，应回滚其
 child batch job。child batch job 的 rollback **在 parent 的 per-parent lock 内**执行
-（与 `run` 同一把锁，parent↔child 锁序一致）：先做 plan/ledger authority
+（与 `run` 同一把锁，固定锁序为 ledger → parent → journals）：先做 plan/ledger authority
 reconciliation，再执行既有 checksum-guarded child rollback，然后用 child 自身精确
 `proposal_ids` 把对应 proposal 恢复 `confirmed`——投影由本 child 实际成员驱动，绝不
 复用 parent 的上一次选择。成功后 rescan 仍识别 `confirmed` / `imported`，被 rollback
-恢复的 `confirmed` 不重复。无 parent 的 legacy / standalone batch job 走既有 unlocked
-rollback 路径不变。
+恢复的 `confirmed` 不重复。无 parent 的 legacy / standalone batch job 使用
+ledger → journals 锁序；不创建新 lock/store。
 
 #### Review/batch additive 错误码
 
