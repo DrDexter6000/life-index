@@ -1412,7 +1412,7 @@ def test_crash_window_no_child_restores_confirmed(tmp_path: Path) -> None:
     # (active_child_id + selected_proposal_ids set, proposals batching) and the
     # child batch job creation: the child job is missing, no manifest.
     ledger = _ledger(data_dir)
-    ledger["jobs"][parent_id]["active_child_id"] = f"{parent_id}#batch-vanished"
+    ledger["jobs"][parent_id]["active_child_id"] = f"{parent_id}#batch-900000001"
     ledger["jobs"][parent_id]["selected_proposal_ids"] = [pid]
     ledger["jobs"][parent_id]["proposal_states"][pid] = "batching"
     _save_ledger(data_dir, ledger)
@@ -1435,7 +1435,7 @@ def test_crash_window_running_with_evidence_compensates(tmp_path: Path) -> None:
     _confirm(data_dir, plan, src, tmp_path)
 
     # seed a running child with a created-file manifest pointing at a real file
-    child_id = f"{parent_id}#batch-running"
+    child_id = f"{parent_id}#batch-900000001"
     att_rel = "attachments/2024/06/import_deadbeefdead.jpg"
     payload = b"published-then-crashed attachment"
     att_abs = data_dir / att_rel
@@ -1529,7 +1529,7 @@ def test_crash_window_committed_ledger_missing_manifest_fails_closed(tmp_path: P
     pid = plan["proposals"][0]["proposal_id"]
     _confirm(data_dir, plan, src, tmp_path)
 
-    child_id = f"{parent_id}#batch-claimed"
+    child_id = f"{parent_id}#batch-900000001"
     ledger = _ledger(data_dir)
     ledger["jobs"][child_id] = {
         "kind": "batch", "parent_review_job_id": parent_id, "state": "committed",
@@ -1562,7 +1562,7 @@ def test_crash_window_committed_ledger_invalid_manifest_fails_closed(tmp_path: P
     _confirm(data_dir, plan, src, tmp_path)
 
     # build a committed manifest whose recorded hash does NOT match the artifact
-    child_id = f"{parent_id}#batch-invalid"
+    child_id = f"{parent_id}#batch-900000001"
     att_rel = "attachments/2024/06/import_deadbeefdead.jpg"
     att_abs = data_dir / att_rel
     att_abs.parent.mkdir(parents=True, exist_ok=True)

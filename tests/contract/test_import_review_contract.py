@@ -19,6 +19,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 ENVELOPE_SCHEMA_VERSION = "import_job.v1"
 
 
@@ -697,7 +699,7 @@ def test_import_run_batch_single_active_child(tmp_path: Path) -> None:
     # Seed an unsettled (running) child on the parent to simulate a live writer.
     ledger_path = data_dir / ".life-index" / "import-jobs" / "ledger.json"
     ledger = json.loads(ledger_path.read_text("utf-8"))
-    child_id = f"{parent_id}#batch-seeded"
+    child_id = f"{parent_id}#batch-900000001"
     ledger["jobs"][child_id] = {
         "kind": "batch",
         "parent_review_job_id": parent_id,
@@ -834,3 +836,461 @@ def test_import_run_batch_rollback_restores_confirmed(tmp_path: Path) -> None:
     assert status["active_child_id"] is None
     assert status["queue_counts"]["confirmed"] == 1
     assert status["queue_counts"]["imported"] == 0
+
+
+# ===================================================================
+# R1a: lexical import-id authority and validation-before-access order
+# ===================================================================
+
+_R1A_PARENT_ONLY_SURFACES = (
+    "confirm_override",
+    "edit",
+    "stage_override",
+    "review",
+    "rebind",
+    "preview",
+    "run_batch",
+    "runner_execute_run_confirm",
+)
+
+_R1A_PARENT_OR_CHILD_SURFACES = (
+    "status",
+    "review_rollback",
+    "runner_rollback",
+)
+
+_R1A_ALL_SURFACES = _R1A_PARENT_ONLY_SURFACES + _R1A_PARENT_OR_CHILD_SURFACES
+
+_R1A_CORE_INVALID_CASES = (
+    (None, "type"),
+    ("", "empty"),
+    ("é", "non_ascii"),
+    ("CON", "reserved_name"),
+    ("a" * 129 + "#batch-1", "child_parent_length"),
+    ("valid-parent#batch-0", "child_sequence"),
+    ("a" * 129, "length"),
+)
+
+
+def _r1a_invoke_surface(
+    surface: str,
+    import_id: Any,
+    data_dir: Path,
+    tmp_path: Path,
+) -> dict[str, Any]:
+    from tools.ingest import review, runner
+
+    missing_plan = str(tmp_path / "missing-plan.json")
+    missing_edit = str(tmp_path / "missing-edit.json")
+    if surface == "confirm_override":
+        if import_id is None:
+            typed_plan = tmp_path / "confirm-type-plan.json"
+            typed_plan.write_text(
+                json.dumps({"import_id": None, "proposals": []}),
+                encoding="utf-8",
+            )
+            return review.confirm_review(
+                plan_path=str(typed_plan),
+                data_dir=data_dir,
+            )
+        return review.confirm_review(
+            plan_path=missing_plan,
+            data_dir=data_dir,
+            parent_id_override=import_id,
+        )
+    if surface == "edit":
+        return review.edit_review(
+            edit_path=missing_edit,
+            parent_id=import_id,
+            expected_queue_revision=1,
+            data_dir=data_dir,
+        )
+    if surface == "stage_override":
+        if import_id is None:
+            typed_plan = tmp_path / "stage-type-plan.json"
+            typed_plan.write_text(
+                json.dumps({"import_id": None, "proposals": []}),
+                encoding="utf-8",
+            )
+            return review.stage_review(
+                plan_path=str(typed_plan),
+                data_dir=data_dir,
+                source_root=r"\\unreachable.invalid\photos",
+            )
+        return review.stage_review(
+            plan_path=missing_plan,
+            data_dir=data_dir,
+            source_root=r"\\unreachable.invalid\photos",
+            parent_id_override=import_id,
+        )
+    if surface == "review":
+        return review.review_queue(parent_id=import_id, data_dir=data_dir)
+    if surface == "rebind":
+        return review.rebind_source_root(
+            parent_id=import_id,
+            source_root=r"\\unreachable.invalid\photos",
+            data_dir=data_dir,
+        )
+    if surface == "preview":
+        return review.preview_attachment(
+            parent_id=import_id,
+            attachment_id="att-safe",
+            data_dir=data_dir,
+            source_root=r"\\unreachable.invalid\photos",
+            output=str(tmp_path / "outside-preview.bin"),
+            metadata_output=str(tmp_path / "outside-preview.json"),
+        )
+    if surface == "run_batch":
+        return review.run_batch(
+            parent_id=import_id,
+            data_dir=data_dir,
+            source_root=r"\\unreachable.invalid\photos",
+        )
+    if surface == "runner_execute_run_confirm":
+        if import_id is None:
+            typed_plan = tmp_path / "runner-type-plan.json"
+            typed_plan.write_text(
+                json.dumps({"import_id": None, "proposals": []}),
+                encoding="utf-8",
+            )
+            return runner.execute_run(
+                plan_path=str(typed_plan),
+                confirm_id="valid-confirm",
+                data_dir=data_dir,
+            )
+        return runner.execute_run(
+            plan_path=missing_plan,
+            confirm_id=import_id,
+            data_dir=data_dir,
+            source_root=r"\\unreachable.invalid\photos",
+        )
+    if surface == "status":
+        return review.query_review_status(import_id=import_id, data_dir=data_dir)
+    if surface == "review_rollback":
+        return review.execute_review_rollback(import_id=import_id, data_dir=data_dir)
+    if surface == "runner_rollback":
+        return runner.execute_rollback(import_id=import_id, data_dir=data_dir)
+    raise AssertionError(f"unknown R1a surface: {surface}")
+
+
+def _r1a_assert_invalid(result: dict[str, Any], reason: str, hostile: Any) -> None:
+    assert result == {
+        "success": False,
+        "data": None,
+        "error": {
+            "code": "IMPORT_ID_INVALID",
+            "message": "Import id is invalid.",
+            "details": {"reason": reason},
+            "retryable": False,
+        },
+    }
+    if isinstance(hostile, str) and hostile:
+        assert hostile not in json.dumps(result, ensure_ascii=False)
+
+
+def _r1a_assert_no_data_or_outside_writes(data_dir: Path, tmp_path: Path) -> None:
+    from tools.lib.file_lock import FileLock
+
+    lock_path = data_dir / ".life-index" / "import-jobs" / "ledger.lock"
+    allowed_dirs = {
+        data_dir / ".life-index",
+        data_dir / ".life-index" / "import-jobs",
+    }
+    found_dirs = {path for path in data_dir.rglob("*") if path.is_dir()}
+    found_files = {path for path in data_dir.rglob("*") if path.is_file()}
+    assert found_dirs <= allowed_dirs
+    assert found_files <= {lock_path}
+    assert not list(tmp_path.rglob("review.lock"))
+    assert not list(tmp_path.rglob("ledger.json"))
+    assert not list(tmp_path.rglob("rollback-manifest.json"))
+    assert not list(tmp_path.rglob("review-plan.json"))
+    assert not (tmp_path / "outside-preview.bin").exists()
+    assert not (tmp_path / "outside-preview.json").exists()
+    if lock_path.exists():
+        with FileLock(lock_path, timeout=0.2):
+            pass
+
+
+@pytest.mark.parametrize(
+    ("hostile", "reason"),
+    _R1A_CORE_INVALID_CASES,
+    ids=("type", "empty", "non-ascii", "reserved", "child-parent-length", "child-seq", "length"),
+)
+@pytest.mark.parametrize("surface", _R1A_ALL_SURFACES)
+def test_r1a_all_import_id_surfaces_reject_core_invalid_ids_before_access(
+    tmp_path: Path,
+    surface: str,
+    hostile: Any,
+    reason: str,
+) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir()
+
+    result = _r1a_invoke_surface(surface, hostile, data_dir, tmp_path)
+
+    _r1a_assert_invalid(result, reason, hostile)
+    _r1a_assert_no_data_or_outside_writes(data_dir, tmp_path)
+
+
+@pytest.mark.parametrize("surface", _R1A_PARENT_ONLY_SURFACES)
+def test_r1a_parent_only_surfaces_reject_canonical_child_before_access(
+    tmp_path: Path, surface: str
+) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir()
+    child_id = "valid-parent#batch-1"
+
+    result = _r1a_invoke_surface(surface, child_id, data_dir, tmp_path)
+
+    _r1a_assert_invalid(result, "child_syntax", child_id)
+    _r1a_assert_no_data_or_outside_writes(data_dir, tmp_path)
+
+
+def test_r1a_traversal_cli_fails_before_outside_review_lock_write(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir()
+    hostile = "../../../outside-authority"
+
+    result = _err(
+        _run_import(data_dir, "review", "--import-id", hostile, "--json")
+    )
+
+    assert result["success"] is False
+    assert result["data"] is None
+    assert result["error"] == {
+        "code": "IMPORT_ID_INVALID",
+        "message": "Import id is invalid.",
+        "details": {"reason": "syntax"},
+        "retryable": False,
+    }
+    assert hostile not in json.dumps(result, ensure_ascii=False)
+    _r1a_assert_no_data_or_outside_writes(data_dir, tmp_path)
+
+
+@pytest.mark.parametrize(
+    "hostile",
+    (
+        r"C:\outside-authority",
+        r"C:outside-authority",
+        r"\\unreachable.invalid\outside-authority",
+    ),
+    ids=("windows-absolute", "drive-relative", "unc"),
+)
+def test_r1a_windows_path_forms_are_rejected_before_filesystem_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hostile: str,
+) -> None:
+    from tools.ingest import review
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir()
+
+    def forbidden_parent_lock(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("hostile import id reached a per-parent filesystem helper")
+
+    monkeypatch.setattr(review, "FileLock", forbidden_parent_lock)
+    result = review.review_queue(parent_id=hostile, data_dir=data_dir)
+
+    _r1a_assert_invalid(result, "syntax", hostile)
+    _r1a_assert_no_data_or_outside_writes(data_dir, tmp_path)
+
+
+def _r1a_write_plan(tmp_path: Path, import_id: Any, name: str) -> Path:
+    path = tmp_path / name
+    path.write_text(
+        json.dumps({"import_id": import_id, "proposals": []}),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_r1a_confirm_validates_plan_import_id_without_override(tmp_path: Path) -> None:
+    from tools.ingest import review
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir()
+    hostile = "../../../outside-authority"
+    plan_path = _r1a_write_plan(tmp_path, hostile, "confirm-plan.json")
+
+    result = review.confirm_review(plan_path=str(plan_path), data_dir=data_dir)
+
+    _r1a_assert_invalid(result, "syntax", hostile)
+    _r1a_assert_no_data_or_outside_writes(data_dir, tmp_path)
+
+
+def test_r1a_confirm_valid_override_does_not_bypass_invalid_plan_id(tmp_path: Path) -> None:
+    from tools.ingest import review
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir()
+    hostile = "../../../outside-authority"
+    plan_path = _r1a_write_plan(tmp_path, hostile, "confirm-override-plan.json")
+
+    result = review.confirm_review(
+        plan_path=str(plan_path),
+        data_dir=data_dir,
+        parent_id_override="valid-override",
+    )
+
+    _r1a_assert_invalid(result, "syntax", hostile)
+    _r1a_assert_no_data_or_outside_writes(data_dir, tmp_path)
+
+
+def test_r1a_stage_validates_plan_import_id_without_override(tmp_path: Path) -> None:
+    from tools.ingest import review
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir()
+    hostile = "../../../outside-authority"
+    plan_path = _r1a_write_plan(tmp_path, hostile, "stage-plan.json")
+
+    result = review.stage_review(
+        plan_path=str(plan_path),
+        data_dir=data_dir,
+        source_root=r"\\unreachable.invalid\photos",
+    )
+
+    _r1a_assert_invalid(result, "syntax", hostile)
+    _r1a_assert_no_data_or_outside_writes(data_dir, tmp_path)
+
+
+def test_r1a_stage_valid_override_does_not_bypass_invalid_plan_id(tmp_path: Path) -> None:
+    from tools.ingest import review
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir()
+    hostile = "../../../outside-authority"
+    plan_path = _r1a_write_plan(tmp_path, hostile, "stage-override-plan.json")
+
+    result = review.stage_review(
+        plan_path=str(plan_path),
+        data_dir=data_dir,
+        source_root=r"\\unreachable.invalid\photos",
+        parent_id_override="valid-override",
+    )
+
+    _r1a_assert_invalid(result, "syntax", hostile)
+    _r1a_assert_no_data_or_outside_writes(data_dir, tmp_path)
+
+
+def test_r1a_runner_validates_plan_import_id_before_schema_or_state(
+    tmp_path: Path,
+) -> None:
+    from tools.ingest import runner
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir()
+    hostile = "../../../outside-authority"
+    plan_path = _r1a_write_plan(tmp_path, hostile, "runner-plan.json")
+
+    result = runner.execute_run(
+        plan_path=str(plan_path),
+        confirm_id="valid-confirm",
+        data_dir=data_dir,
+    )
+
+    _r1a_assert_invalid(result, "syntax", hostile)
+    _r1a_assert_no_data_or_outside_writes(data_dir, tmp_path)
+
+
+def test_r1a_runner_preserves_missing_confirm_and_valid_mismatch_errors(
+    tmp_path: Path,
+) -> None:
+    from tools.ingest import runner
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir()
+    plan_path = _r1a_write_plan(tmp_path, "valid-plan", "runner-confirm-plan.json")
+
+    missing = runner.execute_run(
+        plan_path=str(plan_path),
+        confirm_id=None,
+        data_dir=data_dir,
+    )
+    mismatch = runner.execute_run(
+        plan_path=str(plan_path),
+        confirm_id="valid-other",
+        data_dir=data_dir,
+    )
+
+    assert missing["error"]["code"] == "IMPORT_CONFIRMATION_REQUIRED"
+    assert missing["error"]["message"] == "The --confirm flag is required for import run."
+    assert mismatch["error"]["code"] == "IMPORT_CONFIRMATION_REQUIRED"
+    assert "does not match" in mismatch["error"]["message"]
+    assert not (data_dir / ".life-index" / "import-jobs" / "ledger.json").exists()
+
+
+@pytest.mark.parametrize("surface", _R1A_PARENT_OR_CHILD_SURFACES)
+def test_r1a_parent_or_child_surfaces_accept_canonical_child_syntax(
+    tmp_path: Path, surface: str
+) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir()
+
+    result = _r1a_invoke_surface(
+        surface,
+        "valid-parent#batch-999999999",
+        data_dir,
+        tmp_path,
+    )
+
+    assert result["success"] is False
+    assert result["error"]["code"] == "IMPORT_JOB_NOT_FOUND"
+
+
+@pytest.mark.parametrize(
+    ("hostile", "reason"),
+    (
+        ("CON#batch-0", "reserved_name"),
+        ("é#batch-0", "non_ascii"),
+        ("a" * 129 + "#batch-0", "child_parent_length"),
+        ("a" * 120 + "#batch-1000000000", "child_sequence"),
+        ("valid-parent#not-batch-1", "child_syntax"),
+        ("valid-parent#batch-01", "child_sequence"),
+    ),
+    ids=(
+        "reserved-before-child",
+        "non-ascii-before-child",
+        "parent-length-before-sequence",
+        "sequence-before-total-length",
+        "malformed-child",
+        "leading-zero",
+    ),
+)
+def test_r1a_reason_precedence_is_closed_and_deterministic(
+    tmp_path: Path,
+    hostile: str,
+    reason: str,
+) -> None:
+    from tools.ingest import review
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir()
+
+    result = review.query_review_status(import_id=hostile, data_dir=data_dir)
+
+    _r1a_assert_invalid(result, reason, hostile)
+    _r1a_assert_no_data_or_outside_writes(data_dir, tmp_path)
+
+
+def test_r1a_valid_differing_confirm_override_remains_effective_parent(
+    tmp_path: Path,
+) -> None:
+    from tools.ingest import review
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir()
+    plan_path = _r1a_write_plan(tmp_path, "valid-plan", "valid-override-plan.json")
+
+    result = review.confirm_review(
+        plan_path=str(plan_path),
+        data_dir=data_dir,
+        parent_id_override="valid-override",
+    )
+
+    assert result["success"] is True
+    assert result["data"]["parent_id"] == "valid-override"
+    ledger = _ledger(data_dir)
+    assert "valid-override" in ledger["jobs"]
+    assert "valid-plan" not in ledger["jobs"]

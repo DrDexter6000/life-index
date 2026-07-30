@@ -804,7 +804,7 @@ def test_edit_rejected_during_active_child(tmp_path: Path) -> None:
 
     # Seed an unsettled (running) child to simulate a live batch in progress.
     ledger = _ledger(data_dir)
-    child_id = f"{parent_id}#batch-seeded"
+    child_id = f"{parent_id}#batch-900000001"
     ledger["jobs"][child_id] = {
         "kind": "batch", "parent_review_job_id": parent_id,
         "state": "running", "updated_at": "2026-01-01T00:00:00+00:00",

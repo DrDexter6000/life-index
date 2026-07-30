@@ -849,7 +849,7 @@ def test_review_recovery_required(tmp_path: Path) -> None:
     data_dir, src, plan, parent_id = _staged_multi(tmp_path, n_days=1)
     pid = plan["proposals"][0]["proposal_id"]
     # seed an unsettled active child with no manifest -> recovery_required
-    child_id = f"{parent_id}#batch-seeded"
+    child_id = f"{parent_id}#batch-900000001"
     ledger = _ledger(data_dir)
     ledger["jobs"][child_id] = {
         "kind": "batch", "parent_review_job_id": parent_id,
@@ -1306,7 +1306,7 @@ def test_edit_active_child_blocks_unrelated_proposal(tmp_path: Path) -> None:
     _stage(data_dir, plan, src, tmp_path)
 
     # seed an in-flight child; let reconcile settle it to a stable active state
-    child_id = f"{parent_id}#batch-seeded"
+    child_id = f"{parent_id}#batch-900000001"
     ledger = _ledger(data_dir)
     ledger["jobs"][child_id] = {
         "kind": "batch", "parent_review_job_id": parent_id,

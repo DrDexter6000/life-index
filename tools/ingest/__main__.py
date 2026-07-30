@@ -699,7 +699,7 @@ def _cmd_run(args: argparse.Namespace) -> None:
     (fixtures, unchanged) and the additive batch path ``--import-id`` for a
     parent review job.
     """
-    if getattr(args, "import_id", None):
+    if getattr(args, "import_id", None) is not None:
         result = review_module.run_batch(
             parent_id=args.import_id,
             data_dir=get_user_data_dir(),

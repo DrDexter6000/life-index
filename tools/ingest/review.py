@@ -41,6 +41,7 @@ from tools.ingest.fingerprint import (
     group_source_fingerprint,
     sha256_hash,
 )
+from tools.ingest.ids import import_id_invalid, validate_import_id
 from tools.ingest.schemas import (
     DEFAULT_NORMALIZED_IMPORT_OPTIONS_HASH,
     DEFAULT_NORMALIZED_WRITE_POLICY_HASH,
@@ -405,6 +406,10 @@ def validate_source_root(source_root: str | Path) -> dict[str, Any]:
 @_ledger_serialized
 def rebind_source_root(parent_id: str, source_root: str | Path, data_dir: Path) -> dict[str, Any]:
     """``import rebind``: re-validate that a locator is the same root identity."""
+    invalid_reason = validate_import_id(parent_id, allow_child=False)
+    if invalid_reason is not None:
+        return import_id_invalid(invalid_reason)
+
     ledger = _read_ledger(data_dir)
     job = _get_job(ledger, parent_id)
     if not _is_review_job(job):
@@ -1373,6 +1378,11 @@ def confirm_review(  # noqa: C901
     staged fresh. Both paths initialise ``queue_revision``/``plan_revision`` to 1
     on first creation and bump exactly once per atomic change thereafter.
     """
+    if parent_id_override is not None:
+        invalid_reason = validate_import_id(parent_id_override, allow_child=False)
+        if invalid_reason is not None:
+            return import_id_invalid(invalid_reason)
+
     plan_file = Path(plan_path)
     if not plan_file.exists():
         return _err(
@@ -1398,14 +1408,11 @@ def confirm_review(  # noqa: C901
             retryable=False,
         )
 
-    parent_id = parent_id_override or plan.get("import_id", "")
-    if not parent_id:
-        return _err(
-            "IMPORT_PLAN_INVALID",
-            "Plan has no import_id and no --import-id was supplied.",
-            {"plan_path": plan_path},
-            retryable=False,
-        )
+    plan_import_id = plan.get("import_id", "")
+    invalid_reason = validate_import_id(plan_import_id, allow_child=False)
+    if invalid_reason is not None:
+        return import_id_invalid(invalid_reason)
+    parent_id = parent_id_override if parent_id_override is not None else plan_import_id
 
     proposals = plan.get("proposals", [])
     if not isinstance(proposals, list):
@@ -1653,6 +1660,10 @@ def edit_review(  # noqa: C901
     projection through the same crash-safe intent protocol as ``confirm``. Both
     ``plan_revision`` and ``queue_revision`` bump exactly once.
     """
+    invalid_reason = validate_import_id(parent_id, allow_child=False)
+    if invalid_reason is not None:
+        return import_id_invalid(invalid_reason)
+
     # --- Parse + strict structural validation (zero writes) ---
     edit_file = Path(edit_path)
     if not edit_file.exists():
@@ -1931,6 +1942,10 @@ def review_queue(
     restart instead of silently omitted; the locator-bearing adapter ``message``
     text is never projected.
     """
+    invalid_reason = validate_import_id(parent_id, allow_child=False)
+    if invalid_reason is not None:
+        return import_id_invalid(invalid_reason)
+
     lock = FileLock(_review_lock_path(data_dir, parent_id), timeout=30.0)
     with lock:
         ledger = _read_ledger(data_dir)
@@ -2222,6 +2237,10 @@ def _derive_child_batches(
 @_ledger_serialized
 def query_review_status(import_id: str, data_dir: Path) -> dict[str, Any]:
     """``import status`` for a parent review job (additive), else delegate."""
+    invalid_reason = validate_import_id(import_id, allow_child=True)
+    if invalid_reason is not None:
+        return import_id_invalid(invalid_reason)
+
     # Reconcile the plan/ledger authority first so a crashed ledger can be
     # restored from the persisted review plan (never a silent reset).
     reconcile_review_authority(data_dir, import_id)
@@ -2391,6 +2410,10 @@ def execute_review_rollback(import_id: str, data_dir: Path) -> dict[str, Any]:
     ``confirmed``. This is what makes "rollback restores confirmed" observable
     via ``import status``.
     """
+    invalid_reason = validate_import_id(import_id, allow_child=True)
+    if invalid_reason is not None:
+        return import_id_invalid(invalid_reason)
+
     ledger = _read_ledger(data_dir)
     job = _get_job(ledger, import_id)
     if _is_review_job(job):
@@ -2554,6 +2577,10 @@ def preview_attachment(  # noqa: C901
     or mtime. ``--source-root`` is a transient locator, checked against the
     recorded ``source_root_identity``.
     """
+    invalid_reason = validate_import_id(parent_id, allow_child=False)
+    if invalid_reason is not None:
+        return import_id_invalid(invalid_reason)
+
     plan = read_review_plan(data_dir, parent_id)
     if plan is None:
         return _err(
@@ -3629,6 +3656,10 @@ def run_batch(  # noqa: C901
     ``confirmed`` proposals to ``batching`` (durable), then creates the child
     batch job. Idempotent reconciliation covers the four crash windows.
     """
+    invalid_reason = validate_import_id(parent_id, allow_child=False)
+    if invalid_reason is not None:
+        return import_id_invalid(invalid_reason)
+
     lock = FileLock(_review_lock_path(data_dir, parent_id), timeout=30.0)
     with lock:
         ledger = _read_ledger(data_dir)

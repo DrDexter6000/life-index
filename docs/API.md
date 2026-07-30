@@ -1883,6 +1883,50 @@ size、media type，并生成 deterministic journal + attachment proposal。
 }
 ```
 
+### `import_id` lexical contract
+
+所有外部 `import_id` 与 plan 内的 `import_id` 在任何 per-parent path/lock、
+review-plan、rollback manifest、ledger state 或 durable data 访问前，先做纯 lexical
+校验（外层 transaction 取得 data-dir 内固定
+`.life-index/import-jobs/ledger.lock` 及创建其父目录仍被允许）：
+
+- parent：lowercase ASCII `[a-z0-9][a-z0-9_-]*`，长度 1..128；
+  `CON` / `PRN` / `AUX` / `NUL` / `COM1..9` / `LPT1..9` 大小写不敏感地保留；
+- child：`<valid-parent>#batch-[1-9][0-9]{0,8}`，总长不超过 128，sequence
+  不得前导零且不超过 `999999999`；
+- parent-only surfaces：`confirm` 的 external override 与 plan id、`confirm --edit`、
+  `stage` 的 external override 与 plan id、`review`、`rebind`、`preview`、batch
+  `run --import-id`、legacy `run` 的 plan id 与非缺席 `--confirm`；
+- parent-or-child surfaces：`status`、`rollback`（含 runner rollback）；
+- `reviews --after` 是 opaque pagination cursor，不适用本 lexical contract。
+
+parent-only surface 收到 canonical child 返回 `reason=child_syntax`。失败 envelope
+的 error 精确为：
+
+```json
+{
+  "code": "IMPORT_ID_INVALID",
+  "message": "Import id is invalid.",
+  "details": {"reason": "syntax"},
+  "retryable": false
+}
+```
+
+`details` 只含一个安全 `reason`，绝不回显原始输入。closed reasons 为
+`type` / `empty` / `non_ascii` / `reserved_name` / `child_syntax` /
+`child_parent_length` / `child_sequence` / `length` / `syntax` /
+`outside_data_dir` / `containment_unavailable`；lexical precedence 为 type → empty →
+non-ASCII → reserved name → child recognition/structure → child parent length →
+child sequence → total length → syntax。绝对 Windows path、drive-relative path、
+UNC、traversal、非 ASCII、malformed child 都在到达 filesystem/network helper 前确定
+失败。
+
+`confirm` / `stage` 若 external override 存在，先校验 override，再读取 plan
+一次；有效到达的 plan 仍总是校验其 `import_id`，有效但不同的 override 继续作为
+effective parent authority。legacy `run --plan` 的**缺席** `--confirm` 不是 hostile
+id，继续返回 `IMPORT_CONFIRMATION_REQUIRED`；非缺席 confirm id 先做 lexical
+校验，有效但与 plan 不匹配也继续返回 `IMPORT_CONFIRMATION_REQUIRED`。
+
 ### `import plan`
 
 `plan` 是 dry-run，只读 source 和当前 data dir 状态，默认只向 stdout 输出
@@ -1925,7 +1969,9 @@ JSON，不写 journal、attachment、ledger、manifest 或 index。
 
 ### `import run`
 
-`run` 必须带 `--confirm <import_id>`，且 `<import_id>` 必须匹配 plan。它按
+`run` 必须带 `--confirm <import_id>`，且 `<import_id>` 必须匹配 plan；缺席或有效但
+不匹配仍返回 `IMPORT_CONFIRMATION_REQUIRED`，无效的非缺席 confirm 或无效的 plan
+`import_id` 返回 `IMPORT_ID_INVALID`。它按
 create-only / fail-closed 策略写入 plan 中的 journal 和 attachment path，并在
 写入前建立固定 ledger 和 rollback manifest。
 
@@ -1981,7 +2027,8 @@ temp + fsync + atomic replace 更新。已存在但 malformed/torn/unreadable �
 | `rollback_available` | bool | 是否存在 rollback manifest |
 | `rollback_manifest_rel_path` | string | 固定 manifest 相对路径 |
 
-未知 `import_id` 返回 `IMPORT_JOB_NOT_FOUND`。
+通过 lexical 校验但未知的 `import_id` 返回 `IMPORT_JOB_NOT_FOUND`；lexical 非法输入
+返回 `IMPORT_ID_INVALID`。
 
 ### `import rollback`
 
@@ -2014,6 +2061,7 @@ rollback 还会 resolve 每个 manifest path，确认目标仍在 `LIFE_INDEX_DA
 |---|---|
 | `IMPORT_SOURCE_UNSUPPORTED` | 未知 source adapter |
 | `IMPORT_SOURCE_UNREADABLE` | source / fixture 无法读取 |
+| `IMPORT_ID_INVALID` | external / plan import id lexical 校验失败；不回显原始输入 |
 | `IMPORT_PLAN_SCHEMA_UNSUPPORTED` | plan schema version 不支持 |
 | `IMPORT_PLAN_INVALID` | plan JSON 缺少必要字段或语义非法 |
 | `IMPORT_PLAN_CONFLICTS_UNRESOLVED` | plan 含 unresolved conflicts，Tranche A fail-closed |

@@ -26,6 +26,7 @@ from tools.ingest.fingerprint import (
     compute_proposal_fingerprint,
     compute_source_fingerprint,
 )
+from tools.ingest.ids import import_id_invalid, validate_import_id
 from tools.ingest.schemas import (
     DEFAULT_NORMALIZED_IMPORT_OPTIONS_HASH,
     DEFAULT_NORMALIZED_WRITE_POLICY_HASH,
@@ -114,7 +115,7 @@ def _ledger_serialized(func: _F) -> _F:
 @_ledger_serialized
 def execute_run(  # noqa: C901
     plan_path: str,
-    confirm_id: str,
+    confirm_id: Any,
     data_dir: Path,
     source_root: str | None = None,
 ) -> dict[str, Any]:
@@ -123,6 +124,11 @@ def execute_run(  # noqa: C901
     Returns a dict with ``success`` (bool) and either ``data`` or ``error``.
     The caller wraps this into the standard envelope.
     """
+    if confirm_id is not None:
+        invalid_reason = validate_import_id(confirm_id, allow_child=False)
+        if invalid_reason is not None:
+            return import_id_invalid(invalid_reason)
+
     # --- 1. Read and parse plan JSON ---
     plan_file = Path(plan_path)
     if not plan_file.exists():
@@ -144,9 +150,12 @@ def execute_run(  # noqa: C901
             retryable=False,
         )
 
-    # --- 2. Validate --confirm ---
+    # --- 2. Validate plan import_id, then --confirm compatibility ---
     plan_import_id = plan.get("import_id", "")
-    if not confirm_id:
+    invalid_reason = validate_import_id(plan_import_id, allow_child=False)
+    if invalid_reason is not None:
+        return import_id_invalid(invalid_reason)
+    if confirm_id is None:
         return _err(
             "IMPORT_CONFIRMATION_REQUIRED",
             "The --confirm flag is required for import run.",
@@ -703,6 +712,10 @@ def execute_rollback(
     Returns a dict with ``success`` (bool) and either ``data`` or ``error``.
     The caller wraps this into the standard envelope.
     """
+    invalid_reason = validate_import_id(import_id, allow_child=True)
+    if invalid_reason is not None:
+        return import_id_invalid(invalid_reason)
+
     # --- 1. Read ledger, find job ---
     ledger = _read_ledger(data_dir)
     jobs: dict[str, Any] = ledger.get("jobs", {})
