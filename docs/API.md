@@ -2086,6 +2086,50 @@ rollback 还会 resolve 每个 manifest path，确认目标仍在 `LIFE_INDEX_DA
 | `IMPORT_LEDGER_CORRUPT` | 固定 ledger malformed/torn/unreadable；fail closed 且不重置/覆盖 |
 | `IMPORT_INTERNAL_ERROR` | 未归类内部错误 |
 
+#### Resolved path containment (R1b)
+
+每个由 external / plan-contained / stored / newly-minted id 或 relative locator 派生的
+import-job 路径，在首次使用前都会被 resolve 并按 component-wise（`relative_to`，非字符串
+前缀）证明是 resolved data dir 的严格后代。任何 traversal、绝对路径、junction/reparse/
+symlink 逃逸、sibling 前缀混淆、或 resolve 失败都在**产生任何 ledger / manifest / staging
+/ attachment 副作用之前** fail closed：不创建/读取/删除根外文件，不预留 child job，source
+字节不变，且错误输出不含 hostile 绝对路径或 traceback。
+
+下列既有错误码为此新增**附加安全 `reason`**（在 `error.details.reason`，不改变既有 error 含义、
+success shape 或 exit code 映射；`reason` 为开放描述，调用方不应视为闭合枚举严格校验）：
+
+| code | additive `reason` | 触发 |
+|---|---|---|
+| `IMPORT_WRITE_FAILURE` | `job_path_not_confined` | run / batch 的 manifest 派生路径逃逸 data dir |
+| `IMPORT_WRITE_FAILURE` | `review_path_not_confined` | confirm/stage/edit/review/run 的 parent job 路径逃逸（per-parent lock 之前）；rollback 对存储 `parent_review_job_id` 派生路径逃逸（同样 lock 之前） |
+| `IMPORT_ROLLBACK_UNSAFE` | `rollback_manifest_path_not_confined` | 存储的 `rollback_manifest_rel_path` 为绝对/遍历/逃逸 locator |
+| `IMPORT_LEDGER_CORRUPT` | `import_jobs_area_not_confined` | `.life-index/import-jobs` 区域本身是逃逸 link（首次 ledger I/O 前） |
+| `IMPORT_LEDGER_CORRUPT` | `review_plan_path_not_confined` | review-plan 派生路径逃逸 data dir（读写两侧均 raise，见下） |
+
+附加 surfacing 说明：
+
+- **`review_path_not_confined`（写路径，`IMPORT_WRITE_FAILURE`，`details.reason`）**：confirm/stage/
+  edit/review/run 在取 per-parent lock **之前**证明 parent job 路径 confined。rollback 对其**存储的**
+  `parent_review_job_id` 先做 lexical 校验——存储 locator 为绝对/遍历/逃逸值时先返回既有
+  `IMPORT_ID_INVALID`（lexical 失败，`details.reason` 为 `syntax` 等），lexical 合法但解析逃逸时返回
+  `review_path_not_confined`。所有这些写路径都在创建 lock 文件之前失败。
+- **`review_plan_path_not_confined`（读+写路径，`IMPORT_LEDGER_CORRUPT`，`details.reason`）**：写入侧
+  （`_write_review_plan_atomic`）与读取侧（`read_review_plan`，被 status/queue/preview 以及 `plan` 的
+  去重扫描调用）在 review-plan 路径逃逸时均 **raise `ImportLedgerCorruptError`**，CLI 统一映射为
+  `IMPORT_LEDGER_CORRUPT`。读取侧**绝不**把逃逸当作"plan 缺失"返回 `None`（否则 reconciliation 会误
+  abort 一个 pending intent、甚至 `jobs.pop(parent_id)` 这种由 containment 失败引起的破坏性 in-root
+  改动）。真正 confined 但磁盘上不存在的 plan 仍返回 `None`（既有"缺失"行为不变）。status 路径在
+  per-parent lock 之前用同一 probe 也会 raise，故 ledger 字节/SHA、jobs、proposal_states、intent 全不变。
+- **`staging_path_not_confined`（`IMPORT_WRITE_FAILURE` 的 `message` 文本，**非** `details.reason`）**：
+  batch 的 staging 派生路径逃逸时，`_stream_copy` / `_publish_text_create_only` 返回
+  `(False, "staging_path_not_confined")`，该字符串作为 `RuntimeError` 信息冒泡进 `IMPORT_WRITE_FAILURE`
+  的 `message` 文本（形如 `"... staging_path_not_confined"`），**不**进入 `error.details.reason`
+  （`details` 仍为 `child_id`/`parent_id`/计数）。它与上表中的 `details.reason` 是不同的 surfacing，
+  这里明确区分，不混为一谈。
+
+合法的 contained 路径（普通 data dir、嵌套 job 目录、data dir 自身含 symlink 组件——两侧都
+resolve）继续正常工作，不被误拒。
+
 ### schema_version Policy
 
 `import` top-level envelope 使用 `schema_version = "import_job.v1"`。

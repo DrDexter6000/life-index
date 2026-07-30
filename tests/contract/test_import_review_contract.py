@@ -1294,3 +1294,532 @@ def test_r1a_valid_differing_confirm_override_remains_effective_parent(
     ledger = _ledger(data_dir)
     assert "valid-override" in ledger["jobs"]
     assert "valid-plan" not in ledger["jobs"]
+
+
+# ===================================================================
+# Slice R1b: resolved path containment for import-job derived paths.
+#
+# A planted reparse link (a Windows junction via ``cmd /c mklink /J``, or a
+# POSIX symlink) at a derived job path must fail CLOSED: deterministic error,
+# no outside file creation/read/delete, no child reservation or partial import,
+# source bytes unchanged, and no hostile locator or traceback in the output.
+# All escape targets stay inside the pytest ``tmp_path`` sandbox. Each link is
+# removed (via its real target, then the link itself) before teardown so the
+# sandbox cleanup never traverses a link.
+# ===================================================================
+
+
+def _make_dir_link(link: Path, target: Path) -> None:
+    """Create a directory reparse link: junction on Windows, symlink on POSIX."""
+    import shutil
+
+    target.mkdir(parents=True, exist_ok=True)
+    link.parent.mkdir(parents=True, exist_ok=True)
+    if link.is_dir() and not link.is_symlink():
+        link.rmdir()
+    if os.name == "nt":
+        # mklink output is GBK on this locale; capture bytes, never decode strictly.
+        subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True
+        )
+    else:
+        os.symlink(target, link, target_is_directory=True)
+    assert link.is_dir(), f"failed to create reparse link at {link}"
+    assert link.resolve() == target.resolve(), f"link {link} did not resolve to {target}"
+
+
+def _remove_dir_link(link: Path, target: Path) -> None:
+    """Remove a reparse link without traversing into its target.
+
+    The target is cleared through its REAL path first (we own it; it lives in the
+    sandbox), leaving the link empty, so removing the link never descends into
+    the target. This stays safe whether or not the operation wrote through it.
+    """
+    import shutil
+
+    try:
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
+            target.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    try:
+        if os.name == "nt":
+            os.rmdir(link)  # junction: removes the link, not the target
+        else:
+            link.unlink()
+    except OSError:
+        pass
+
+
+def _assert_clean_failure(raw, outside: Path) -> dict[str, Any]:
+    """A containment failure must be deterministic and leak nothing hostile."""
+    assert raw.returncode != 0, f"expected failure, stdout: {raw.stdout}"
+    payload = _payload(raw)
+    assert payload["success"] is False
+    assert "Traceback" not in raw.stderr, raw.stderr
+    assert "Traceback" not in raw.stdout, raw.stdout
+    hostile = str(outside.resolve())
+    assert hostile not in raw.stdout, raw.stdout
+    assert hostile not in raw.stderr, raw.stderr
+    return payload
+
+
+def test_r1b_child_batch_junction_escape_is_contained(tmp_path: Path) -> None:
+    """Case 1: a junction at the minted child job dir must fail the batch run."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+    src = tmp_path / "photos"
+    _proposal, parent_id, _att = _confirmed_one_photo_batch(data_dir, src)
+
+    child_id = f"{parent_id}#batch-1"
+    jobs_dir = data_dir / ".life-index" / "import-jobs"
+    outside = tmp_path / "escape-child"
+    link = jobs_dir / child_id
+    _make_dir_link(link, outside)
+
+    source_file = src / "shot.jpg"
+    source_before = source_file.read_bytes()
+    try:
+        raw = _run_batch(data_dir, parent_id, src)
+        payload = _assert_clean_failure(raw, outside)
+        assert payload["error"]["code"] == "IMPORT_WRITE_FAILURE"
+        assert payload["error"]["details"]["reason"] == "job_path_not_confined"
+        # No outside file created/read/deleted; no child reservation; source intact.
+        assert list(outside.iterdir()) == []
+        assert _ledger(data_dir)["jobs"][parent_id].get("active_child_id") is None
+        assert source_file.read_bytes() == source_before
+    finally:
+        _remove_dir_link(link, outside)
+
+
+def test_r1b_confirm_parent_junction_escape_is_contained(tmp_path: Path) -> None:
+    """Case 2a: a junction at the parent job path must fail confirm before any write."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["data"]["import_id"]
+    jobs_dir = data_dir / ".life-index" / "import-jobs"
+    jobs_dir.mkdir(parents=True, exist_ok=True)
+    outside = tmp_path / "escape-parent"
+    link = jobs_dir / parent_id
+    _make_dir_link(link, outside)
+
+    plan_file = _plan_file(tmp_path, plan["data"], name="r1b_parent.json")
+    try:
+        raw = _run_import(
+            data_dir, "confirm", "--plan", str(plan_file),
+            "--source-root", str(src), "--json",
+        )
+        payload = _assert_clean_failure(raw, outside)
+        assert payload["error"]["code"] == "IMPORT_WRITE_FAILURE"
+        assert payload["error"]["details"]["reason"] == "review_path_not_confined"
+        # Neither the per-parent lock nor the review plan was written outside.
+        assert not (outside / "review.lock").exists()
+        assert not (outside / "review-plan.json").exists()
+        assert list(outside.iterdir()) == []
+    finally:
+        _remove_dir_link(link, outside)
+
+
+def test_r1b_legacy_run_junction_escape_is_contained(tmp_path: Path) -> None:
+    """Case 2b: a junction at the legacy run job path must fail ``import run --plan``."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(9, 8, 7))
+
+    plan = _photo_plan(data_dir, src)
+    import_id = plan["data"]["import_id"]
+    jobs_dir = data_dir / ".life-index" / "import-jobs"
+    jobs_dir.mkdir(parents=True, exist_ok=True)
+    outside = tmp_path / "escape-legacy"
+    link = jobs_dir / import_id
+    _make_dir_link(link, outside)
+
+    plan_file = _plan_file(tmp_path, plan["data"], name="r1b_legacy.json")
+    try:
+        raw = _run_import(
+            data_dir, "run", "--plan", str(plan_file), "--confirm", import_id,
+            "--source-root", str(src), "--json",
+        )
+        payload = _assert_clean_failure(raw, outside)
+        assert payload["error"]["code"] == "IMPORT_WRITE_FAILURE"
+        assert payload["error"]["details"]["reason"] == "job_path_not_confined"
+        assert not (outside / "rollback-manifest.json").exists()
+        assert list(outside.iterdir()) == []
+    finally:
+        _remove_dir_link(link, outside)
+
+
+def test_r1b_import_jobs_area_link_is_contained(tmp_path: Path) -> None:
+    """Case 4: a link at the import-jobs area itself must fail before any ledger I/O."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(2, 4, 6))
+
+    plan = _photo_plan(data_dir, src)
+    (data_dir / ".life-index").mkdir(parents=True, exist_ok=True)
+    outside = tmp_path / "escape-area"
+    area = data_dir / ".life-index" / "import-jobs"
+    _make_dir_link(area, outside)
+
+    plan_file = _plan_file(tmp_path, plan["data"], name="r1b_area.json")
+    try:
+        raw = _run_import(
+            data_dir, "confirm", "--plan", str(plan_file),
+            "--source-root", str(src), "--json",
+        )
+        payload = _assert_clean_failure(raw, outside)
+        assert payload["error"]["code"] == "IMPORT_LEDGER_CORRUPT"
+        assert payload["error"]["details"]["reason"] == "import_jobs_area_not_confined"
+        # No ledger or lock file was created through the area link.
+        assert list(outside.iterdir()) == []
+    finally:
+        _remove_dir_link(area, outside)
+
+
+def _committed_child_batch(
+    data_dir: Path, src: Path
+) -> tuple[str, str, str]:
+    """Plan + confirm + run one photo; return (parent_id, child_id, attachment_rel)."""
+    proposal, parent_id, att = _confirmed_one_photo_batch(data_dir, src)
+    run = _ok(_run_batch(data_dir, parent_id, src))["data"]
+    return parent_id, run["import_id"], att["target_rel_path"]
+
+
+def test_r1b_rollback_corrupt_locator_is_contained(tmp_path: Path) -> None:
+    """Case 3: a corrupt absolute/traversal rollback locator must fail closed."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+    src = tmp_path / "photos"
+    _parent_id, child_id, att_rel = _committed_child_batch(data_dir, src)
+
+    outside = tmp_path / "escape-locator"
+    outside.mkdir()
+    corrupt_target = outside / "audit-manifest.json"
+
+    ledger_path = data_dir / ".life-index" / "import-jobs" / "ledger.json"
+    ld = json.loads(ledger_path.read_text("utf-8"))
+    ld["jobs"][child_id]["rollback_manifest_rel_path"] = str(corrupt_target)
+    ledger_path.write_text(json.dumps(ld), encoding="utf-8")
+
+    published = data_dir / att_rel
+    assert published.exists()
+    try:
+        raw = _run_import(data_dir, "rollback", "--import-id", child_id, "--json")
+        payload = _assert_clean_failure(raw, outside)
+        assert payload["error"]["code"] == "IMPORT_ROLLBACK_UNSAFE"
+        assert payload["error"]["details"]["reason"] == "rollback_manifest_path_not_confined"
+        # No audit manifest written outside; the committed attachment was not deleted.
+        assert not corrupt_target.exists()
+        assert list(outside.iterdir()) == []
+        assert published.exists()
+    finally:
+        # No link here, but keep symmetry; nothing to remove.
+        pass
+
+
+def test_r1b_rollback_outside_target_not_deleted(tmp_path: Path) -> None:
+    """Case 5: a manifest entry pointing outside must not be deleted or truncated."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+    src = tmp_path / "photos"
+    _parent_id, child_id, _att_rel = _committed_child_batch(data_dir, src)
+
+    outside = tmp_path / "escape-destructive"
+    outside.mkdir()
+    victim = outside / "victim.txt"
+    victim.write_text("VICTIM-CONTENT")
+
+    manifest_path = data_dir / ".life-index" / "import-jobs" / child_id / "rollback-manifest.json"
+    manifest = json.loads(manifest_path.read_text("utf-8"))
+    manifest["created_files"].append(
+        {
+            "rel_path": str(victim),
+            "sha256_after": "sha256:deadbeef",
+            "size_bytes": len("VICTIM-CONTENT"),
+            "created_by_import": True,
+            "kind": "journal",
+        }
+    )
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    try:
+        raw = _run_import(data_dir, "rollback", "--import-id", child_id, "--json")
+        payload = _assert_clean_failure(raw, outside)
+        assert payload["error"]["code"] == "IMPORT_ROLLBACK_UNSAFE"
+        # The outside target was neither deleted nor truncated.
+        assert victim.exists()
+        assert victim.read_text() == "VICTIM-CONTENT"
+    finally:
+        pass
+
+
+def test_r1b_staging_subpath_junction_is_contained(tmp_path: Path) -> None:
+    """Vuln-map staging site: a junction at ``<child>/publication-staging`` is contained."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+    src = tmp_path / "photos"
+    _proposal, parent_id, _att = _confirmed_one_photo_batch(data_dir, src)
+
+    child_id = f"{parent_id}#batch-1"
+    jobs_dir = data_dir / ".life-index" / "import-jobs"
+    (jobs_dir / child_id).mkdir(parents=True, exist_ok=True)
+    outside = tmp_path / "escape-staging"
+    link = jobs_dir / child_id / "publication-staging"
+    _make_dir_link(link, outside)
+
+    source_file = src / "shot.jpg"
+    source_before = source_file.read_bytes()
+    try:
+        raw = _run_batch(data_dir, parent_id, src)
+        # The batch must fail (staging path not confined); no staging bytes outside.
+        assert raw.returncode != 0
+        assert "Traceback" not in raw.stderr
+        assert list(outside.iterdir()) == []
+        assert source_file.read_bytes() == source_before
+    finally:
+        _remove_dir_link(link, outside)
+
+
+def test_r1b_safe_import_through_linked_data_dir(tmp_path: Path) -> None:
+    """False-rejection guard: a data dir reached through a link must keep working.
+
+    Both ``data_dir`` and the derived job area are resolved, so a data dir whose
+    own path contains a link component is a legitimate, contained root.
+    """
+    real_data = tmp_path / "real-data"
+    real_data.mkdir(parents=True)
+    data_dir = tmp_path / "linked-data"
+    _make_dir_link(data_dir, real_data)
+
+    src = tmp_path / "photos"
+    try:
+        proposal, parent_id, att = _confirmed_one_photo_batch(data_dir, src)
+        run = _ok(_run_batch(data_dir, parent_id, src))["data"]
+        assert run["state"] == "committed"
+        assert run["kind"] == "batch"
+        # The committed artifact lands under the REAL data dir (resolved root).
+        assert (real_data / att["target_rel_path"]).exists()
+        assert (real_data / att["target_rel_path"]).read_bytes() == (src / "shot.jpg").read_bytes()
+    finally:
+        # data_dir is itself a link; clear real contents then remove the link.
+        _remove_dir_link(data_dir, real_data)
+
+
+def test_r1b_normal_import_and_rollback_still_work(tmp_path: Path) -> None:
+    """Case 7: ordinary contained import and rollback are unchanged by R1b."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+    src = tmp_path / "photos"
+    _proposal, parent_id, att = _confirmed_one_photo_batch(data_dir, src)
+
+    run = _ok(_run_batch(data_dir, parent_id, src))["data"]
+    child_id = run["import_id"]
+    assert run["state"] == "committed"
+    published = data_dir / att["target_rel_path"]
+    assert published.exists()
+
+    rollback = _ok(_run_import(data_dir, "rollback", "--import-id", child_id, "--json"))["data"]
+    assert rollback["state"] == "rolled_back"
+    assert rollback["deleted_count"] >= 1
+    # The imported artifact was removed by the contained rollback.
+    assert not published.exists()
+
+
+def test_r1b_rollback_corrupt_stored_parent_id_is_contained(tmp_path: Path) -> None:
+    """R1: a corrupt absolute stored ``parent_review_job_id`` must fail the child
+    rollback before the per-parent lock is constructed through it.
+
+    ``parent_review_job_id`` is a STORED ledger field (not the request id), so it
+    is lexically validated and confinement-proven before the per-parent lock:
+    without the guard the absolute component would reset the pathlib join and the
+    lock file would be created outside the data dir.
+    """
+    import shutil
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+    src = tmp_path / "photos"
+    _parent_id, child_id, _att_rel = _committed_child_batch(data_dir, src)
+
+    outside = tmp_path / "escape-stored-parent"
+    outside.mkdir()
+    ledger_path = data_dir / ".life-index" / "import-jobs" / "ledger.json"
+    ld = json.loads(ledger_path.read_text("utf-8"))
+    ld["jobs"][child_id]["parent_review_job_id"] = str(outside)
+    ledger_path.write_text(json.dumps(ld), encoding="utf-8")
+
+    try:
+        raw = _run_import(data_dir, "rollback", "--import-id", child_id, "--json")
+        payload = _assert_clean_failure(raw, outside)
+        # The stored locator is lexically invalid (absolute path) -> IMPORT_ID_INVALID.
+        assert payload["error"]["code"] == "IMPORT_ID_INVALID"
+        # No outside directory/file was created through the corrupt locator.
+        assert list(outside.iterdir()) == []
+    finally:
+        pass
+
+
+def test_r1b_review_junctioned_job_dir_is_contained(tmp_path: Path) -> None:
+    """R2: a junction at a valid-but-nonexistent parent job dir must fail
+    ``import review`` before the ledger read, with no outside review.lock."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(5, 6, 7))
+
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["data"]["import_id"]  # valid format, never confirmed -> no job
+    jobs_dir = data_dir / ".life-index" / "import-jobs"
+    jobs_dir.mkdir(parents=True, exist_ok=True)
+    outside = tmp_path / "escape-review"
+    link = jobs_dir / parent_id
+    _make_dir_link(link, outside)
+
+    try:
+        raw = _run_import(data_dir, "review", "--import-id", parent_id, "--json")
+        payload = _assert_clean_failure(raw, outside)
+        assert payload["error"]["code"] == "IMPORT_WRITE_FAILURE"
+        assert payload["error"]["details"]["reason"] == "review_path_not_confined"
+        # The per-parent lock was never created through the junction.
+        assert not (outside / "review.lock").exists()
+        assert list(outside.iterdir()) == []
+    finally:
+        _remove_dir_link(link, outside)
+
+
+def test_r1b_run_batch_junctioned_parent_dir_is_contained(tmp_path: Path) -> None:
+    """R2: a junction at the parent job dir before ``run`` must fail before the
+    per-parent lock, with no outside lock, no child reservation, source intact."""
+    import shutil
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+    src = tmp_path / "photos"
+    _proposal, parent_id, _att = _confirmed_one_photo_batch(data_dir, src)
+
+    jobs_dir = data_dir / ".life-index" / "import-jobs"
+    outside = tmp_path / "escape-run-parent"
+    link = jobs_dir / parent_id
+    # The parent job dir already exists from confirm; replace it with a junction.
+    shutil.rmtree(link, ignore_errors=True)
+    _make_dir_link(link, outside)
+
+    source_file = src / "shot.jpg"
+    source_before = source_file.read_bytes()
+    try:
+        raw = _run_batch(data_dir, parent_id, src)
+        payload = _assert_clean_failure(raw, outside)
+        assert payload["error"]["code"] == "IMPORT_WRITE_FAILURE"
+        assert payload["error"]["details"]["reason"] == "review_path_not_confined"
+        # No outside lock; no child batch reservation; source bytes unchanged.
+        assert not (outside / "review.lock").exists()
+        assert list(outside.iterdir()) == []
+        assert _ledger(data_dir)["jobs"][parent_id].get("active_child_id") is None
+        assert source_file.read_bytes() == source_before
+    finally:
+        _remove_dir_link(link, outside)
+
+
+def test_r1b_status_after_junction_replace_fails_closed(tmp_path: Path) -> None:
+    """R3 regression: after confirm, replacing the parent job dir with a junction
+    must make ``status`` fail closed with ledger bytes/SHA, jobs, proposal_states,
+    and any pending intent unchanged (no destructive jobs.pop / intent abort)."""
+    import shutil
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+    src = tmp_path / "photos"
+    _proposal, parent_id, _att = _confirmed_one_photo_batch(data_dir, src)
+
+    jobs_dir = data_dir / ".life-index" / "import-jobs"
+    ledger_path = jobs_dir / "ledger.json"
+    before_bytes = ledger_path.read_bytes()
+    before_sha = hashlib.sha256(before_bytes).hexdigest()
+    before_ledger = json.loads(before_bytes)
+    before_states = before_ledger["jobs"][parent_id].get("proposal_states")
+    before_intent = before_ledger["jobs"][parent_id].get("pending_review_update")
+
+    outside = tmp_path / "escape-status"
+    link = jobs_dir / parent_id
+    shutil.rmtree(link, ignore_errors=True)
+    _make_dir_link(link, outside)
+
+    try:
+        raw = _run_import(data_dir, "status", "--import-id", parent_id, "--json")
+        payload = _assert_clean_failure(raw, outside)
+        assert payload["error"]["code"] == "IMPORT_LEDGER_CORRUPT"
+        assert payload["error"]["details"]["reason"] == "review_plan_path_not_confined"
+        # No outside lock/plan written.
+        assert not (outside / "review.lock").exists()
+        assert list(outside.iterdir()) == []
+        # Ledger bytes + SHA unchanged; parent job still present; states + intent
+        # unchanged (containment failure must never mutate the in-root ledger).
+        after_bytes = ledger_path.read_bytes()
+        assert after_bytes == before_bytes
+        assert hashlib.sha256(after_bytes).hexdigest() == before_sha
+        after_ledger = json.loads(after_bytes)
+        assert parent_id in after_ledger["jobs"]
+        assert after_ledger["jobs"][parent_id].get("proposal_states") == before_states
+        assert (
+            after_ledger["jobs"][parent_id].get("pending_review_update") == before_intent
+        )
+    finally:
+        _remove_dir_link(link, outside)
+
+
+def test_r1b_edit_junctioned_parent_dir_is_contained(tmp_path: Path) -> None:
+    """R2: a junction at the parent job dir before a single-proposal edit must
+    fail before the per-parent lock, with no partial intent persisted."""
+    import shutil
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+    src = tmp_path / "photos"
+    proposal, parent_id, _att = _confirmed_one_photo_batch(data_dir, src)
+
+    # Structurally valid edit payload; the containment guard fires before the
+    # lock, so the proposal is never acted upon.
+    edit_payload = {
+        "schema_version": "import_review_edit.v1",
+        "proposal_id": proposal["proposal_id"],
+        "decision": "confirmed",
+    }
+    edit_file = _plan_file(tmp_path, edit_payload, name="r1b_edit.json")
+
+    jobs_dir = data_dir / ".life-index" / "import-jobs"
+    ledger_path = jobs_dir / "ledger.json"
+    before_bytes = ledger_path.read_bytes()
+    outside = tmp_path / "escape-edit"
+    link = jobs_dir / parent_id
+    shutil.rmtree(link, ignore_errors=True)
+    _make_dir_link(link, outside)
+
+    try:
+        raw = _run_import(
+            data_dir,
+            "confirm",
+            "--edit",
+            str(edit_file),
+            "--import-id",
+            parent_id,
+            "--expected-queue-revision",
+            "1",
+            "--json",
+        )
+        payload = _assert_clean_failure(raw, outside)
+        assert payload["error"]["code"] == "IMPORT_WRITE_FAILURE"
+        assert payload["error"]["details"]["reason"] == "review_path_not_confined"
+        # No outside lock; no partial intent persisted (ledger bytes unchanged).
+        assert not (outside / "review.lock").exists()
+        assert list(outside.iterdir()) == []
+        assert ledger_path.read_bytes() == before_bytes
+    finally:
+        _remove_dir_link(link, outside)
+

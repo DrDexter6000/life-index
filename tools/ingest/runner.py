@@ -66,6 +66,28 @@ def _ledger_lock_path(data_dir: Path) -> Path:
     return data_dir / ".life-index" / "import-jobs" / "ledger.lock"
 
 
+def _assert_import_jobs_area_confined(data_dir: Path) -> None:
+    """Prove the resolved import-jobs area is a strict descendant of the data dir.
+
+    The durable ledger / manifest / staging area (``.life-index/import-jobs``) may
+    itself be a planted junction/reparse/symlink that redirects outside the
+    trusted data directory. Both ``data_dir`` and the area are resolved before a
+    component-wise (``relative_to``) containment proof; any escape fails closed
+    as an untrusted durable area (surfaced by the CLI as ``IMPORT_LEDGER_CORRUPT``)
+    BEFORE the first byte of ledger / lock I/O. Legitimate areas — including a
+    data dir that itself contains a symlink component, resolved on both sides —
+    keep working.
+    """
+    resolved_data = data_dir.resolve()
+    area = (data_dir / ".life-index" / "import-jobs").resolve()
+    try:
+        area.relative_to(resolved_data)
+    except ValueError:
+        raise ImportLedgerCorruptError(
+            _ledger_path(data_dir), "import_jobs_area_not_confined"
+        )
+
+
 @contextmanager
 def _ledger_transaction(data_dir: Path) -> Iterator[None]:
     """Hold the one cross-process import-ledger lock, re-entrantly per context.
@@ -82,6 +104,9 @@ def _ledger_transaction(data_dir: Path) -> Iterator[None]:
         yield
         return
 
+    # Prove the import-jobs area is confined before creating the cross-process
+    # lock file inside it (the first durable byte of a mutation transaction).
+    _assert_import_jobs_area_confined(data_dir)
     lock = FileLock(_ledger_lock_path(data_dir), timeout=_LEDGER_LOCK_TIMEOUT_SECONDS)
     with lock:
         token = _LEDGER_LOCK_STACK.set((*stack, key))
@@ -446,6 +471,18 @@ def execute_run(  # noqa: C901
     # --- 6. Create ledger entry with state=running BEFORE durable writes (PRD §9) ---
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     rollback_rel = f".life-index/import-jobs/{plan_import_id}/rollback-manifest.json"
+    # Prove the job manifest path resolves inside the data directory BEFORE any
+    # ledger reservation or manifest init: a planted link at the derived job path
+    # must fail closed with no reservation and no outside write. Use the resolved
+    # path for every subsequent I/O (never re-join a second expression).
+    rollback_abs = _resolve_confined_job_path(data_dir, rollback_rel)
+    if rollback_abs is None:
+        return _err(
+            "IMPORT_WRITE_FAILURE",
+            "Import job path is not confined to the data directory.",
+            {"reason": "job_path_not_confined", "import_id": plan_import_id},
+            retryable=False,
+        )
 
     ledger_jobs: dict[str, Any] = ledger.get("jobs", {})
     ledger_jobs[plan_import_id] = {
@@ -460,7 +497,6 @@ def execute_run(  # noqa: C901
     _write_ledger(data_dir, ledger)
 
     # --- 7. Initialize rollback manifest BEFORE durable writes (PRD §10) ---
-    rollback_abs = data_dir / rollback_rel
     rollback_abs.parent.mkdir(parents=True, exist_ok=True)
 
     created_files: list[dict[str, Any]] = []
@@ -756,7 +792,17 @@ def execute_rollback(
         )
 
     rollback_rel = job.get("rollback_manifest_rel_path", "")
-    manifest_abs = data_dir / rollback_rel
+    # The stored locator is untrusted: a corrupt or hostile absolute/traversal
+    # ``rollback_manifest_rel_path`` must fail closed before any manifest write.
+    # Use the resolved path for all subsequent audit writes (never re-join).
+    manifest_abs = _resolve_confined_job_path(data_dir, rollback_rel)
+    if manifest_abs is None:
+        return _err(
+            "IMPORT_ROLLBACK_UNSAFE",
+            "Rollback aborted: rollback manifest path is not confined to the data directory.",
+            {"reason": "rollback_manifest_path_not_confined", "import_id": import_id},
+            retryable=False,
+        )
 
     # --- 4. First pass: verify all manifest paths are confined under data_dir ---
     unsafe_paths: list[str] = []
@@ -1333,8 +1379,41 @@ def _resolve_confined_source_path(source_root: Path, rel_path: str) -> Path | No
     return resolved_target
 
 
+def _resolve_confined_job_path(data_dir: Path, rel_path: str) -> Path | None:
+    """Return a RESOLVED import-job area path only when it is confined.
+
+    Intended for job-area paths (manifest directories, staging files) that may
+    not yet exist or that name a directory created on first use. Unlike
+    :func:`_resolve_confined_file_path`, this does NOT require an existing target
+    to be a regular file — a job area is created on demand. Returns the RESOLVED
+    target so callers use the validated path for every subsequent I/O (never
+    validate one expression and join a second path later).
+
+    Rejects empty/absolute ``rel_path``, traversal escapes, and any resolved
+    target that is not a strict descendant of the resolved data dir. Containment
+    is component-wise (``relative_to``): a planted junction/reparse/symlink that
+    escapes and a sibling ``<data_dir>-evil`` are both rejected, while a data dir
+    that itself contains a symlink component is resolved on both sides.
+    """
+    if not rel_path:
+        return None
+    p = Path(rel_path)
+    if p.is_absolute():
+        return None
+    resolved_data = data_dir.resolve()
+    resolved_target = (data_dir / rel_path).resolve()
+    if resolved_target == resolved_data:
+        return None
+    try:
+        resolved_target.relative_to(resolved_data)
+    except ValueError:
+        return None
+    return resolved_target
+
+
 def _read_ledger(data_dir: Path) -> dict[str, Any]:
     """Read one stable ledger snapshot; malformed durable state fails closed."""
+    _assert_import_jobs_area_confined(data_dir)
     ledger_path = _ledger_path(data_dir)
     lock_key = str(data_dir.resolve())
     # Preserve plan/dry-run no-write semantics. If no ledger exists and this is
@@ -1409,8 +1488,17 @@ def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def _read_rollback_manifest(data_dir: Path, import_id: str) -> dict[str, Any] | None:
-    """Read the rollback manifest for an import job, or None."""
-    manifest_path = data_dir / ".life-index" / "import-jobs" / import_id / "rollback-manifest.json"
+    """Read the rollback manifest for an import job, or None.
+
+    The manifest path is resolved and proven confined before any read: a planted
+    link in the job area that would redirect the read outside the data directory
+    fails closed (None) rather than reading untrusted bytes.
+    """
+    manifest_path = _resolve_confined_job_path(
+        data_dir, f".life-index/import-jobs/{import_id}/rollback-manifest.json"
+    )
+    if manifest_path is None:
+        return None
     if not manifest_path.exists():
         return None
     try:

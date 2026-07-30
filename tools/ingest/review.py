@@ -55,7 +55,7 @@ from tools.ingest.schemas import (
 from tools.lib.file_lock import FileLock
 from tools.lib.frontmatter import SCHEMA_VERSION, format_journal_content
 from tools.lib.topics import VALID_TOPICS
-from tools.ingest.runner import _ledger_serialized
+from tools.ingest.runner import _ledger_serialized, _resolve_confined_job_path
 
 # ---------------------------------------------------------------------------
 # Review/batch error codes (additive)
@@ -247,10 +247,6 @@ def _review_dir(data_dir: Path, parent_id: str) -> Path:
 
 def _review_plan_rel_path(parent_id: str) -> str:
     return f".life-index/import-jobs/{parent_id}/review-plan.json"
-
-
-def _review_plan_path(data_dir: Path, parent_id: str) -> Path:
-    return data_dir / _review_plan_rel_path(parent_id)
 
 
 def _review_lock_path(data_dir: Path, parent_id: str) -> Path:
@@ -461,8 +457,19 @@ def rebind_source_root(parent_id: str, source_root: str | Path, data_dir: Path) 
 
 
 def _write_review_plan_atomic(data_dir: Path, parent_id: str, plan: dict[str, Any]) -> Path:
-    """Persist the review plan via temp file + fsync + atomic replace."""
-    target = _review_plan_path(data_dir, parent_id)
+    """Persist the review plan via temp file + fsync + atomic replace.
+
+    The target is resolved and proven confined before any write (a planted link
+    at the parent job path must fail closed with no outside write); the resolved
+    path is used for the temp file, fsync, and atomic replace.
+    """
+    from tools.ingest.runner import ImportLedgerCorruptError, _ledger_path
+
+    target = _resolve_confined_job_path(data_dir, _review_plan_rel_path(parent_id))
+    if target is None:
+        raise ImportLedgerCorruptError(
+            _ledger_path(data_dir), "review_plan_path_not_confined"
+        )
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(".json.tmp")
     text = json.dumps(plan, ensure_ascii=False, indent=2)
@@ -478,8 +485,25 @@ def _write_review_plan_atomic(data_dir: Path, parent_id: str, plan: dict[str, An
 
 
 def read_review_plan(data_dir: Path, parent_id: str) -> dict[str, Any] | None:
-    """Read the persisted review plan, or None when absent."""
-    path = _review_plan_path(data_dir, parent_id)
+    """Read the persisted review plan, or None when genuinely absent.
+
+    A path that resolves OUTSIDE the data directory (a planted junction/reparse/
+    symlink at the parent job dir) is a containment failure, NOT a missing plan:
+    returning None here would be indistinguishable from absence, so callers
+    (reconciliation/status/edit/queue/rollback/run) could then abort a pending
+    intent or even ``jobs.pop(parent_id)`` — a destructive in-root mutation caused
+    by a containment failure (invariant #5). Matching the write side, a
+    containment failure RAISES ``ImportLedgerCorruptError`` (surfaced by the CLI
+    as ``IMPORT_LEDGER_CORRUPT``) so no caller mistakes it for absence. A plan
+    that is confined but not on disk still returns None (genuine absence).
+    """
+    from tools.ingest.runner import ImportLedgerCorruptError, _ledger_path
+
+    path = _resolve_confined_job_path(data_dir, _review_plan_rel_path(parent_id))
+    if path is None:
+        raise ImportLedgerCorruptError(
+            _ledger_path(data_dir), "review_plan_path_not_confined"
+        )
     if not path.exists():
         return None
     try:
@@ -1279,6 +1303,17 @@ def reconcile_review_authority(data_dir: Path, parent_id: str) -> None:
     converged, executable recovery state just like ``run``/``rollback``. The
     ledger is written only when something actually changed (convergence).
     """
+    # Prove the parent review area resolves inside the data directory BEFORE the
+    # per-parent lock is taken (the lock file lives there): a planted link at the
+    # parent job path must fail closed with no outside lock or plan read. This is
+    # the status read path, so a containment failure raises (matching the plan
+    # read/write side) rather than returning an envelope.
+    if _resolve_confined_job_path(data_dir, _review_plan_rel_path(parent_id)) is None:
+        from tools.ingest.runner import ImportLedgerCorruptError, _ledger_path
+
+        raise ImportLedgerCorruptError(
+            _ledger_path(data_dir), "review_plan_path_not_confined"
+        )
     lock = FileLock(_review_lock_path(data_dir, parent_id), timeout=30.0)
     with lock:
         ledger = _read_ledger(data_dir)
@@ -1448,6 +1483,17 @@ def confirm_review(  # noqa: C901
         if not validation["success"]:
             return validation
         source_root_identity = validation["data"]["source_root_identity"]
+
+    # Prove the parent review area resolves inside the data directory BEFORE the
+    # per-parent lock is taken (the lock file lives there): a planted link at the
+    # parent job path must fail closed with no outside lock or plan write.
+    if _resolve_confined_job_path(data_dir, _review_plan_rel_path(parent_id)) is None:
+        return _err(
+            "IMPORT_WRITE_FAILURE",
+            "Review job path is not confined to the data directory.",
+            {"reason": "review_path_not_confined", "import_id": parent_id},
+            retryable=False,
+        )
 
     # --- Per-parent single-writer lock: reconcile, merge, persist ---
     lock = FileLock(_review_lock_path(data_dir, parent_id), timeout=30.0)
@@ -1695,6 +1741,17 @@ def edit_review(  # noqa: C901
     decision = payload["decision"]
     journal_edit = payload.get("journal") or {}
     selected_ids = payload.get("selected_attachment_ids")
+
+    # Prove the parent review area resolves inside the data directory BEFORE the
+    # per-parent lock is taken (the lock file lives there): a planted link at the
+    # parent job path must fail closed with no outside lock or intent write.
+    if _resolve_confined_job_path(data_dir, _review_plan_rel_path(parent_id)) is None:
+        return _err(
+            "IMPORT_WRITE_FAILURE",
+            "Review job path is not confined to the data directory.",
+            {"reason": "review_path_not_confined", "import_id": parent_id},
+            retryable=False,
+        )
 
     # --- Per-parent lock; token check before any reconcile write ---
     lock = FileLock(_review_lock_path(data_dir, parent_id), timeout=30.0)
@@ -1945,6 +2002,18 @@ def review_queue(
     invalid_reason = validate_import_id(parent_id, allow_child=False)
     if invalid_reason is not None:
         return import_id_invalid(invalid_reason)
+
+    # Prove the parent review area resolves inside the data directory BEFORE the
+    # per-parent lock is taken (here the lock precedes the ledger read): a planted
+    # link at the parent job path must fail closed with no outside lock and no
+    # ledger read.
+    if _resolve_confined_job_path(data_dir, _review_plan_rel_path(parent_id)) is None:
+        return _err(
+            "IMPORT_WRITE_FAILURE",
+            "Review job path is not confined to the data directory.",
+            {"reason": "review_path_not_confined", "import_id": parent_id},
+            retryable=False,
+        )
 
     lock = FileLock(_review_lock_path(data_dir, parent_id), timeout=30.0)
     with lock:
@@ -2436,6 +2505,23 @@ def execute_review_rollback(import_id: str, data_dir: Path) -> dict[str, Any]:
     # per-parent lock (consistent parent→child lock order with run). Reconcile
     # the plan/ledger authority first so the projection starts from truth.
     if parent_id:
+        # The parent id is a STORED ledger field (``parent_review_job_id``), not
+        # the request id validated above. Lexically validate it, then prove its
+        # review area is confined, BEFORE the per-parent lock is taken: a hostile
+        # or junctioned stored locator must fail closed with no outside lock
+        # write. A lexically invalid stored id surfaces the existing
+        # ``IMPORT_ID_INVALID``; a valid-but-escaping one surfaces
+        # ``review_path_not_confined``.
+        invalid_parent = validate_import_id(parent_id, allow_child=False)
+        if invalid_parent is not None:
+            return import_id_invalid(invalid_parent)
+        if _resolve_confined_job_path(data_dir, _review_plan_rel_path(parent_id)) is None:
+            return _err(
+                "IMPORT_WRITE_FAILURE",
+                "Review job path is not confined to the data directory.",
+                {"reason": "review_path_not_confined", "import_id": parent_id},
+                retryable=False,
+            )
         lock = FileLock(_review_lock_path(data_dir, parent_id), timeout=30.0)
         with lock:
             pre_ledger = _read_ledger(data_dir)
@@ -2931,7 +3017,11 @@ def _stream_copy(
     if context is None:
         staging_abs = _unique_staging(target_abs)
     else:
-        staging_abs = context["data_dir"] / context["staging_rel_path"]
+        staging_abs = _resolve_confined_job_path(
+            context["data_dir"], context["staging_rel_path"]
+        )
+        if staging_abs is None:
+            return False, "staging_path_not_confined"
         staging_abs.parent.mkdir(parents=True, exist_ok=True)
         if staging_abs.exists():
             return False, "staging_exists"
@@ -2977,7 +3067,11 @@ def _publish_text_create_only(target_abs: Path, text: str) -> tuple[bool, str]:
     if context is None:
         staging_abs = _unique_staging(target_abs)
     else:
-        staging_abs = context["data_dir"] / context["staging_rel_path"]
+        staging_abs = _resolve_confined_job_path(
+            context["data_dir"], context["staging_rel_path"]
+        )
+        if staging_abs is None:
+            return False, "staging_path_not_confined"
         staging_abs.parent.mkdir(parents=True, exist_ok=True)
         if staging_abs.exists():
             return False, "staging_exists"
@@ -3482,12 +3576,25 @@ def _execute_child_batch(  # noqa: C901
     """
     from tools.ingest.runner import (
         _resolve_confined_file_path,
+        _resolve_confined_job_path,
         _resolve_confined_source_path,
         _write_manifest,
     )
 
     now = _now_iso()
     rollback_rel = f".life-index/import-jobs/{child_id}/rollback-manifest.json"
+    # Prove the child manifest path resolves inside the data directory BEFORE the
+    # child ledger reservation, manifest init, or any staging write: a planted
+    # link at the minted child path must fail closed with no reservation and no
+    # outside write. The resolved path is reused for all manifest I/O below.
+    rollback_abs = _resolve_confined_job_path(data_dir, rollback_rel)
+    if rollback_abs is None:
+        return _err(
+            "IMPORT_WRITE_FAILURE",
+            "Child batch job path is not confined to the data directory.",
+            {"reason": "job_path_not_confined", "child_id": child_id, "parent_id": parent_id},
+            retryable=False,
+        )
     proposal_ids = [p.get("proposal_id", "") for p in proposals]
     jobs = ledger.setdefault("jobs", {})
     jobs[child_id] = {
@@ -3507,7 +3614,6 @@ def _execute_child_batch(  # noqa: C901
     }
     _write_ledger(data_dir, ledger)
 
-    rollback_abs = data_dir / rollback_rel
     rollback_abs.parent.mkdir(parents=True, exist_ok=True)
     created_files: list[dict[str, Any]] = []
     manifest: dict[str, Any] = {
@@ -3660,6 +3766,18 @@ def run_batch(  # noqa: C901
     if invalid_reason is not None:
         return import_id_invalid(invalid_reason)
 
+    # Prove the parent review area resolves inside the data directory BEFORE the
+    # per-parent lock is taken (the lock file lives there): a planted link at the
+    # parent job path must fail closed with no outside lock, reservation, or
+    # child batch write.
+    if _resolve_confined_job_path(data_dir, _review_plan_rel_path(parent_id)) is None:
+        return _err(
+            "IMPORT_WRITE_FAILURE",
+            "Review job path is not confined to the data directory.",
+            {"reason": "review_path_not_confined", "import_id": parent_id},
+            retryable=False,
+        )
+
     lock = FileLock(_review_lock_path(data_dir, parent_id), timeout=30.0)
     with lock:
         ledger = _read_ledger(data_dir)
@@ -3760,6 +3878,22 @@ def run_batch(  # noqa: C901
         seq = int(job.get("next_batch_sequence", 1))
         child_id = _child_id_for_seq(parent_id, seq)
         proposal_ids = [p.get("proposal_id", "") for p in runnable]
+        # Prove the minted child job area resolves inside the data directory
+        # BEFORE the confirmed->batching transition and active-child reservation:
+        # a planted link at the child path must fail closed with no reservation.
+        if _resolve_confined_job_path(
+            data_dir, f".life-index/import-jobs/{child_id}/rollback-manifest.json"
+        ) is None:
+            return _err(
+                "IMPORT_WRITE_FAILURE",
+                "Child batch job path is not confined to the data directory.",
+                {
+                    "reason": "job_path_not_confined",
+                    "import_id": parent_id,
+                    "child_id": child_id,
+                },
+                retryable=False,
+            )
         job = cast(dict[str, Any], _get_job(ledger, parent_id))
         for proposal in runnable:
             proposal_states[proposal.get("proposal_id", "")] = STATE_BATCHING

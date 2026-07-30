@@ -683,3 +683,80 @@ def test_reconcile_parent_compensation_preserves_durable_child_state(
     snap2 = json.dumps(_read_ledger(data_dir)["jobs"], sort_keys=True)
     assert snap1 == snap2
     assert _read_ledger(data_dir)["jobs"][child_id]["state"] == "rolled_back"
+
+
+# ---------------------------------------------------------------------------
+# R1b: resolved job-path containment primitive.
+# Component-wise (not string-prefix), accepts not-yet-existing job paths, and
+# resolves both sides so a linked data dir is a legitimate contained root while a
+# planted link that escapes is rejected.
+# ---------------------------------------------------------------------------
+
+
+def test_r1b_resolve_confined_job_path_is_component_wise(tmp_path: Path) -> None:
+    """Case 6: containment is component-wise; a sibling ``-evil`` is rejected."""
+    import tools.ingest.runner as runner
+
+    resolve = runner._resolve_confined_job_path
+    data = tmp_path / "data"
+    data.mkdir()
+    sibling = tmp_path / "data-evil"  # shares the "data" string prefix
+    sibling.mkdir()
+
+    # Absolute locators are rejected outright (never joined into the data dir).
+    assert resolve(data, str(sibling / "rollback-manifest.json")) is None
+    # Traversal to a same-string-prefix sibling must NOT be string-prefix matched.
+    assert resolve(data, "../data-evil/rollback-manifest.json") is None
+    assert resolve(data, "../../data-evil/sub/x.json") is None
+    # A not-yet-existing nested job path is accepted and returned RESOLVED.
+    ok = resolve(data, ".life-index/import-jobs/imp-1/rollback-manifest.json")
+    assert ok is not None
+    assert ok == (data / ".life-index/import-jobs/imp-1/rollback-manifest.json").resolve()
+    # Strict descendant: the data dir itself and an empty locator are rejected.
+    assert resolve(data, ".") is None
+    assert resolve(data, "") is None
+
+
+def test_r1b_resolve_confined_job_path_accepts_linked_root(tmp_path: Path) -> None:
+    """False-rejection: a data dir reached through a link resolves on both sides."""
+    import os
+    import subprocess
+    import tools.ingest.runner as runner
+
+    real = tmp_path / "real"
+    real.mkdir()
+    link_root = tmp_path / "link-root"
+    if os.name == "nt":
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(link_root), str(real)], capture_output=True)
+    else:
+        os.symlink(real, link_root, target_is_directory=True)
+    assert link_root.is_dir()
+
+    resolve = runner._resolve_confined_job_path
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    escape_link = real / ".life-index" / "import-jobs" / "imp-2"
+    escape_link.parent.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(escape_link), str(outside)], capture_output=True)
+    else:
+        os.symlink(outside, escape_link, target_is_directory=True)
+
+    try:
+        # A path derived from the linked root resolves under the REAL root: accepted.
+        ok = resolve(link_root, ".life-index/import-jobs/imp-3/rollback-manifest.json")
+        assert ok is not None
+        assert ok == (real / ".life-index/import-jobs/imp-3/rollback-manifest.json").resolve()
+        # A junction planted inside the tree that escapes is still rejected, even
+        # though the root itself is reached through a link (both sides resolved).
+        assert resolve(link_root, ".life-index/import-jobs/imp-2/rollback-manifest.json") is None
+    finally:
+        try:
+            os.rmdir(escape_link) if os.name == "nt" else escape_link.unlink()
+        except OSError:
+            pass
+        try:
+            os.rmdir(link_root) if os.name == "nt" else link_root.unlink()
+        except OSError:
+            pass
+
