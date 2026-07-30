@@ -1969,11 +1969,20 @@ JSON，不写 journal、attachment、ledger、manifest 或 index。
 
 ### `import run`
 
-`run` 必须带 `--confirm <import_id>`，且 `<import_id>` 必须匹配 plan；缺席或有效但
-不匹配仍返回 `IMPORT_CONFIRMATION_REQUIRED`，无效的非缺席 confirm 或无效的 plan
-`import_id` 返回 `IMPORT_ID_INVALID`。它按
-create-only / fail-closed 策略写入 plan 中的 journal 和 attachment path，并在
-写入前建立固定 ledger 和 rollback manifest。
+`run` 先按 `--import-id` 选项是否出现确定性选择 route：
+
+- 只有 `--import-id` 完全缺席时，才进入 legacy `--plan/--confirm` route；
+- `--import-id` 一旦显式出现，就选择 batch route，再校验其值。显式空值或 lexical
+  非法值返回既有 `IMPORT_ID_INVALID`；lexical 合法但未知的值返回既有
+  `IMPORT_JOB_NOT_FOUND`；
+- `--import-id` 与 `--plan/--confirm` 同时出现时，batch route 优先，legacy plan
+  不执行。
+
+legacy route 必须带 `--confirm <import_id>`，且 `<import_id>` 必须匹配 plan；缺席或
+有效但不匹配仍返回 `IMPORT_CONFIRMATION_REQUIRED`，无效的非缺席 confirm 或无效的
+plan `import_id` 返回 `IMPORT_ID_INVALID`。legacy route 按 create-only /
+fail-closed 策略写入 plan 中的 journal 和 attachment path，并在写入前建立固定
+ledger 和 rollback manifest。
 
 对 `media.photo_timeline`，`run` 还应带 `--source-root <photo-dir>`。CLI 只
 使用该 root 解析 plan 中的 `source_rel_path`，并在复制 attachment 前校验
