@@ -1823,3 +1823,541 @@ def test_r1b_edit_junctioned_parent_dir_is_contained(tmp_path: Path) -> None:
     finally:
         _remove_dir_link(link, outside)
 
+
+# ===================================================================
+# Slice R1c: a corrupted stored child authority is read-only.
+#
+# When the parent job's stored ``active_child_id`` is malformed, hostile,
+# unknown, or inconsistent with the child records, the READ/status path must
+# NOT repair it, derive a path from it, traceback, leak it, or persist anything.
+# It returns a deterministic ``recovery_required`` projection. The mutation
+# paths (run/edit/queue/rollback) deterministically fail closed. Legitimate
+# crash-window convergence for VALID authorities is unchanged (Slice E / the
+# package suites).
+# ===================================================================
+
+
+_R1C_DELETE = object()  # sentinel: pop the active_child_id key entirely
+
+
+def _r1c_ledger_path(data_dir: Path) -> Path:
+    return data_dir / ".life-index" / "import-jobs" / "ledger.json"
+
+
+def _r1c_corrupt(data_dir: Path, parent_id: str, value: Any) -> None:
+    """Rewrite the parent job's stored ``active_child_id`` to a hostile value."""
+    p = _r1c_ledger_path(data_dir)
+    ledger = json.loads(p.read_text("utf-8"))
+    if value is _R1C_DELETE:
+        ledger["jobs"][parent_id].pop("active_child_id", None)
+    else:
+        ledger["jobs"][parent_id]["active_child_id"] = value
+    p.write_text(json.dumps(ledger, ensure_ascii=False), encoding="utf-8")
+
+
+def _r1c_snapshot(data_dir: Path, parent_id: str) -> dict[str, Any]:
+    """Capture every ledger fact R1c must prove unchanged across a read."""
+    p = _r1c_ledger_path(data_dir)
+    raw = p.read_bytes()
+    job = json.loads(raw)["jobs"][parent_id]
+    return {
+        "bytes": raw,
+        "sha": hashlib.sha256(raw).hexdigest(),
+        "size": len(raw),
+        "mtime_ns": p.stat().st_mtime_ns,
+        "queue_revision": job.get("queue_revision"),
+        "updated_at": job.get("updated_at"),
+        "recovery_required": job.get("recovery_required"),
+        "authority_status": job.get("authority_status"),
+        "proposal_states": json.dumps(job.get("proposal_states"), sort_keys=True),
+        "active_child_id": job.get("active_child_id"),
+    }
+
+
+def _r1c_assert_ledger_unchanged(before: dict[str, Any], after: dict[str, Any]) -> None:
+    assert after["bytes"] == before["bytes"], "ledger bytes changed (read-path repair)"
+    assert after["sha"] == before["sha"]
+    assert after["size"] == before["size"]
+    assert after["mtime_ns"] == before["mtime_ns"], "ledger mtime changed (read-path write)"
+    assert after["queue_revision"] == before["queue_revision"]
+    assert after["updated_at"] == before["updated_at"]
+    assert after["recovery_required"] == before["recovery_required"]
+    assert after["authority_status"] == before["authority_status"]
+    assert after["proposal_states"] == before["proposal_states"]
+    assert after["active_child_id"] == before["active_child_id"]
+
+
+# (stored active_child_id, hostile substring that must NEVER appear in output)
+_R1C_HOSTILE_VALUES: list[tuple[Any, str | None]] = [
+    (7, None),                                # wrong type: int
+    (["../../evil"], "../../evil"),           # wrong type: list (unhashable -> traceback on base)
+    ({"x": "y"}, None),                       # wrong type: dict (unhashable -> traceback on base)
+    ("", None),                               # empty string
+    ("   ", None),                            # whitespace string
+    ("../../outside-authority", "../../outside-authority"),  # path-like traversal
+    ("/etc/passwd", "/etc/passwd"),           # path-like absolute
+    ("imp_19990101_deadbeef00#batch-7", "imp_19990101_deadbeef00#batch-7"),  # foreign child
+]
+
+
+@pytest.mark.parametrize("value,fragment", _R1C_HOSTILE_VALUES)
+def test_r1c_status_corrupted_child_authority_is_readonly_and_idempotent(
+    tmp_path: Path, value: Any, fragment: str | None
+) -> None:
+    """READ path: a corrupted stored child authority is never repaired, never
+    leaks, never tracebacks; status projects recovery and leaves the ledger
+    byte-identical, twice in a row."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _proposal, parent_id, _att = _confirmed_one_photo_batch(data_dir, src)
+    _r1c_corrupt(data_dir, parent_id, value)
+    before = _r1c_snapshot(data_dir, parent_id)
+
+    raw1 = _run_import(data_dir, "status", "--import-id", parent_id, "--json")
+    raw2 = _run_import(data_dir, "status", "--import-id", parent_id, "--json")
+
+    # No traceback; deterministic success with an additive recovery projection.
+    assert raw1.returncode == 0, f"stderr:\n{raw1.stderr}"
+    payload1 = json.loads(raw1.stdout)
+    payload2 = json.loads(raw2.stdout)
+    assert payload1 == payload2, "repeated status must be byte-identical"
+    data = payload1["data"]
+    assert data["recovery_required"] is True
+    assert data["authority_status"] == "invalid_child_authority"
+    assert data["active_child_id"] is None  # hostile locator never surfaced
+
+    # The read path performs NO automatic repair and NO persistence.
+    _r1c_assert_ledger_unchanged(before, _r1c_snapshot(data_dir, parent_id))
+
+    if fragment is not None:
+        assert fragment not in raw1.stdout, "hostile locator leaked into the response"
+
+
+def test_r1c_status_inconsistent_child_record_is_readonly(tmp_path: Path) -> None:
+    """Case (d): a present child record whose ``parent_review_job_id`` is a
+    DIFFERENT parent is corrupted authority. Status must not repair it, must not
+    leak the foreign child locator, and must leave the ledger unchanged."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    proposal, parent_id, _att = _confirmed_one_photo_batch(data_dir, src)
+    proposal_id = proposal["proposal_id"]
+
+    child_id = f"{parent_id}#batch-1"
+    p = _r1c_ledger_path(data_dir)
+    ledger = json.loads(p.read_text("utf-8"))
+    # A child record that DENIES being this parent's batch child.
+    ledger["jobs"][child_id] = {
+        "kind": "batch",
+        "parent_review_job_id": "imp_19990101_aaaaffff",
+        "state": "running",
+        "proposal_ids": [proposal_id],
+        "updated_at": "2026-01-01T00:00:00+00:00",
+    }
+    ledger["jobs"][parent_id]["active_child_id"] = child_id
+    p.write_text(json.dumps(ledger, ensure_ascii=False), encoding="utf-8")
+    before = _r1c_snapshot(data_dir, parent_id)
+
+    raw1 = _run_import(data_dir, "status", "--import-id", parent_id, "--json")
+    raw2 = _run_import(data_dir, "status", "--import-id", parent_id, "--json")
+
+    assert raw1.returncode == 0, f"stderr:\n{raw1.stderr}"
+    assert json.loads(raw1.stdout) == json.loads(raw2.stdout)
+    data = json.loads(raw1.stdout)["data"]
+    assert data["recovery_required"] is True
+    assert data["authority_status"] == "invalid_child_authority"
+    assert data["active_child_id"] is None
+    _r1c_assert_ledger_unchanged(before, _r1c_snapshot(data_dir, parent_id))
+    # The foreign child locator must not leak even though a record exists.
+    assert child_id not in raw1.stdout
+
+
+@pytest.mark.parametrize("value", [None, _R1C_DELETE])
+def test_r1c_status_settled_authority_is_not_flagged_as_corruption(
+    tmp_path: Path, value: Any
+) -> None:
+    """``None`` / missing ``active_child_id`` is the normal settled state, NOT
+    corruption: no recovery flag, no mutation (regression guard)."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _proposal, parent_id, _att = _confirmed_one_photo_batch(data_dir, src)
+    _r1c_corrupt(data_dir, parent_id, value)
+    before = _r1c_snapshot(data_dir, parent_id)
+
+    raw = _run_import(data_dir, "status", "--import-id", parent_id, "--json")
+    assert raw.returncode == 0, f"stderr:\n{raw.stderr}"
+    data = json.loads(raw.stdout)["data"]
+    assert data["recovery_required"] is False
+    assert data["authority_status"] is None
+    assert data["active_child_id"] is None
+    _r1c_assert_ledger_unchanged(before, _r1c_snapshot(data_dir, parent_id))
+
+
+def _r1c_review(data_dir: Path, parent_id: str) -> subprocess.CompletedProcess[str]:
+    return _run_import(data_dir, "review", "--import-id", parent_id, "--json")
+
+
+def _r1c_edit(
+    data_dir: Path, tmp_path: Path, parent_id: str, proposal_id: str, q: int
+) -> subprocess.CompletedProcess[str]:
+    payload = {
+        "schema_version": "import_review_edit.v1",
+        "proposal_id": proposal_id,
+        "decision": "confirmed",
+    }
+    edit_file = _plan_file(tmp_path, payload, name=f"r1c_edit_{proposal_id}.json")
+    return _run_import(
+        data_dir,
+        "confirm",
+        "--edit",
+        str(edit_file),
+        "--import-id",
+        parent_id,
+        "--expected-queue-revision",
+        str(q),
+        "--json",
+    )
+
+
+def test_r1c_run_corrupted_child_authority_fails_closed(tmp_path: Path) -> None:
+    """MUTATION (run): corrupted authority never silently repairs into a run;
+    it fails closed without deriving a path, leaking, or persisting a repair."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _proposal, parent_id, _att = _confirmed_one_photo_batch(data_dir, src)
+    hostile = "../../outside-authority"
+    _r1c_corrupt(data_dir, parent_id, hostile)
+    before = _r1c_snapshot(data_dir, parent_id)
+
+    raw = _run_import(
+        data_dir, "run", "--import-id", parent_id, "--source-root", str(src), "--json"
+    )
+    assert raw.returncode != 0
+    err = json.loads(raw.stdout)["error"]
+    assert err["code"] == "IMPORT_RECOVERY_REQUIRED"
+    assert err["details"].get("authority_status") == "invalid_child_authority"
+    assert hostile not in raw.stdout
+    # No silent repair / no persistence.
+    _r1c_assert_ledger_unchanged(before, _r1c_snapshot(data_dir, parent_id))
+
+
+def test_r1c_edit_corrupted_child_authority_fails_closed(tmp_path: Path) -> None:
+    """MUTATION (edit): a single-proposal edit on corrupted authority fails
+    closed (no token race, no leak, no repair)."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    proposal, parent_id, _att = _confirmed_one_photo_batch(data_dir, src)
+    hostile = "imp_19990101_deadbeef00#batch-7"
+    _r1c_corrupt(data_dir, parent_id, hostile)
+    before = _r1c_snapshot(data_dir, parent_id)
+
+    raw = _r1c_edit(data_dir, tmp_path, parent_id, proposal["proposal_id"], q=before["queue_revision"])
+    assert raw.returncode != 0
+    err = json.loads(raw.stdout)["error"]
+    assert err["code"] == "IMPORT_REVIEW_RECOVERY_REQUIRED"
+    assert err["details"].get("authority_status") == "invalid_child_authority"
+    assert hostile not in raw.stdout
+    _r1c_assert_ledger_unchanged(before, _r1c_snapshot(data_dir, parent_id))
+
+
+def test_r1c_review_queue_corrupted_child_authority_fails_closed(tmp_path: Path) -> None:
+    """MUTATION (queue): ``import review`` on corrupted authority reports
+    recovery and never leaks the locator."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _proposal, parent_id, _att = _confirmed_one_photo_batch(data_dir, src)
+    hostile = "../../outside-authority"
+    _r1c_corrupt(data_dir, parent_id, hostile)
+    before = _r1c_snapshot(data_dir, parent_id)
+
+    raw = _r1c_review(data_dir, parent_id)
+    assert raw.returncode != 0
+    err = json.loads(raw.stdout)["error"]
+    assert err["code"] == "IMPORT_REVIEW_RECOVERY_REQUIRED"
+    assert err["details"].get("authority_status") == "invalid_child_authority"
+    assert hostile not in raw.stdout
+    _r1c_assert_ledger_unchanged(before, _r1c_snapshot(data_dir, parent_id))
+
+
+def test_r1c_rollback_corrupted_parent_authority_fails_closed(tmp_path: Path) -> None:
+    """MUTATION (rollback): rolling back a real child while the PARENT's stored
+    authority is corrupted must fail closed before any rollback projection
+    overwrites/repairs the hostile value."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    proposal, parent_id, _att = _confirmed_one_photo_batch(data_dir, src)
+    run = _ok(_run_batch(data_dir, parent_id, src))["data"]
+    child_id = run["import_id"]
+    # After a committed batch the active child is cleared; re-corrupt the parent.
+    hostile = "../../outside-authority"
+    _r1c_corrupt(data_dir, parent_id, hostile)
+    before = _r1c_snapshot(data_dir, parent_id)
+
+    raw = _run_import(data_dir, "rollback", "--import-id", child_id, "--json")
+    assert raw.returncode != 0
+    err = json.loads(raw.stdout)["error"]
+    assert err["code"] == "IMPORT_REVIEW_RECOVERY_REQUIRED"
+    assert err["details"].get("authority_status") == "invalid_child_authority"
+    assert hostile not in raw.stdout
+    # The rollback must not have overwritten the hostile authority (no repair).
+    _r1c_assert_ledger_unchanged(before, _r1c_snapshot(data_dir, parent_id))
+
+
+def test_r1c_reviews_list_never_leaks_corrupted_authority(tmp_path: Path) -> None:
+    """READ path (``import reviews``): a paged list must never surface a hostile
+    stored locator either; corrupted jobs project recovery with no locator."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _proposal, parent_id, _att = _confirmed_one_photo_batch(data_dir, src)
+    hostile = "../../outside-authority"
+    _r1c_corrupt(data_dir, parent_id, hostile)
+
+    raw = _run_import(data_dir, "reviews", "--json")
+    assert raw.returncode == 0, f"stderr:\n{raw.stderr}"
+    data = json.loads(raw.stdout)["data"]
+    job = next(j for j in data["jobs"] if j["import_id"] == parent_id)
+    assert job["active_child_id"] is None
+    assert job["recovery_required"] is True
+    assert job["authority_status"] == "invalid_child_authority"
+    assert hostile not in raw.stdout
+
+
+def test_r1c_valid_running_child_crash_window_still_converges(tmp_path: Path) -> None:
+    """Regression: a VALID authority (a real, consistent child in a crash window)
+    still converges on the read path. Only corrupted authority is read-only."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    proposal, parent_id, _att = _confirmed_one_photo_batch(data_dir, src)
+    proposal_id = proposal["proposal_id"]
+    # Plant a REAL consistent child mid-flight (running, no commit evidence):
+    # a legitimate crash window, not corruption.
+    child_id = f"{parent_id}#batch-1"
+    p = _r1c_ledger_path(data_dir)
+    ledger = json.loads(p.read_text("utf-8"))
+    ledger["jobs"][child_id] = {
+        "kind": "batch",
+        "parent_review_job_id": parent_id,
+        "state": "running",
+        "proposal_ids": [proposal_id],
+        "updated_at": "2026-01-01T00:00:00+00:00",
+    }
+    ledger["jobs"][parent_id]["proposal_states"][proposal_id] = "batching"
+    ledger["jobs"][parent_id]["active_child_id"] = child_id
+    p.write_text(json.dumps(ledger, ensure_ascii=False), encoding="utf-8")
+
+    raw = _run_import(data_dir, "status", "--import-id", parent_id, "--json")
+    assert raw.returncode == 0, f"stderr:\n{raw.stderr}"
+    data = json.loads(raw.stdout)["data"]
+    # Legitimate crash-window convergence is preserved: recovery surfaced, child
+    # retained (not silently cleared), authority NOT flagged as corrupted.
+    assert data["recovery_required"] is True
+    assert data["authority_status"] != "invalid_child_authority"
+    assert data["active_child_id"] == child_id
+
+
+# ===================================================================
+# Slice R1c rework: the _read_ledger job-key integrity gate + the refined
+# plain-vs-reservation-gap discrimination. A hostile durable JOBS KEY is
+# unreachable to every consumer by failing closed at read time; a plain/legacy
+# active_child_id with no record is corruption, while a correctly-prefixed
+# #batch id with no record is still the legitimate reservation-gap crash window.
+# ===================================================================
+
+
+def _r1c_plant_job_key(data_dir: Path, key: str, job: dict[str, Any]) -> None:
+    """Plant a raw jobs KEY directly into the durable ledger.
+
+    No code path ever creates a non-lexical key (the runner mints only closed
+    ids), so this bypasses every writer to simulate a hostile/corrupted durable
+    store — the exact threat the ``_read_ledger`` job-key gate must reject.
+    """
+    p = _r1c_ledger_path(data_dir)
+    ledger = json.loads(p.read_text("utf-8"))
+    ledger["jobs"][key] = job
+    p.write_text(json.dumps(ledger, ensure_ascii=False), encoding="utf-8")
+
+
+def test_r1c_hostile_job_key_status_is_import_ledger_corrupt(tmp_path: Path) -> None:
+    """R1 (READ): a hostile durable jobs KEY (path-like traversal) is rejected by
+    the ``_read_ledger`` job-key integrity gate before any key is used as a
+    locator, promoted into an active child, or echoed into the batches
+    projection. ``import status`` surfaces IMPORT_LEDGER_CORRUPT (additive reason
+    ``job_id_invalid``), no traceback, never leaks the key, leaves the ledger
+    byte-identical, and is byte-identical on repeat."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    proposal, parent_id, _att = _confirmed_one_photo_batch(data_dir, src)
+    proposal_id = proposal["proposal_id"]
+    # Settled confirmed parent (active_child_id absent) + a hostile jobs key
+    # crafted to be promoted by the settled-branch scan on the unfixed candidate.
+    hostile_key = "../../../evil"
+    _r1c_plant_job_key(
+        data_dir,
+        hostile_key,
+        {
+            "kind": "batch",
+            "parent_review_job_id": parent_id,
+            "state": "rollback_failed",
+            "rollback_retryable": True,
+            "proposal_ids": [proposal_id],
+            "updated_at": "2026-01-01T00:00:00+00:00",
+        },
+    )
+    before = _r1c_snapshot(data_dir, parent_id)
+
+    raw1 = _run_import(data_dir, "status", "--import-id", parent_id, "--json")
+    raw2 = _run_import(data_dir, "status", "--import-id", parent_id, "--json")
+
+    # IMPORT_LEDGER_CORRUPT with the additive reason; no traceback.
+    assert raw1.returncode != 0, f"expected IMPORT_LEDGER_CORRUPT; stdout:\n{raw1.stdout}"
+    assert json.loads(raw1.stdout) == json.loads(raw2.stdout), "repeat must be identical"
+    err = json.loads(raw1.stdout)["error"]
+    assert err["code"] == "IMPORT_LEDGER_CORRUPT"
+    assert err["details"]["reason"] == "job_id_invalid"
+    # The hostile key never leaks into stdout/stderr (batches projection included).
+    assert hostile_key not in raw1.stdout
+    assert hostile_key not in raw1.stderr
+    # No repair, no derivation, no persistence: the ledger is byte-identical.
+    _r1c_assert_ledger_unchanged(before, _r1c_snapshot(data_dir, parent_id))
+
+
+def test_r1c_hostile_job_key_reviews_is_import_ledger_corrupt(tmp_path: Path) -> None:
+    """R1 mirror (READ, ``import reviews``): the paged list reads through
+    ``_read_ledger`` too, so a hostile jobs key fails closed (IMPORT_LEDGER_CORRUPT,
+    reason ``job_id_invalid``) and never echoes the key into the list. Ledger
+    byte-identical."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    proposal, parent_id, _att = _confirmed_one_photo_batch(data_dir, src)
+    hostile_key = "../../../evil"
+    _r1c_plant_job_key(
+        data_dir,
+        hostile_key,
+        {
+            "kind": "batch",
+            "parent_review_job_id": parent_id,
+            "state": "rollback_failed",
+            "rollback_retryable": True,
+            "proposal_ids": [proposal["proposal_id"]],
+            "updated_at": "2026-01-01T00:00:00+00:00",
+        },
+    )
+    before = _r1c_snapshot(data_dir, parent_id)
+
+    raw = _run_import(data_dir, "reviews", "--json")
+    assert raw.returncode != 0, f"expected IMPORT_LEDGER_CORRUPT; stdout:\n{raw.stdout}"
+    err = json.loads(raw.stdout)["error"]
+    assert err["code"] == "IMPORT_LEDGER_CORRUPT"
+    assert err["details"]["reason"] == "job_id_invalid"
+    assert hostile_key not in raw.stdout
+    _r1c_assert_ledger_unchanged(before, _r1c_snapshot(data_dir, parent_id))
+
+
+def test_r1c_hostile_job_key_run_is_import_ledger_corrupt(tmp_path: Path) -> None:
+    """R1 mirror (MUTATION, ``import run``): the mutation path also reads through
+    ``_read_ledger``, so a hostile jobs key fails closed (IMPORT_LEDGER_CORRUPT,
+    reason ``job_id_invalid``) before any batch executes or repairs. Ledger
+    byte-identical."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    proposal, parent_id, _att = _confirmed_one_photo_batch(data_dir, src)
+    hostile_key = "../../../evil"
+    _r1c_plant_job_key(
+        data_dir,
+        hostile_key,
+        {
+            "kind": "batch",
+            "parent_review_job_id": parent_id,
+            "state": "rollback_failed",
+            "rollback_retryable": True,
+            "proposal_ids": [proposal["proposal_id"]],
+            "updated_at": "2026-01-01T00:00:00+00:00",
+        },
+    )
+    before = _r1c_snapshot(data_dir, parent_id)
+
+    raw = _run_import(
+        data_dir, "run", "--import-id", parent_id, "--source-root", str(src), "--json"
+    )
+    assert raw.returncode != 0, f"expected IMPORT_LEDGER_CORRUPT; stdout:\n{raw.stdout}"
+    err = json.loads(raw.stdout)["error"]
+    assert err["code"] == "IMPORT_LEDGER_CORRUPT"
+    assert err["details"]["reason"] == "job_id_invalid"
+    assert hostile_key not in raw.stdout
+    _r1c_assert_ledger_unchanged(before, _r1c_snapshot(data_dir, parent_id))
+
+
+def test_r1c_status_plain_unknown_child_authority_is_corruption(tmp_path: Path) -> None:
+    """R2 (READ): a plain/legacy active_child_id with NO child record is corrupted
+    authority — not the reservation-gap crash window. ``import status`` projects
+    recovery_required + invalid_child_authority, surfaces no locator, performs NO
+    repair (the candidate silently repaired it: restore + clear + persist), and is
+    byte-identical on repeat."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _proposal, parent_id, _att = _confirmed_one_photo_batch(data_dir, src)
+    _r1c_corrupt(data_dir, parent_id, "child1")  # plain unknown id, no record
+    before = _r1c_snapshot(data_dir, parent_id)
+
+    raw1 = _run_import(data_dir, "status", "--import-id", parent_id, "--json")
+    raw2 = _run_import(data_dir, "status", "--import-id", parent_id, "--json")
+    assert raw1.returncode == 0, f"stderr:\n{raw1.stderr}"
+    assert json.loads(raw1.stdout) == json.loads(raw2.stdout), "repeat must be identical"
+    data = json.loads(raw1.stdout)["data"]
+    assert data["recovery_required"] is True
+    assert data["authority_status"] == "invalid_child_authority"
+    assert data["active_child_id"] is None  # plain locator never surfaced
+    # No repair, no persistence: ledger byte-identical (replaces the old repair).
+    _r1c_assert_ledger_unchanged(before, _r1c_snapshot(data_dir, parent_id))
+    assert "child1" not in raw1.stdout
+
+
+def test_r1c_status_reservation_gap_crash_window_converges(tmp_path: Path) -> None:
+    """R2 regression (READ): a CORRECTLY-PREFIXED ``<parent>#batch-1`` id with NO
+    child record and NO manifest is the genuine reservation-gap crash window
+    (``run_batch`` persists active_child_id before writing the child job entry).
+    The read path still CONVERGES here — restore-confirmed + clear IS allowed to
+    persist (legitimate convergence), unchanged from the designed semantics. Only
+    plain/foreign authority is read-only corruption."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    proposal, parent_id, _att = _confirmed_one_photo_batch(data_dir, src)
+    proposal_id = proposal["proposal_id"]
+    child_id = f"{parent_id}#batch-1"
+    # Plant the reservation gap: active_child_id set, NO child record, NO manifest.
+    # This mirrors the exact durable window run_batch leaves when it crashes after
+    # its atomic parent write (active_child_id + selected_proposal_ids + batching,
+    # all at once) but BEFORE _execute_child_batch writes the child job entry.
+    p = _r1c_ledger_path(data_dir)
+    ledger = json.loads(p.read_text("utf-8"))
+    ledger["jobs"][parent_id]["proposal_states"][proposal_id] = "batching"
+    ledger["jobs"][parent_id]["active_child_id"] = child_id
+    ledger["jobs"][parent_id]["selected_proposal_ids"] = [proposal_id]
+    p.write_text(json.dumps(ledger, ensure_ascii=False), encoding="utf-8")
+
+    raw = _run_import(data_dir, "status", "--import-id", parent_id, "--json")
+    assert raw.returncode == 0, f"stderr:\n{raw.stderr}"
+    data = json.loads(raw.stdout)["data"]
+    # Legitimate convergence: restored + cleared, NOT flagged as corruption.
+    assert data["authority_status"] != "invalid_child_authority"
+    assert data["recovery_required"] is False
+    assert data["active_child_id"] is None
+    # The convergence PERSISTED (the one read path allowed to write here).
+    parent = json.loads(_r1c_ledger_path(data_dir).read_text("utf-8"))["jobs"][parent_id]
+    assert parent["active_child_id"] is None
+    assert parent["proposal_states"][proposal_id] == "confirmed"
+    assert parent["recovery_required"] is False
+

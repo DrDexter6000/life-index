@@ -2105,6 +2105,7 @@ success shape 或 exit code 映射；`reason` 为开放描述，调用方不应�
 | `IMPORT_ROLLBACK_UNSAFE` | `rollback_manifest_path_not_confined` | 存储的 `rollback_manifest_rel_path` 为绝对/遍历/逃逸 locator |
 | `IMPORT_LEDGER_CORRUPT` | `import_jobs_area_not_confined` | `.life-index/import-jobs` 区域本身是逃逸 link（首次 ledger I/O 前） |
 | `IMPORT_LEDGER_CORRUPT` | `review_plan_path_not_confined` | review-plan 派生路径逃逸 data dir（读写两侧均 raise，见下） |
+| `IMPORT_LEDGER_CORRUPT` | `job_id_invalid` | 持久化 ledger 的某个 `jobs` key 非闭合词法 import id（path-like/遍历/非词法）；在首次 `_read_ledger` 读时 fail-closed（见下） |
 
 附加 surfacing 说明：
 
@@ -2120,6 +2121,15 @@ success shape 或 exit code 映射；`reason` 为开放描述，调用方不应�
   abort 一个 pending intent、甚至 `jobs.pop(parent_id)` 这种由 containment 失败引起的破坏性 in-root
   改动）。真正 confined 但磁盘上不存在的 plan 仍返回 `None`（既有"缺失"行为不变）。status 路径在
   per-parent lock 之前用同一 probe 也会 raise，故 ledger 字节/SHA、jobs、proposal_states、intent 全不变。
+- **`job_id_invalid`（读+写路径，`IMPORT_LEDGER_CORRUPT`，`details.reason`）**：`_read_ledger` 在既有结构
+  校验之后，对**每个** `jobs` key 用 `validate_import_id(key, allow_child=True)` 做闭合词法校验——任一 key
+  非词法 import id（path-like/遍历/非词法）即 raise `ImportLedgerCorruptError(ledger_path, "job_id_invalid")`，
+  CLI 统一映射为 `IMPORT_LEDGER_CORRUPT`，退出码映射不变。这是 R1c 的 single-point 闭合：一个敌意的
+  durable `jobs` key 对**所有** consumer（status/`run`/`reviews` 读路径、`_derive_child_batches`/
+  `_child_batch_projection` 的 `batches` 投影、`_reconcile_parent` 的 settled 扫描）都不可达——在读时
+  fail-closed，故无修复、无路径派生、无泄漏、重复调用逐字节一致。敌意 key 值**绝不**进入 error
+  （仅 `reason = "job_id_invalid"`）。这同时也**强制**了 `batches` 投影的 locator-free 语义：派生它的
+  每个 job key 都已通过词法门，绝无 locator 能从 `data.batches[].import_id` 泄漏。
 - **`staging_path_not_confined`（`IMPORT_WRITE_FAILURE` 的 `message` 文本，**非** `details.reason`）**：
   batch 的 staging 派生路径逃逸时，`_stream_copy` / `_publish_text_create_only` 返回
   `(False, "staging_path_not_confined")`，该字符串作为 `RuntimeError` 信息冒泡进 `IMPORT_WRITE_FAILURE`
@@ -2482,12 +2492,17 @@ provenance、frontmatter `attachments` 为 SSOT），只发布 selected attachme
 
 对 parent review job，`status` 额外返回各 proposal `state`、derived queue counts、
 `active_child_id`、`recovery_required`、`authority_status`（`null`，或 fail-closed 时
-`"plan_ledger_mismatch"`）、`plan_fingerprint`、`plan_revision`、`queue_revision`、
+`"plan_ledger_mismatch"`，或存储的 child 权威损坏时投影为
+`"invalid_child_authority"`）、`plan_fingerprint`、`plan_revision`、`queue_revision`、
 `source_root_identity`，以及 `batches`：**ledger-derived、restart-safe、locator-free** 的
 durable child batch 历史。`batches` 在每次读时从 ledger 中 `kind == "batch"` 且
 `parent_review_job_id == <parent>` 的 job 派生——GUI 绝不缓存 child id 作为第二真相，这是 GUI
 发现可回滚 batch 的**唯一来源**。稳定排序：oldest/lowest numeric `<parent>#batch-<seq>` 在前，
-legacy/malformed id 走稳定 fallback（不依赖 dict 插入序）。每个 batch 投影仅含安全字段：
+legacy/malformed id 走稳定 fallback（不依赖 dict 插入序）。`batches` 的 **locator-free** 语义现在由
+`_read_ledger` 的 job-key 完整性门**强制**：任何 path-like/遍历/非词法的 durable `jobs` key 在派生
+`batches` 之前就以 `IMPORT_LEDGER_CORRUPT`（`reason = "job_id_invalid"`）fail-closed，故 `import_id`
+字段只能是闭合词法 id，绝无 locator 能经此泄漏；稳定 fallback 仅处理词法合法的 legacy plain id。
+每个 batch 投影仅含安全字段：
 `import_id`（child id，`#` 原样保留——GUI 之后放在 JSON rollback body 而非 URL path）、`state`、
 `proposal_ids`（opaque ids）、`proposal_count`、`created_at`（legacy child 缺失时 fallback 到
 `updated_at` 或 `null`）、`updated_at`、`rollback_available`；**绝不**暴露
@@ -2504,6 +2519,32 @@ ownership / identity / hash / size revalidation）。
 该投影在既有 authority reconciliation 之后**只读派生**：不改写
 ledger、不递增 `queue_revision`、不重写文件；收敛后重复读为稳定 no-write。既有 job（fixture /
 child batch）的 status 字段不变。
+
+**损坏的存储 child 权威为只读（R1c）。** 当 parent job 存储的 `active_child_id` 损坏/恶意
+（类型错误、非字符串、空/空白、path-like/词法非法、声称别的 parent 的 `#batch-<seq>` id、或
+存在但否认属于本 parent 的 child 记录）时，`status`/`reviews` 这条**读路径**绝不自动修复、绝不
+持久化、绝不由该敌意值派生路径、绝不 traceback、绝不泄漏该定位符。它在响应里确定性投影
+`recovery_required = true` + `authority_status = "invalid_child_authority"` + `active_child_id = null`
+（敌意值仍原样留在 ledger 上，仅不被外露），且重复调用逐字节一致——ledger bytes / SHA-256 /
+size / mtime / `queue_revision` / `updated_at` / `proposal_states` 可证不变。判别在 reconciliation
+与路径派生**之前**完成（词法校验先于 jobs dict 查找，故 unhashable/path-like 值既不逃逸也不崩溃）。
+`None`/缺 key 是正常 settled 状态，**不**判为损坏（既有 no-op 行为不变）。各 mutation 路径
+（`run`/`confirm`/`review`/`rollback`）对损坏权威确定地 fail closed：沿用各自既有 recovery 错误码
+（`IMPORT_RECOVERY_REQUIRED` / `IMPORT_REVIEW_RECOVERY_REQUIRED`，退出码映射不变），仅加式带上
+`authority_status = "invalid_child_authority"`，既不静默修复篡改、也不派生路径、也不泄漏。**有效**
+权威（真实一致的 child，含崩溃窗口）的合法 crash-window 收敛行为完全不变。
+
+**child 权威判别的精细区分（R1c rework）。** 一个无 child 记录的存储 `active_child_id` 现在按 id
+形式二分：**正确前缀的 `<parent>#batch-<seq>` id**（`run_batch` 在写 child job entry **之前**就原子持久化
+`active_child_id` + `selected_proposal_ids` + `batching`，故崩溃后该状态真实出现）仍判为 `"valid"`——
+这是合法的 reservation-gap 崩溃窗口，读路径照常收敛（restore confirmed + clear，**允许**持久化）；
+**任何其它**无记录 id（plain/legacy id、或已在上文判为 foreign 的 `#batch` id）均判为 `"invalid"` 损坏
+权威——读路径只投影 recovery、绝不修复（candidate 曾把 plain unknown id 当 crash-window 静默
+repair：restore + clear + persist，现已移除）。存在但不一致的 child 记录仍为 `"invalid"`（不变）。该
+判别在路径派生与 jobs dict 查找之前完成。此外，一个**敌意的 durable `jobs` key**（path-like/遍历/非词法）
+根本到不了判别这一步：`_read_ledger` 的 job-key 完整性门在上文 `job_id_invalid` 处对所有 consumer
+single-point fail-closed——既不会进入 `batches` 投影（ locator-free 由该门**强制**），也不会被 settled
+扫描提升为 `active_child_id`。
 
 #### `import rollback`（additive）
 
@@ -2544,12 +2585,12 @@ child 与正确链接 manifest **同时**为 non-retryable `rollback_failed` 且
 | `IMPORT_SOURCE_ROOT_IDENTITY_MISMATCH` | 当前 locator 的 root identity 与 parent 记录不符 |
 | `IMPORT_REVIEW_PLAN_MISSING` | 缺少持久化 review-plan.json |
 | `IMPORT_PREVIEW_UNAVAILABLE` | preview 目标 unavailable（unsupported / stale / missing / unreferenced / proposal 不匹配） |
-| `IMPORT_RECOVERY_REQUIRED` | parent 处于需要人工/补偿恢复的 `batching` 状态，或 plan/ledger 权威不一致（`authority_status = "plan_ledger_mismatch"`）拒绝 fail-closed |
+| `IMPORT_RECOVERY_REQUIRED` | parent 处于需要人工/补偿恢复的 `batching` 状态，或 plan/ledger 权威不一致（`authority_status = "plan_ledger_mismatch"`），或 `run` 命中损坏的存储 child 权威（`authority_status = "invalid_child_authority"`）——均拒绝 fail-closed，退出码映射不变 |
 | `IMPORT_REVIEW_ALREADY_STAGED` | 同一 source root 已有 actionable review job 或 active child，拒绝创建第二个 job/plan（带 `existing_import_id`，non-retryable，零写入） |
 | `IMPORT_REVIEW_EDIT_INVALID` | `import_review_edit.v1` payload 校验失败（未知字段/类型/topic/decision/未知 attachment id；零写入） |
 | `IMPORT_REVIEW_PROPOSAL_FROZEN` | edit 目标 proposal 处于 `batching`/`imported` 冻结态，不可编辑 |
 | `IMPORT_REVIEW_REVISION_CONFLICT` | edit 令牌过期（`expected_queue_revision` ≠ 当前值），retryable，带 `current_queue_revision`，零写入 |
-| `IMPORT_REVIEW_RECOVERY_REQUIRED` | `import review` 读到 recovery / plan-ledger mismatch 状态，fail-closed |
+| `IMPORT_REVIEW_RECOVERY_REQUIRED` | `import review` / edit / rollback 读到 recovery / plan-ledger mismatch 状态，或命中损坏的存储 child 权威（`authority_status = "invalid_child_authority"`），fail-closed，退出码映射不变 |
 | `IMPORT_REVIEW_EMPTY_SELECTION_SKIPPED` | soft reason code：edit 空选择被强转为 `skipped`（成功响应，revisions 已递增） |
 | `IMPORT_REVIEW_DATE_REQUIRED` | soft reason code：`confirmed` 但无可解析日期，保持 `pending`（成功响应，revisions 已递增） |
 

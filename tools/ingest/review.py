@@ -105,6 +105,15 @@ _EDIT_DECISIONS = ("pending", "confirmed", "skipped")
 # ``confirm`` that re-derives from an explicit incoming plan).
 AUTHORITY_STATUS_PLAN_LEDGER_MISMATCH = "plan_ledger_mismatch"
 
+# Authority status surfaced (projected, never persisted by the read path) when
+# the stored ``active_child_id`` is corrupted/hostile: wrong type, empty,
+# path-like/lexically invalid, a ``#batch-<seq>`` id claiming a different parent,
+# or a child record that denies being this parent's batch. The read/status path
+# performs no automatic repair and no persistence in this state; it projects
+# ``recovery_required`` and this status and leaves the ledger byte-identical.
+# Mutation paths fail closed. Additive enum value (see docs/API.md).
+AUTHORITY_STATUS_INVALID_CHILD_AUTHORITY = "invalid_child_authority"
+
 # Proposal states (additive ``state`` field).
 STATE_PENDING = "pending"
 STATE_CONFIRMED = "confirmed"
@@ -1527,6 +1536,20 @@ def confirm_review(  # noqa: C901
                     retryable=False,
                 )
 
+        # Corrupted stored child authority: fail closed before the active-child
+        # check (which would otherwise leak the hostile locator) and before any
+        # confirm/merge write. Reconciliation performed no repair for it.
+        if (
+            isinstance(existing_job, dict)
+            and _child_authority_status(ledger.get("jobs", {}), parent_id, existing_job)
+            == "invalid"
+        ):
+            if reconciled:
+                _write_ledger(data_dir, ledger)  # persist convergence only
+            return _invalid_child_authority_error(
+                parent_id, code=IMPORT_REVIEW_RECOVERY_REQUIRED
+            )
+
         # Refuse to mutate the queue while a child batch is unsettled.
         if existing_job and existing_job.get("active_child_id"):
             if reconciled:
@@ -1811,6 +1834,14 @@ def edit_review(  # noqa: C901
                 retryable=True,
             )
 
+        # Corrupted stored child authority: fail closed before the active-child
+        # check (which would otherwise leak the hostile locator) and before any
+        # edit write. Reconciliation above performed no repair for it.
+        if _child_authority_status(ledger.get("jobs", {}), parent_id, job) == "invalid":
+            return _invalid_child_authority_error(
+                parent_id, code=IMPORT_REVIEW_RECOVERY_REQUIRED
+            )
+
         # An in-flight child batch blocks editing ANY proposal (even an unrelated
         # one) — a settle could still move membership under the edit.
         if job.get("active_child_id"):
@@ -2032,8 +2063,16 @@ def review_queue(
                 {"import_id": parent_id},
                 retryable=False,
             )
-        if job.get("recovery_required") or (
-            job.get("authority_status") == AUTHORITY_STATUS_PLAN_LEDGER_MISMATCH
+        # Corrupted stored child authority fails closed too (never leaked, never
+        # repaired on this read-of-the-queue path): surface recovery with the
+        # additive authority_status value.
+        authority_corrupted = (
+            _child_authority_status(ledger.get("jobs", {}), parent_id, job) == "invalid"
+        )
+        if (
+            job.get("recovery_required")
+            or authority_corrupted
+            or (job.get("authority_status") == AUTHORITY_STATUS_PLAN_LEDGER_MISMATCH)
         ):
             return _err(
                 IMPORT_REVIEW_RECOVERY_REQUIRED,
@@ -2041,7 +2080,9 @@ def review_queue(
                 {
                     "import_id": parent_id,
                     "recovery_required": True,
-                    "authority_status": job.get("authority_status"),
+                    "authority_status": AUTHORITY_STATUS_INVALID_CHILD_AUTHORITY
+                    if authority_corrupted
+                    else job.get("authority_status"),
                 },
                 retryable=False,
             )
@@ -2129,14 +2170,21 @@ def list_reviews(
     for iid in page_ids:
         j = jobs[iid]
         prop_states = j.get("proposal_states", {}) or {}
+        # A corrupted stored child authority is never surfaced here either: the
+        # locator is projected to None and recovery is flagged additively.
+        corrupted = _child_authority_status(jobs, iid, j) == "invalid"
         out.append(
             {
                 "import_id": iid,
                 "state": j.get("state", "confirmed"),
                 "queue_counts": _queue_counts(prop_states),
-                "active_child_id": j.get("active_child_id"),
-                "recovery_required": bool(j.get("recovery_required", False)),
-                "authority_status": j.get("authority_status"),
+                "active_child_id": None if corrupted else j.get("active_child_id"),
+                "recovery_required": True
+                if corrupted
+                else bool(j.get("recovery_required", False)),
+                "authority_status": AUTHORITY_STATUS_INVALID_CHILD_AUTHORITY
+                if corrupted
+                else j.get("authority_status"),
                 "plan_revision": j.get("plan_revision", 1) or 1,
                 "queue_revision": _queue_revision_of(j),
                 "created_at": j.get("created_at"),
@@ -2303,6 +2351,90 @@ def _derive_child_batches(
     return [_child_batch_projection(data_dir, parent_id, cid, jobs[cid]) for cid in child_ids]
 
 
+def _child_authority_status(
+    jobs: dict[str, Any], parent_id: str, job: dict[str, Any] | None
+) -> str:
+    """Classify a parent review job's stored ``active_child_id``.
+
+    Pure and path-free: the stored authority is validated for type and lexical
+    form BEFORE the jobs dict is ever touched, so a hostile value (path-like,
+    non-string, unhashable) can neither escape the data directory nor crash the
+    reader. Returns one of:
+
+    - ``"settled"``: no active child (``None``/absent) — the normal settled
+      state, NOT corruption. Existing convergence is a no-op.
+    - ``"valid"``: a batch child that belongs to this parent. A correctly-
+      prefixed ``#batch-<seq>`` id whose child record is temporarily absent is
+      the genuine reservation-gap crash window (``run_batch`` persists
+      ``active_child_id`` before writing the child job entry, so this state
+      really occurs after a crash); a present, consistent record affirms it is
+      this parent's batch child. A plain/legacy id (or a foreign #batch id) with
+      no record is NOT this window and is corrupted authority, not in-flight.
+    - ``"invalid"``: corrupted/hostile authority. The read path projects
+      recovery without repairing or persisting; mutation paths fail closed.
+
+    A child batch id encodes its parent (``<parent>#batch-<seq>``): an id
+    claiming a different parent can never be this parent's in-flight child, so it
+    is a foreign locator regardless of whether a record exists.
+    """
+    if not isinstance(job, dict):
+        return "settled"
+    child_id = job.get("active_child_id")
+    if child_id is None:
+        return "settled"
+    # Type / empty / whitespace: invalid before any lookup (no unhashable crash).
+    if not isinstance(child_id, str) or not child_id.strip():
+        return "invalid"
+    # Lexical / path form: invalid before the jobs dict or any path is derived.
+    if validate_import_id(child_id, allow_child=True) is not None:
+        return "invalid"
+    is_batch_child = bool(_BATCH_SEQ_RE.search(child_id))
+    # A #batch-<seq> id encodes its parent in its prefix; a mismatch is foreign.
+    if is_batch_child and child_id.split("#", 1)[0] != parent_id:
+        return "invalid"
+    child_job = jobs.get(child_id) if isinstance(jobs, dict) else None
+    if isinstance(child_job, dict):
+        # A present record must affirm it is this parent's batch child.
+        if (
+            child_job.get("kind") != "batch"
+            or child_job.get("parent_review_job_id") != parent_id
+        ):
+            return "invalid"
+        return "valid"
+    # Absent record. A correctly-prefixed ``#batch-<seq>`` id is the genuine
+    # reservation-gap crash window: ``run_batch`` persists ``active_child_id``
+    # BEFORE the child job entry is written, so this state really occurs after a
+    # crash and is convergence, not tampering. Any OTHER absent id (plain/legacy,
+    # or a foreign #batch id already rejected above) is corrupted authority: the
+    # read path projects recovery without repairing, the mutation paths fail
+    # closed. (A path-like/lexical/hostile value was already returned "invalid"
+    # before any of this is reached.)
+    if is_batch_child:
+        return "valid"
+    return "invalid"
+
+
+def _invalid_child_authority_error(parent_id: str, *, code: str) -> dict[str, Any]:
+    """Deterministic fail-closed result for a corrupted stored child authority.
+
+    Mutation paths (run/edit/queue/rollback) call this instead of acting on an
+    untrusted authority: it never silently repairs tampering, never derives a
+    path, never tracebacks, and never echoes the hostile locator. The ``code`` is
+    each path's existing recovery code (exit mapping unchanged); only the
+    additive ``authority_status`` value is new.
+    """
+    return _err(
+        code,
+        "Stored child authority is corrupted; resolve it before proceeding.",
+        {
+            "import_id": parent_id,
+            "recovery_required": True,
+            "authority_status": AUTHORITY_STATUS_INVALID_CHILD_AUTHORITY,
+        },
+        retryable=False,
+    )
+
+
 @_ledger_serialized
 def query_review_status(import_id: str, data_dir: Path) -> dict[str, Any]:
     """``import status`` for a parent review job (additive), else delegate."""
@@ -2322,6 +2454,15 @@ def query_review_status(import_id: str, data_dir: Path) -> dict[str, Any]:
         return query_status(import_id=import_id, data_dir=data_dir)
 
     proposal_states = job.get("proposal_states", {}) or {}
+    # A corrupted stored child authority is read-only: the reconciliation above
+    # performed no repair (and no persistence) for it, so the hostile value is
+    # still on disk. Project recovery here WITHOUT surfacing the locator and
+    # WITHOUT mutating — repeated status is byte-identical. (A valid authority in
+    # a crash window still converges via the reconciliation above; only a
+    # corrupted authority is projected, never repaired, on this read path.)
+    authority_corrupted = (
+        _child_authority_status(ledger.get("jobs", {}), import_id, job) == "invalid"
+    )
     return _ok(
         {
             "schema_version": REVIEW_SCHEMA_VERSION,
@@ -2331,9 +2472,13 @@ def query_review_status(import_id: str, data_dir: Path) -> dict[str, Any]:
             "source_root_identity": job.get("source_root_identity", ""),
             "proposal_states": proposal_states,
             "queue_counts": _queue_counts(proposal_states),
-            "active_child_id": job.get("active_child_id"),
-            "recovery_required": bool(job.get("recovery_required", False)),
-            "authority_status": job.get("authority_status"),
+            "active_child_id": None if authority_corrupted else job.get("active_child_id"),
+            "recovery_required": True
+            if authority_corrupted
+            else bool(job.get("recovery_required", False)),
+            "authority_status": AUTHORITY_STATUS_INVALID_CHILD_AUTHORITY
+            if authority_corrupted
+            else job.get("authority_status"),
             "plan_fingerprint": job.get("plan_fingerprint", ""),
             "plan_revision": job.get("plan_revision", 1) or 1,
             "queue_revision": _queue_revision_of(job),
@@ -2527,6 +2672,18 @@ def execute_review_rollback(import_id: str, data_dir: Path) -> dict[str, Any]:
             pre_ledger = _read_ledger(data_dir)
             if _reconcile_review_authority_locked(pre_ledger, parent_id, data_dir):
                 _write_ledger(data_dir, pre_ledger)
+            # Corrupted stored PARENT authority: fail closed BEFORE the rollback
+            # projection, which would otherwise overwrite (silently repair) the
+            # hostile active_child_id with the child being rolled back.
+            if (
+                _child_authority_status(
+                    pre_ledger.get("jobs", {}), parent_id, _get_job(pre_ledger, parent_id)
+                )
+                == "invalid"
+            ):
+                return _invalid_child_authority_error(
+                    parent_id, code=IMPORT_REVIEW_RECOVERY_REQUIRED
+                )
             durable_child = _get_job(pre_ledger, import_id)
             rollback_started_from = (
                 durable_child.get("state") if isinstance(durable_child, dict) else None
@@ -3305,11 +3462,23 @@ def _reconcile_parent(ledger: dict[str, Any], parent_id: str, data_dir: Path) ->
     job = jobs.get(parent_id)
     if not isinstance(job, dict) or job.get("kind") != "review":
         return False
+    # Discriminate BEFORE any path is derived or the jobs dict is indexed by the
+    # stored value: a corrupted/hostile stored ``active_child_id`` must never be
+    # silently repaired, never have a locator derived from it, and never crash
+    # the reader (an unhashable value reaches ``jobs.get`` below). Return no
+    # change so callers persist nothing; the read path projects recovery and the
+    # mutation paths fail closed directly from the classifier. Legitimate
+    # crash-window convergence for a VALID authority is unchanged below.
+    if _child_authority_status(jobs, parent_id, job) == "invalid":
+        return False
     child_id = job.get("active_child_id")
     if not child_id:
         # A manual rollback can crash after durable rollback intent but before
         # its parent was projected. Recover the newest explicitly retryable
         # child instead of leaving a partially deleted batch looking imported.
+        # Every ``candidate_id`` here is already a closed-lexical import id: a
+        # hostile durable key is rejected by the ``_read_ledger`` job-key gate
+        # before this scan runs, so it can never be promoted to ``child_id``.
         retryable_rollbacks: list[tuple[str, dict[str, Any]]] = []
         for candidate_id, candidate in jobs.items():
             if (
@@ -3789,6 +3958,12 @@ def run_batch(  # noqa: C901
                 {"import_id": parent_id},
                 retryable=False,
             )
+
+        # Corrupted stored child authority: fail closed BEFORE the reconcile
+        # write or the batch reservation (never silently repair the tampered
+        # value, never derive a path from it, never leak it).
+        if _child_authority_status(ledger.get("jobs", {}), parent_id, job) == "invalid":
+            return _invalid_child_authority_error(parent_id, code=IMPORT_RECOVERY_REQUIRED)
 
         # 1. Reconcile review authority (recover ledger from plan) and any
         #    prior active child (crash recovery).

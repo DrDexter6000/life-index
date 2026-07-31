@@ -1442,6 +1442,18 @@ def _read_ledger(data_dir: Path) -> dict[str, Any]:
             raise ImportLedgerCorruptError(ledger_path, "jobs must be a JSON object")
         if not isinstance(ledger.get("idempotency_index"), dict):
             raise ImportLedgerCorruptError(ledger_path, "idempotency_index must be a JSON object")
+        # Job-key integrity gate. Every ``jobs`` key is a closed-lexical import id
+        # (a parent id or a ``<parent>#batch-<seq>`` child id). A hostile durable
+        # key — path-like, traversal, non-lexical — is unreachable to EVERY
+        # consumer by failing closed HERE, before any key is used as a locator,
+        # indexed into the batches projection, surfaced by the reviews list, or
+        # promoted into an ``active_child_id`` by ``_reconcile_parent``'s settled
+        # scan. The result is deterministic across the read and mutation paths:
+        # no repair, no derivation, no leak, and byte-identical on repeat. The
+        # offending key value is never placed in the error.
+        for job_id in ledger["jobs"]:
+            if validate_import_id(job_id, allow_child=True) is not None:
+                raise ImportLedgerCorruptError(ledger_path, "job_id_invalid")
         return ledger
 
 

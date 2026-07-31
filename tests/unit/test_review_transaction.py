@@ -473,9 +473,18 @@ def test_reconcile_parent_no_active_child_is_noop(tmp_path: Path) -> None:
 
 
 def test_reconcile_parent_missing_child_job_restores_confirmed(tmp_path: Path) -> None:
-    """active_child_id set but the child job is gone and no evidence -> restore + clear."""
+    """active_child_id set but the child job is gone and no evidence -> restore + clear.
+
+    Updated to the minted ``<parent>#batch-<seq>`` child id: under R2 only a
+    correctly-prefixed id with an absent record is the genuine reservation-gap
+    crash window (``run_batch`` persists ``active_child_id`` before it writes the
+    child job entry, so this state really occurs after a crash). A plain/legacy
+    id with no record is now corrupted authority, so the reservation-gap
+    coverage this test guards can only be exercised with the minted format.
+    """
     data_dir = tmp_path / "Life-Index"
-    parent_id, child_id, pids = "parent1", "child1", ["p1"]
+    parent_id, pids = "parent1", ["p1"]
+    child_id = f"{parent_id}#batch-1"
     ledger = _basic_review_ledger(parent_id, child_id, pids, proposal_state="batching")
     # NOTE: the child job is intentionally absent; no manifest on disk either.
     _write_ledger(data_dir, ledger)
@@ -759,4 +768,161 @@ def test_r1b_resolve_confined_job_path_accepts_linked_root(tmp_path: Path) -> No
             os.rmdir(link_root) if os.name == "nt" else link_root.unlink()
         except OSError:
             pass
+
+
+# ===================================================================
+# R1c: a corrupted stored child authority is read-only. ``_child_authority_status``
+# discriminates BEFORE ``_reconcile_parent`` touches the jobs dict or derives a
+# path, so a hostile value (unhashable, path-like, foreign) can neither crash
+# the reader nor escape the data directory.
+# ===================================================================
+
+
+def test_r1c_child_authority_status_classification() -> None:
+    P = "parent1"
+    jobs: dict[str, Any] = {}
+
+    def job(active: Any) -> dict[str, Any]:
+        return {"kind": "review", "active_child_id": active}
+
+    # Normal settled state is NOT corruption.
+    assert review._child_authority_status(jobs, P, job(None)) == "settled"
+    assert review._child_authority_status(jobs, P, {}) == "settled"  # key absent
+
+    # Wrong type / empty / whitespace: invalid, with NO jobs lookup (no crash).
+    for bad in (7, 3.14, ["../../evil"], {"x": 1}, "", "   "):
+        assert review._child_authority_status(jobs, P, job(bad)) == "invalid", bad
+
+    # Path-like / lexically invalid: invalid before any record is consulted.
+    for bad in ("../../outside", "/etc/passwd", "has/slash", "UPPER"):
+        assert review._child_authority_status(jobs, P, job(bad)) == "invalid", bad
+
+    # A #batch-<seq> id claiming a DIFFERENT parent is foreign -> invalid.
+    assert review._child_authority_status(jobs, P, job("imp_19990101_deadbeef00#batch-7")) == "invalid"
+
+    # A correctly-prefixed child whose record is temporarily absent is the
+    # genuine reservation-gap crash window, not tampering -> valid.
+    assert review._child_authority_status(jobs, P, job(f"{P}#batch-1")) == "valid"
+    # A plain/legacy id with no record is NOT the reservation gap (run_batch
+    # only ever mints <parent>#batch-<seq>), so it is corrupted authority.
+    assert review._child_authority_status(jobs, P, job("child1")) == "invalid"
+
+    # A present, consistent child record -> valid.
+    jobs[f"{P}#batch-1"] = _child_job(P, f"{P}#batch-1", "running", ["p1"])
+    assert review._child_authority_status(jobs, P, job(f"{P}#batch-1")) == "valid"
+
+    # A present record that denies being this parent's batch -> invalid.
+    jobs[f"{P}#batch-2"] = {
+        "kind": "batch",
+        "parent_review_job_id": "imp_other_parent",
+        "state": "running",
+        "proposal_ids": ["p1"],
+    }
+    assert review._child_authority_status(jobs, P, job(f"{P}#batch-2")) == "invalid"
+
+
+def test_r1c_reconcile_parent_unhashable_authority_does_not_crash(tmp_path: Path) -> None:
+    """Case (c): an unhashable stored authority must not traceback; it is a
+    no-write no-op (the read/mutation paths project/fail-closed from the
+    classifier instead)."""
+    data_dir = tmp_path / "Life-Index"
+    parent_id = "parent1"
+    ledger = _basic_review_ledger(parent_id, "unused", ["p1"], proposal_state="batching")
+    # A hostile unhashable value: on the base this raises inside jobs.get(...).
+    ledger["jobs"][parent_id]["active_child_id"] = ["../../evil"]
+    _write_ledger(data_dir, ledger)
+    before = _read_ledger(data_dir)
+
+    changed = review._reconcile_parent(before, parent_id, data_dir)
+    assert changed is False
+    # In-memory ledger untouched (no repair, no path derivation).
+    assert before["jobs"][parent_id]["active_child_id"] == ["../../evil"]
+
+
+def test_r1c_reconcile_parent_foreign_child_authority_is_noop(tmp_path: Path) -> None:
+    """Case (a): a syntactically valid but foreign child id is corruption; the
+    reconcile neither clears it (silent repair) nor projects recovery."""
+    data_dir = tmp_path / "Life-Index"
+    parent_id = "parent1"
+    ledger = _basic_review_ledger(parent_id, "unused", ["p1"], proposal_state="batching")
+    ledger["jobs"][parent_id]["active_child_id"] = "imp_19990101_deadbeef00#batch-7"
+    _write_ledger(data_dir, ledger)
+    before = _read_ledger(data_dir)
+
+    assert review._reconcile_parent(before, parent_id, data_dir) is False
+    parent = before["jobs"][parent_id]
+    assert parent["active_child_id"] == "imp_19990101_deadbeef00#batch-7"
+    assert parent["recovery_required"] is False
+
+
+def test_r1c_reconcile_parent_inconsistent_child_record_is_noop(tmp_path: Path) -> None:
+    """Case (d): a present child whose parent_review_job_id is a different parent
+    is corruption; reconcile does not project/recover/retain it."""
+    data_dir = tmp_path / "Life-Index"
+    parent_id = "parent1"
+    child_id = f"{parent_id}#batch-1"
+    ledger = _basic_review_ledger(parent_id, child_id, ["p1"], proposal_state="batching")
+    ledger["jobs"][child_id] = {
+        "kind": "batch",
+        "parent_review_job_id": "imp_other_parent",  # denies this parent
+        "state": "running",
+        "proposal_ids": ["p1"],
+        "updated_at": "2026-01-01T00:00:00+00:00",
+    }
+    _write_ledger(data_dir, ledger)
+    before = _read_ledger(data_dir)
+
+    assert review._reconcile_parent(before, parent_id, data_dir) is False
+    parent = before["jobs"][parent_id]
+    assert parent["active_child_id"] == child_id
+    assert parent["recovery_required"] is False
+
+
+def test_r1c_reconcile_parent_valid_running_child_still_converges(tmp_path: Path) -> None:
+    """Regression: a VALID consistent child in a crash window still converges
+    (recovery_required surfaced, child retained). Only corruption is read-only."""
+    data_dir = tmp_path / "Life-Index"
+    parent_id = "parent1"
+    child_id = f"{parent_id}#batch-1"
+    ledger = _basic_review_ledger(parent_id, child_id, ["p1"], proposal_state="batching")
+    ledger["jobs"][child_id] = _child_job(parent_id, child_id, "running", ["p1"])
+    _write_ledger(data_dir, ledger)
+
+    changed = _reconcile_and_persist(data_dir, parent_id)
+    assert changed is True
+    parent = _read_ledger(data_dir)["jobs"][parent_id]
+    assert parent["recovery_required"] is True
+    assert parent["active_child_id"] == child_id  # retained, fail closed
+
+
+def test_r1c_reconcile_parent_plain_unknown_authority_is_noop(tmp_path: Path) -> None:
+    """R2: a plain/legacy active_child_id with NO child record is corrupted
+    authority — NOT the reservation-gap crash window, which requires a correctly-
+    prefixed ``<parent>#batch-<seq>`` id (the only child format ``run_batch``
+    ever mints). ``_reconcile_parent`` neither repairs it (clear/restore) nor
+    projects recovery: it is a no-write no-op, so the read path projects recovery
+    and the mutation paths fail closed directly from the classifier. On the
+    unfixed candidate this plain id was classified "valid" and the read path
+    silently repaired it (restore + clear + persist)."""
+    data_dir = tmp_path / "Life-Index"
+    parent_id = "parent1"
+    # Plain legacy id, no child record, no manifest on disk.
+    ledger = _basic_review_ledger(parent_id, "child1", ["p1"], proposal_state="batching")
+    _write_ledger(data_dir, ledger)
+    before = _read_ledger(data_dir)
+
+    # The classifier discriminates plain-unknown as corruption...
+    assert (
+        review._child_authority_status(before["jobs"], parent_id, before["jobs"][parent_id])
+        == "invalid"
+    )
+    # ...so reconcile is a no-write no-op (no repair, no path derivation).
+    changed = review._reconcile_parent(before, parent_id, data_dir)
+    assert changed is False
+    parent = before["jobs"][parent_id]
+    assert parent["active_child_id"] == "child1"  # retained untouched
+    assert parent["proposal_states"]["p1"] == "batching"  # NOT restored to confirmed
+    assert parent["recovery_required"] is False
+    # No persistence: the durable ledger is byte-identical to the pre-read state.
+    assert _read_ledger(data_dir) == before
 
