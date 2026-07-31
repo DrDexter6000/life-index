@@ -2110,8 +2110,8 @@ success shape 或 exit code 映射；`reason` 为开放描述，调用方不应�
 | `IMPORT_LEDGER_CORRUPT` | `import_jobs_area_not_confined` | `.life-index/import-jobs` 区域本身是逃逸 link（首次 ledger I/O 前） |
 | `IMPORT_LEDGER_CORRUPT` | `review_plan_path_not_confined` | review-plan 派生路径逃逸 data dir（读写两侧均 raise，见下） |
 | `IMPORT_LEDGER_CORRUPT` | `job_id_invalid` | 持久化 ledger 的某个 `jobs` key 非闭合词法 import id（path-like/遍历/非词法）；在首次 `_read_ledger` 读时 fail-closed（见下） |
-| `IMPORT_LEDGER_CORRUPT` | `parent_authority_unrecoverable` | parent review job 缺失但 ledger 中存在其 batch child（`kind=="batch"` 且 `parent_review_job_id==parent`）时，从幸存 review plan rebuild 会把已导入 proposal 重置为 `confirmed`、`next_batch_sequence` 重置为 1（第二权威、re-import 风险），故 status/reconcile 在 rebuild 分支 fail-closed raise 而非 rebuild；无 child 时仍保留 genuine first-confirm rebuild（既有行为不变） |
-| `IMPORT_PLAN_INVALID` | `duplicate_runnable_target` | `run` 的 runnable 集合中两个 proposal 声称同一 canonical journal/attachment `target_rel_path`（legacy/crafted plan，或 allocatioin 漏洞残留）；在 batching transition / 首次 durable write **之前** fail-closed，绝不产生 partial publish。`details` 另含 `kind`（`journal`/`attachment`）与 `proposal_ids` |
+| `IMPORT_LEDGER_CORRUPT` | `parent_authority_unrecoverable` | parent review job 缺失但 ledger 中存在其 batch child（`kind=="batch"` 且 `parent_review_job_id==parent`）时，从幸存 review plan rebuild 会把已导入 proposal 重置为 `confirmed`、`next_batch_sequence` 重置为 1（第二权威、re-import 风险），故 reconcile 的 rebuild 分支 fail-closed raise 而非 rebuild——覆盖 reconcile 的全部入口（status/confirm/edit/review/run/rollback，含 child rollback）；无 child 时仍保留 genuine first-confirm rebuild（既有行为不变） |
+| `IMPORT_PLAN_INVALID` | `duplicate_runnable_target` | `run` 的 runnable 集合中两个 proposal 声称同一 canonical journal/attachment `target_rel_path`（legacy/crafted plan，或 allocation 漏洞残留）；在 batching transition / 首次 durable write **之前** fail-closed，绝不产生 partial publish。`details` 另含 `kind`（`journal`/`attachment`）与 `proposal_ids` |
 | `IMPORT_PLAN_INVALID` | `source_facts_drift` | `run` 时从实际 source 文件 re-derive 的不可变 metadata（至少 `metadata_hash`，含 `capture_time` 的 value/source_tag/timezone_authority）与 plan 存储的 `source_facts` 不一致（plan 在 confirm 后被篡改：capture_time + coherently 重算的 metadata_hash）；在 publish **之前** fail-closed。source 无法 re-parse（不支持格式/不可读）同样 fail-closed。`details.proposals` 列出漂移 proposal ids |
 
 附加 surfacing 说明：
@@ -2499,7 +2499,9 @@ value/source_tag/timezone_authority）必须与 plan 存储的 `source_facts` �
 `IMPORT_PLAN_INVALID` + `reason=source_facts_drift`（plan 在 confirm 后被篡改、或
 source 无法 re-parse 时不支持格式/不可读）；(3) mint 出的 child id
 `<parent>#batch-<seq>` 经 `validate_import_id(..., allow_child=True)` 复验——失败返回既有
-`IMPORT_ID_INVALID`（既有 `reason` 如 `child_sequence`/`length`，覆盖 `next_batch_sequence`
+`IMPORT_ID_INVALID`（既有 `reason` 如 `child_sequence`；child 分支的 sequence 检查先于总长
+检查且 parent≤128、seq≤9 位时总长必然 ≤144，故 child-`length` 不可达；`length` 仍适用于
+parent-only 路径——覆盖 `next_batch_sequence`
 超出 9 位后缀的退化情形）。合法 parent 因 child 分支独立长度预算必然 mint 合法 child，
 故 (3) 正常流程不触发。三道闸门均在 reservation / child job write / publish 之前。
 

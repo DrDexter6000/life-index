@@ -108,7 +108,14 @@ def _make_jpeg(
 
 def _photo_plan(data_dir: Path, input_dir: Path, *extra: str) -> dict[str, Any]:
     res = _run_import(
-        data_dir, "plan", "--source", "media.photo_timeline", "--input", str(input_dir), "--json", *extra
+        data_dir,
+        "plan",
+        "--source",
+        "media.photo_timeline",
+        "--input",
+        str(input_dir),
+        "--json",
+        *extra,
     )
     return _ok(res)
 
@@ -138,9 +145,7 @@ def test_photo_recursive_scan_finds_subdir_photos(tmp_path: Path) -> None:
     assert plan["data"]["source"]["record_count"] == 3
     # All three attachment source_rel_paths present (relative, posix)
     rel_paths = sorted(
-        att["source_rel_path"]
-        for prop in plan["data"]["proposals"]
-        for att in prop["attachments"]
+        att["source_rel_path"] for prop in plan["data"]["proposals"] for att in prop["attachments"]
     )
     assert "top.jpg" in rel_paths
     assert "sub/nested.jpg" in rel_paths
@@ -193,7 +198,9 @@ def test_photo_heic_emits_unsupported_format_warning(tmp_path: Path) -> None:
     assert plan["data"]["source"]["record_count"] == 1
     codes = [w.get("code") for w in plan["data"]["warnings"]]
     assert "PHOTO_UNSUPPORTED_FORMAT" in codes
-    heic_warn = next(w for w in plan["data"]["warnings"] if w.get("code") == "PHOTO_UNSUPPORTED_FORMAT")
+    heic_warn = next(
+        w for w in plan["data"]["warnings"] if w.get("code") == "PHOTO_UNSUPPORTED_FORMAT"
+    )
     assert heic_warn.get("preview_available") is False
 
 
@@ -321,10 +328,7 @@ def test_photo_aggregated_plan_fingerprint_is_stable(tmp_path: Path) -> None:
     p1 = _photo_plan(data_dir, src)
     p2 = _photo_plan(data_dir, src)
     assert p1["data"]["plan_fingerprint"] == p2["data"]["plan_fingerprint"]
-    assert (
-        p1["data"]["source"]["source_fingerprint"]
-        == p2["data"]["source"]["source_fingerprint"]
-    )
+    assert p1["data"]["source"]["source_fingerprint"] == p2["data"]["source"]["source_fingerprint"]
 
 
 def test_photo_already_imported_sha_is_not_reproposed(tmp_path: Path) -> None:
@@ -366,9 +370,14 @@ def test_photo_already_imported_sha_is_not_reproposed(tmp_path: Path) -> None:
 
 
 def _confirm(
-    data_dir: Path, plan_data: dict[str, Any], source_root: Path | None = None, import_id: str | None = None
+    data_dir: Path,
+    plan_data: dict[str, Any],
+    source_root: Path | None = None,
+    import_id: str | None = None,
 ) -> dict[str, Any]:
-    plan_file = _plan_file(Path(data_dir).parent, plan_data, name=f"review_{plan_data['import_id']}.json")
+    plan_file = _plan_file(
+        Path(data_dir).parent, plan_data, name=f"review_{plan_data['import_id']}.json"
+    )
     args = ["confirm", "--plan", str(plan_file), "--json"]
     if source_root is not None:
         args += ["--source-root", str(source_root)]
@@ -507,13 +516,21 @@ def test_import_rebind_same_root_ok_different_root_mismatch(tmp_path: Path) -> N
     _confirm(data_dir, plan["data"], source_root=src)
 
     # rebind to the SAME root -> ok
-    ok_res = _ok(_run_import(data_dir, "rebind", "--import-id", parent_id, "--source-root", str(src), "--json"))["data"]
+    ok_res = _ok(
+        _run_import(
+            data_dir, "rebind", "--import-id", parent_id, "--source-root", str(src), "--json"
+        )
+    )["data"]
     assert ok_res["rebound"] is True
 
     # rebind to a DIFFERENT root -> identity mismatch
     other = tmp_path / "elsewhere"
     other.mkdir()
-    res = _err(_run_import(data_dir, "rebind", "--import-id", parent_id, "--source-root", str(other), "--json"))
+    res = _err(
+        _run_import(
+            data_dir, "rebind", "--import-id", parent_id, "--source-root", str(other), "--json"
+        )
+    )
     assert res["error"]["code"] == "IMPORT_SOURCE_ROOT_IDENTITY_MISMATCH"
 
 
@@ -523,7 +540,12 @@ def test_import_rebind_same_root_ok_different_root_mismatch(tmp_path: Path) -> N
 
 
 def _preview_file(
-    data_dir: Path, parent_id: str, attachment_id: str, src: Path, out: Path, meta: Path | None = None
+    data_dir: Path,
+    parent_id: str,
+    attachment_id: str,
+    src: Path,
+    out: Path,
+    meta: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     args = [
         "preview",
@@ -563,7 +585,7 @@ def test_import_preview_streams_bytes_and_metadata(tmp_path: Path) -> None:
 
     out = tmp_path / "preview.jpg"
     meta = tmp_path / "meta.json"
-    res = _ok(_preview_file(data_dir, parent_id, att_id, src, out, meta))
+    _ok(_preview_file(data_dir, parent_id, att_id, src, out, meta))
     assert out.read_bytes() == before_bytes
     metadata = json.loads(meta.read_text("utf-8"))
     assert metadata["schema_version"] == "import_preview.v1"
@@ -750,9 +772,7 @@ def test_import_run_batch_source_unchanged_toctou(tmp_path: Path) -> None:
     # no staging leftovers inside the data dir: check the REAL hidden
     # ``.{target}.staging-<rand>.tmp`` naming the implementation writes, plus a
     # broad sweep (a bare ``*.staging-*`` glob could miss the real temp).
-    staging = sorted(
-        {*data_dir.rglob(".*.staging-*.tmp"), *data_dir.rglob("*staging*")}
-    )
+    staging = sorted({*data_dir.rglob(".*.staging-*.tmp"), *data_dir.rglob("*staging*")})
     assert staging == []
 
 
@@ -792,9 +812,7 @@ def test_import_run_batch_canonical_journal(tmp_path: Path) -> None:
     assert att_entry["filename"] == posixpath.basename(att["target_rel_path"])
     # rel_path is journal-relative, not data-dir-relative
     journal_rel = proposal["journal"]["target_rel_path"]
-    expected_rel = posixpath.relpath(
-        att["target_rel_path"], start=posixpath.dirname(journal_rel)
-    )
+    expected_rel = posixpath.relpath(att["target_rel_path"], start=posixpath.dirname(journal_rel))
     assert att_entry["rel_path"] == expected_rel
     assert att_entry["rel_path"].startswith("../../../attachments/")
     assert att_entry["original_name"] == posixpath.basename(att["source_rel_path"])
@@ -1051,9 +1069,7 @@ def test_r1a_traversal_cli_fails_before_outside_review_lock_write(tmp_path: Path
     data_dir.mkdir()
     hostile = "../../../outside-authority"
 
-    result = _err(
-        _run_import(data_dir, "review", "--import-id", hostile, "--json")
-    )
+    result = _err(_run_import(data_dir, "review", "--import-id", hostile, "--json"))
 
     assert result["success"] is False
     assert result["data"] is None
@@ -1285,7 +1301,9 @@ def test_r1a_child_id_has_own_length_budget_so_valid_parent_mints_valid_child() 
     assert validate_import_id("a" * 124 + "#batch-1", allow_child=True) is None
     # A max 128-char parent + the max 9-digit seq = exactly 144 chars: valid.
     assert validate_import_id("a" * 128 + "#batch-999999999", allow_child=True) is None
-    # 145 chars (one past the child budget) still fails as `length`.
+    # A 10-digit sequence is rejected by the sequence check BEFORE the length
+    # check; with parent ≤128 and seq ≤9 digits the total is always ≤144, so a
+    # child-`length` failure is unreachable by construction (precedence case).
     assert validate_import_id("a" * 128 + "#batch-1000000000", allow_child=True) == "child_sequence"
     # Parent part over 128 still fails as `child_parent_length`.
     assert validate_import_id("a" * 129 + "#batch-1", allow_child=True) == "child_parent_length"
@@ -1328,17 +1346,13 @@ def test_r1a_valid_differing_confirm_override_remains_effective_parent(
 
 def _make_dir_link(link: Path, target: Path) -> None:
     """Create a directory reparse link: junction on Windows, symlink on POSIX."""
-    import shutil
-
     target.mkdir(parents=True, exist_ok=True)
     link.parent.mkdir(parents=True, exist_ok=True)
     if link.is_dir() and not link.is_symlink():
         link.rmdir()
     if os.name == "nt":
         # mklink output is GBK on this locale; capture bytes, never decode strictly.
-        subprocess.run(
-            ["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True
-        )
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True)
     else:
         os.symlink(target, link, target_is_directory=True)
     assert link.is_dir(), f"failed to create reparse link at {link}"
@@ -1428,8 +1442,13 @@ def test_r1b_confirm_parent_junction_escape_is_contained(tmp_path: Path) -> None
     plan_file = _plan_file(tmp_path, plan["data"], name="r1b_parent.json")
     try:
         raw = _run_import(
-            data_dir, "confirm", "--plan", str(plan_file),
-            "--source-root", str(src), "--json",
+            data_dir,
+            "confirm",
+            "--plan",
+            str(plan_file),
+            "--source-root",
+            str(src),
+            "--json",
         )
         payload = _assert_clean_failure(raw, outside)
         assert payload["error"]["code"] == "IMPORT_WRITE_FAILURE"
@@ -1460,8 +1479,15 @@ def test_r1b_legacy_run_junction_escape_is_contained(tmp_path: Path) -> None:
     plan_file = _plan_file(tmp_path, plan["data"], name="r1b_legacy.json")
     try:
         raw = _run_import(
-            data_dir, "run", "--plan", str(plan_file), "--confirm", import_id,
-            "--source-root", str(src), "--json",
+            data_dir,
+            "run",
+            "--plan",
+            str(plan_file),
+            "--confirm",
+            import_id,
+            "--source-root",
+            str(src),
+            "--json",
         )
         payload = _assert_clean_failure(raw, outside)
         assert payload["error"]["code"] == "IMPORT_WRITE_FAILURE"
@@ -1488,8 +1514,13 @@ def test_r1b_import_jobs_area_link_is_contained(tmp_path: Path) -> None:
     plan_file = _plan_file(tmp_path, plan["data"], name="r1b_area.json")
     try:
         raw = _run_import(
-            data_dir, "confirm", "--plan", str(plan_file),
-            "--source-root", str(src), "--json",
+            data_dir,
+            "confirm",
+            "--plan",
+            str(plan_file),
+            "--source-root",
+            str(src),
+            "--json",
         )
         payload = _assert_clean_failure(raw, outside)
         assert payload["error"]["code"] == "IMPORT_LEDGER_CORRUPT"
@@ -1500,9 +1531,7 @@ def test_r1b_import_jobs_area_link_is_contained(tmp_path: Path) -> None:
         _remove_dir_link(area, outside)
 
 
-def _committed_child_batch(
-    data_dir: Path, src: Path
-) -> tuple[str, str, str]:
+def _committed_child_batch(data_dir: Path, src: Path) -> tuple[str, str, str]:
     """Plan + confirm + run one photo; return (parent_id, child_id, attachment_rel)."""
     proposal, parent_id, att = _confirmed_one_photo_batch(data_dir, src)
     run = _ok(_run_batch(data_dir, parent_id, src))["data"]
@@ -1658,8 +1687,6 @@ def test_r1b_rollback_corrupt_stored_parent_id_is_contained(tmp_path: Path) -> N
     without the guard the absolute component would reset the pathlib join and the
     lock file would be created outside the data dir.
     """
-    import shutil
-
     data_dir = tmp_path / "Life-Index"
     data_dir.mkdir(parents=True)
     src = tmp_path / "photos"
@@ -1784,9 +1811,7 @@ def test_r1b_status_after_junction_replace_fails_closed(tmp_path: Path) -> None:
         after_ledger = json.loads(after_bytes)
         assert parent_id in after_ledger["jobs"]
         assert after_ledger["jobs"][parent_id].get("proposal_states") == before_states
-        assert (
-            after_ledger["jobs"][parent_id].get("pending_review_update") == before_intent
-        )
+        assert after_ledger["jobs"][parent_id].get("pending_review_update") == before_intent
     finally:
         _remove_dir_link(link, outside)
 
@@ -1906,13 +1931,13 @@ def _r1c_assert_ledger_unchanged(before: dict[str, Any], after: dict[str, Any]) 
 
 # (stored active_child_id, hostile substring that must NEVER appear in output)
 _R1C_HOSTILE_VALUES: list[tuple[Any, str | None]] = [
-    (7, None),                                # wrong type: int
-    (["../../evil"], "../../evil"),           # wrong type: list (unhashable -> traceback on base)
-    ({"x": "y"}, None),                       # wrong type: dict (unhashable -> traceback on base)
-    ("", None),                               # empty string
-    ("   ", None),                            # whitespace string
+    (7, None),  # wrong type: int
+    (["../../evil"], "../../evil"),  # wrong type: list (unhashable -> traceback on base)
+    ({"x": "y"}, None),  # wrong type: dict (unhashable -> traceback on base)
+    ("", None),  # empty string
+    ("   ", None),  # whitespace string
     ("../../outside-authority", "../../outside-authority"),  # path-like traversal
-    ("/etc/passwd", "/etc/passwd"),           # path-like absolute
+    ("/etc/passwd", "/etc/passwd"),  # path-like absolute
     ("imp_19990101_deadbeef00#batch-7", "imp_19990101_deadbeef00#batch-7"),  # foreign child
 ]
 
@@ -2072,7 +2097,9 @@ def test_r1c_edit_corrupted_child_authority_fails_closed(tmp_path: Path) -> None
     _r1c_corrupt(data_dir, parent_id, hostile)
     before = _r1c_snapshot(data_dir, parent_id)
 
-    raw = _r1c_edit(data_dir, tmp_path, parent_id, proposal["proposal_id"], q=before["queue_revision"])
+    raw = _r1c_edit(
+        data_dir, tmp_path, parent_id, proposal["proposal_id"], q=before["queue_revision"]
+    )
     assert raw.returncode != 0
     err = json.loads(raw.stdout)["error"]
     assert err["code"] == "IMPORT_REVIEW_RECOVERY_REQUIRED"
@@ -2377,4 +2404,3 @@ def test_r1c_status_reservation_gap_crash_window_converges(tmp_path: Path) -> No
     assert parent["active_child_id"] is None
     assert parent["proposal_states"][proposal_id] == "confirmed"
     assert parent["recovery_required"] is False
-
