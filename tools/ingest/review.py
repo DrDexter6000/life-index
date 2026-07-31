@@ -4038,7 +4038,10 @@ def _execute_child_batch(  # noqa: C901
                 "schema_version": SCHEMA_VERSION,
                 "title": journal.get("title", ""),
                 "date": journal.get("date", ""),
-                "topic": "life",
+                # Use the confirmed proposal journal's authoritative topic
+                # (adapter default "life" or a VALID_TOPICS value validated on
+                # edit) verbatim — never a silent hardcoded fallback.
+                "topic": journal["topic"],
                 "tags": journal.get("tags", ["imported", "photo"]),
                 "attachments": published,
                 "content": journal.get("content", ""),
