@@ -476,9 +476,7 @@ def _write_review_plan_atomic(data_dir: Path, parent_id: str, plan: dict[str, An
 
     target = _resolve_confined_job_path(data_dir, _review_plan_rel_path(parent_id))
     if target is None:
-        raise ImportLedgerCorruptError(
-            _ledger_path(data_dir), "review_plan_path_not_confined"
-        )
+        raise ImportLedgerCorruptError(_ledger_path(data_dir), "review_plan_path_not_confined")
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(".json.tmp")
     text = json.dumps(plan, ensure_ascii=False, indent=2)
@@ -510,9 +508,7 @@ def read_review_plan(data_dir: Path, parent_id: str) -> dict[str, Any] | None:
 
     path = _resolve_confined_job_path(data_dir, _review_plan_rel_path(parent_id))
     if path is None:
-        raise ImportLedgerCorruptError(
-            _ledger_path(data_dir), "review_plan_path_not_confined"
-        )
+        raise ImportLedgerCorruptError(_ledger_path(data_dir), "review_plan_path_not_confined")
     if not path.exists():
         return None
     try:
@@ -1320,9 +1316,7 @@ def reconcile_review_authority(data_dir: Path, parent_id: str) -> None:
     if _resolve_confined_job_path(data_dir, _review_plan_rel_path(parent_id)) is None:
         from tools.ingest.runner import ImportLedgerCorruptError, _ledger_path
 
-        raise ImportLedgerCorruptError(
-            _ledger_path(data_dir), "review_plan_path_not_confined"
-        )
+        raise ImportLedgerCorruptError(_ledger_path(data_dir), "review_plan_path_not_confined")
     lock = FileLock(_review_lock_path(data_dir, parent_id), timeout=30.0)
     with lock:
         ledger = _read_ledger(data_dir)
@@ -1546,9 +1540,7 @@ def confirm_review(  # noqa: C901
         ):
             if reconciled:
                 _write_ledger(data_dir, ledger)  # persist convergence only
-            return _invalid_child_authority_error(
-                parent_id, code=IMPORT_REVIEW_RECOVERY_REQUIRED
-            )
+            return _invalid_child_authority_error(parent_id, code=IMPORT_REVIEW_RECOVERY_REQUIRED)
 
         # Refuse to mutate the queue while a child batch is unsettled.
         if existing_job and existing_job.get("active_child_id"):
@@ -1838,9 +1830,7 @@ def edit_review(  # noqa: C901
         # check (which would otherwise leak the hostile locator) and before any
         # edit write. Reconciliation above performed no repair for it.
         if _child_authority_status(ledger.get("jobs", {}), parent_id, job) == "invalid":
-            return _invalid_child_authority_error(
-                parent_id, code=IMPORT_REVIEW_RECOVERY_REQUIRED
-            )
+            return _invalid_child_authority_error(parent_id, code=IMPORT_REVIEW_RECOVERY_REQUIRED)
 
         # An in-flight child batch blocks editing ANY proposal (even an unrelated
         # one) — a settle could still move membership under the edit.
@@ -2080,9 +2070,11 @@ def review_queue(
                 {
                     "import_id": parent_id,
                     "recovery_required": True,
-                    "authority_status": AUTHORITY_STATUS_INVALID_CHILD_AUTHORITY
-                    if authority_corrupted
-                    else job.get("authority_status"),
+                    "authority_status": (
+                        AUTHORITY_STATUS_INVALID_CHILD_AUTHORITY
+                        if authority_corrupted
+                        else job.get("authority_status")
+                    ),
                 },
                 retryable=False,
             )
@@ -2179,12 +2171,12 @@ def list_reviews(
                 "state": j.get("state", "confirmed"),
                 "queue_counts": _queue_counts(prop_states),
                 "active_child_id": None if corrupted else j.get("active_child_id"),
-                "recovery_required": True
-                if corrupted
-                else bool(j.get("recovery_required", False)),
-                "authority_status": AUTHORITY_STATUS_INVALID_CHILD_AUTHORITY
-                if corrupted
-                else j.get("authority_status"),
+                "recovery_required": True if corrupted else bool(j.get("recovery_required", False)),
+                "authority_status": (
+                    AUTHORITY_STATUS_INVALID_CHILD_AUTHORITY
+                    if corrupted
+                    else j.get("authority_status")
+                ),
                 "plan_revision": j.get("plan_revision", 1) or 1,
                 "queue_revision": _queue_revision_of(j),
                 "created_at": j.get("created_at"),
@@ -2395,10 +2387,7 @@ def _child_authority_status(
     child_job = jobs.get(child_id) if isinstance(jobs, dict) else None
     if isinstance(child_job, dict):
         # A present record must affirm it is this parent's batch child.
-        if (
-            child_job.get("kind") != "batch"
-            or child_job.get("parent_review_job_id") != parent_id
-        ):
+        if child_job.get("kind") != "batch" or child_job.get("parent_review_job_id") != parent_id:
             return "invalid"
         return "valid"
     # Absent record. A correctly-prefixed ``#batch-<seq>`` id is the genuine
@@ -2473,12 +2462,14 @@ def query_review_status(import_id: str, data_dir: Path) -> dict[str, Any]:
             "proposal_states": proposal_states,
             "queue_counts": _queue_counts(proposal_states),
             "active_child_id": None if authority_corrupted else job.get("active_child_id"),
-            "recovery_required": True
-            if authority_corrupted
-            else bool(job.get("recovery_required", False)),
-            "authority_status": AUTHORITY_STATUS_INVALID_CHILD_AUTHORITY
-            if authority_corrupted
-            else job.get("authority_status"),
+            "recovery_required": (
+                True if authority_corrupted else bool(job.get("recovery_required", False))
+            ),
+            "authority_status": (
+                AUTHORITY_STATUS_INVALID_CHILD_AUTHORITY
+                if authority_corrupted
+                else job.get("authority_status")
+            ),
             "plan_fingerprint": job.get("plan_fingerprint", ""),
             "plan_revision": job.get("plan_revision", 1) or 1,
             "queue_revision": _queue_revision_of(job),
@@ -3171,12 +3162,11 @@ def _stream_copy(
     """
     target_abs.parent.mkdir(parents=True, exist_ok=True)
     context = _PUBLICATION_CONTEXT.get()
+    staging_abs: Path | None
     if context is None:
         staging_abs = _unique_staging(target_abs)
     else:
-        staging_abs = _resolve_confined_job_path(
-            context["data_dir"], context["staging_rel_path"]
-        )
+        staging_abs = _resolve_confined_job_path(context["data_dir"], context["staging_rel_path"])
         if staging_abs is None:
             return False, "staging_path_not_confined"
         staging_abs.parent.mkdir(parents=True, exist_ok=True)
@@ -3221,12 +3211,11 @@ def _publish_text_create_only(target_abs: Path, text: str) -> tuple[bool, str]:
     """
     target_abs.parent.mkdir(parents=True, exist_ok=True)
     context = _PUBLICATION_CONTEXT.get()
+    staging_abs: Path | None
     if context is None:
         staging_abs = _unique_staging(target_abs)
     else:
-        staging_abs = _resolve_confined_job_path(
-            context["data_dir"], context["staging_rel_path"]
-        )
+        staging_abs = _resolve_confined_job_path(context["data_dir"], context["staging_rel_path"])
         if staging_abs is None:
             return False, "staging_path_not_confined"
         staging_abs.parent.mkdir(parents=True, exist_ok=True)
@@ -4056,9 +4045,12 @@ def run_batch(  # noqa: C901
         # Prove the minted child job area resolves inside the data directory
         # BEFORE the confirmed->batching transition and active-child reservation:
         # a planted link at the child path must fail closed with no reservation.
-        if _resolve_confined_job_path(
-            data_dir, f".life-index/import-jobs/{child_id}/rollback-manifest.json"
-        ) is None:
+        if (
+            _resolve_confined_job_path(
+                data_dir, f".life-index/import-jobs/{child_id}/rollback-manifest.json"
+            )
+            is None
+        ):
             return _err(
                 "IMPORT_WRITE_FAILURE",
                 "Child batch job path is not confined to the data directory.",

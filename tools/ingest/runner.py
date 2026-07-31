@@ -83,9 +83,7 @@ def _assert_import_jobs_area_confined(data_dir: Path) -> None:
     try:
         area.relative_to(resolved_data)
     except ValueError:
-        raise ImportLedgerCorruptError(
-            _ledger_path(data_dir), "import_jobs_area_not_confined"
-        )
+        raise ImportLedgerCorruptError(_ledger_path(data_dir), "import_jobs_area_not_confined")
 
 
 @contextmanager
