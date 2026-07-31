@@ -90,6 +90,22 @@ triggers:
 .venv/bin/python -m tools.query_weather --location "Lagos,Nigeria"
 .venv/bin/python -m tools.build_index
 ```
+
+**历史照片冷启动（import review queue，additive）**：先读
+[Historical photo import review playbook](references/PHOTO_IMPORT_REVIEW_PLAYBOOK.md)，再按需查看
+`docs/API.md` 的精确参数与错误码。核心流程是 plan → validate/stage → confirm/edit → review/preview
+→ run/status → rollback child batch。
+
+- CLI 是唯一写 authority；GUI/host agent 不直接写 `Journals/` / `attachments/`。source facts
+  不可变，用户只编辑 journal 字段与 proposal/attachment 选择；日期只信可信 EXIF 或用户确认，
+  绝不用 mtime/sentinel。
+- confirm/run/preview 必须用当前 `--source-root` 复验同一 root identity。`queue_revision` 是
+  parent-ledger 并发令牌，与 review-plan 的 `plan_revision` 分离；过期 edit 零写入、retryable。
+- parent 不可整体 rollback；只回滚 ledger-derived `batches[]` 中的 child。仅 child + 正确链接
+  manifest 的 durable facts 可驱动恢复；ownership / identity / hash / size 不匹配一律 fail closed。
+  内部 rollback origin marker 不进入 status/GUI、不形成第二 state/store，marker-only 更新不 bump。
+- `status/review` 不暴露 source/manifest/journal 路径；持久化 scan warning 只投影安全 allowlist。
+  `recovery_required` 或 plan/ledger mismatch 要如实报告，不要盲目重试 run。
 **安装 / 首次验证 / 故障恢复指针**：
 - 首次安装、upgrade、repair、fresh install 判断 → 读 `AGENT_ONBOARDING.md`，运行 `bootstrap --json`，按 `execution_policy` / `needs_human` / `safe_next_steps` 执行
 - `ModuleNotFoundError`、venv 损坏、`health` 异常、Windows 首次写入转义问题 → 先回到 `bootstrap --json` 输出，不自行扩写 repair 决策树

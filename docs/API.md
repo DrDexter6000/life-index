@@ -1883,6 +1883,54 @@ size、media type，并生成 deterministic journal + attachment proposal。
 }
 ```
 
+### `import_id` lexical contract
+
+所有外部 `import_id` 与 plan 内的 `import_id` 在任何 per-parent path/lock、
+review-plan、rollback manifest、ledger state 或 durable data 访问前，先做纯 lexical
+校验（外层 transaction 取得 data-dir 内固定
+`.life-index/import-jobs/ledger.lock` 及创建其父目录仍被允许）：
+
+- parent：lowercase ASCII `[a-z0-9][a-z0-9_-]*`，长度 1..128；
+  `CON` / `PRN` / `AUX` / `NUL` / `COM1..9` / `LPT1..9` 大小写不敏感地保留；
+- child：`<valid-parent>#batch-[1-9][0-9]{0,8}`，parent 部分长度 1..128、整体总长
+  不超过 144（parent 预算 128 + 固定后缀 `#batch-` 7 + 最多 9 位 sequence），sequence
+  不得前导零且不超过 `999999999`；child 分支拥有**独立长度预算**，故一个合法 parent
+  必然 mint 出合法 child——`run_batch` 追加 `#batch-<seq>` 后缀后，child id 不会超过
+  ledger job-key gate 的闭合词法预算（避免系统自身 mint 出的 child id 在下次
+  `_read_ledger` 被判为 `job_id_invalid` 的自我腐蚀）；
+- parent-only surfaces：`confirm` 的 external override 与 plan id、`confirm --edit`、
+  `stage` 的 external override 与 plan id、`review`、`rebind`、`preview`、batch
+  `run --import-id`、legacy `run` 的 plan id 与非缺席 `--confirm`；
+- parent-or-child surfaces：`status`、`rollback`（含 runner rollback）；
+- `reviews --after` 是 opaque pagination cursor，不适用本 lexical contract。
+
+parent-only surface 收到 canonical child 返回 `reason=child_syntax`。失败 envelope
+的 error 精确为：
+
+```json
+{
+  "code": "IMPORT_ID_INVALID",
+  "message": "Import id is invalid.",
+  "details": {"reason": "syntax"},
+  "retryable": false
+}
+```
+
+`details` 只含一个安全 `reason`，绝不回显原始输入。closed reasons 为
+`type` / `empty` / `non_ascii` / `reserved_name` / `child_syntax` /
+`child_parent_length` / `child_sequence` / `length` / `syntax` /
+`outside_data_dir` / `containment_unavailable`；lexical precedence 为 type → empty →
+non-ASCII → reserved name → child recognition/structure → child parent length →
+child sequence → total length → syntax。绝对 Windows path、drive-relative path、
+UNC、traversal、非 ASCII、malformed child 都在到达 filesystem/network helper 前确定
+失败。
+
+`confirm` / `stage` 若 external override 存在，先校验 override，再读取 plan
+一次；有效到达的 plan 仍总是校验其 `import_id`，有效但不同的 override 继续作为
+effective parent authority。legacy `run --plan` 的**缺席** `--confirm` 不是 hostile
+id，继续返回 `IMPORT_CONFIRMATION_REQUIRED`；非缺席 confirm id 先做 lexical
+校验，有效但与 plan 不匹配也继续返回 `IMPORT_CONFIRMATION_REQUIRED`。
+
 ### `import plan`
 
 `plan` 是 dry-run，只读 source 和当前 data dir 状态，默认只向 stdout 输出
@@ -1916,6 +1964,7 @@ JSON，不写 journal、attachment、ledger、manifest 或 index。
 | `PHOTO_CAMERA_MISSING` | warning | yes | make/model metadata 缺失 |
 | `PHOTO_ORIENTATION_MISSING` | warning | yes | orientation tag 缺失 |
 | `PHOTO_UNSUPPORTED_FILE_SKIPPED` | warning | yes | 当前 tranche 不支持的文件被跳过 |
+| `PHOTO_UNSUPPORTED_FORMAT` | warning | no | `.heic` / `.heif` 等明确不支持的格式（preview unavailable），不静默跳过；额外携带安全字段 `format`（如 `.heic`）与 `preview_available=false`，供 GUI 如实展示该限制 |
 | `PHOTO_EXIF_UNREADABLE` | warning | yes | EXIF 无法读取，adapter 会降级并同时输出缺失 capture time conflict |
 | `PHOTO_CAPTURE_TIME_MISSING` | conflict | no | 没有可信 capture date；阻塞 run |
 | `PHOTO_CAPTURE_TIME_AMBIGUOUS` | conflict | no | 多个日期来源冲突；阻塞 run |
@@ -1924,9 +1973,20 @@ JSON，不写 journal、attachment、ledger、manifest 或 index。
 
 ### `import run`
 
-`run` 必须带 `--confirm <import_id>`，且 `<import_id>` 必须匹配 plan。它按
-create-only / fail-closed 策略写入 plan 中的 journal 和 attachment path，并在
-写入前建立固定 ledger 和 rollback manifest。
+`run` 先按 `--import-id` 选项是否出现确定性选择 route：
+
+- 只有 `--import-id` 完全缺席时，才进入 legacy `--plan/--confirm` route；
+- `--import-id` 一旦显式出现，就选择 batch route，再校验其值。显式空值或 lexical
+  非法值返回既有 `IMPORT_ID_INVALID`；lexical 合法但未知的值返回既有
+  `IMPORT_JOB_NOT_FOUND`；
+- `--import-id` 与 `--plan/--confirm` 同时出现时，batch route 优先，legacy plan
+  不执行。
+
+legacy route 必须带 `--confirm <import_id>`，且 `<import_id>` 必须匹配 plan；缺席或
+有效但不匹配仍返回 `IMPORT_CONFIRMATION_REQUIRED`，无效的非缺席 confirm 或无效的
+plan `import_id` 返回 `IMPORT_ID_INVALID`。legacy route 按 create-only /
+fail-closed 策略写入 plan 中的 journal 和 attachment path，并在写入前建立固定
+ledger 和 rollback manifest。
 
 对 `media.photo_timeline`，`run` 还应带 `--source-root <photo-dir>`。CLI 只
 使用该 root 解析 plan 中的 `source_rel_path`，并在复制 attachment 前校验
@@ -1936,15 +1996,20 @@ create-only / fail-closed 策略写入 plan 中的 journal 和 attachment path�
 
 ```text
 .life-index/import-jobs/ledger.json
+.life-index/import-jobs/ledger.lock
 .life-index/import-jobs/<import_id>/rollback-manifest.json
 ```
+
+所有 import ledger 读改写事务共用 `ledger.lock` 跨进程串行化；`ledger.json` 通过同目录
+temp + fsync + atomic replace 更新。已存在但 malformed/torn/unreadable 的 ledger 返回
+`IMPORT_LEDGER_CORRUPT`，绝不按空 ledger 重置或覆盖。
 
 返回 `data.schema_version = "import_run.v1"`，核心字段：
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `state` | string | `committed` / `already_committed` / `partially_committed` |
-| `created_files[]` | array | 实际创建文件；每项含 `kind`、`rel_path`、`sha256_after`、`created_by_import` |
+| `created_files[]` | array | 实际创建文件；每项含 `kind`、`rel_path`、`sha256_after`、`created_by_import`；M7 hard-link publish 还含 additive `size_bytes`、`publication_state` 与 `ownership_proof` |
 | `rollback_manifest_rel_path` | string | 固定 rollback manifest 相对路径 |
 | `post_run_actions.index_rebuild_recommended` | bool | Tranche A 不自动 index，只建议后续重建 |
 
@@ -1975,17 +2040,29 @@ create-only / fail-closed 策略写入 plan 中的 journal 和 attachment path�
 | `rollback_available` | bool | 是否存在 rollback manifest |
 | `rollback_manifest_rel_path` | string | 固定 manifest 相对路径 |
 
-未知 `import_id` 返回 `IMPORT_JOB_NOT_FOUND`。
+通过 lexical 校验但未知的 `import_id` 返回 `IMPORT_JOB_NOT_FOUND`；lexical 非法输入
+返回 `IMPORT_ID_INVALID`。
 
 ### `import rollback`
 
 `rollback` 只处理 manifest 中 `created_by_import=true` 的文件。删除前重新计算
-当前 SHA-256，并与 manifest 的 `sha256_after` 精确匹配；任何 mismatch 都会拒绝
-整个 rollback，返回 `IMPORT_ROLLBACK_CHECKSUM_MISMATCH`，不会删除部分文件。
+当前 SHA-256 / size，并与 manifest 证据精确匹配；带 `ownership_proof` 的 M7 条目还
+必须匹配 manifest 在 publish 前记录的 hard-link filesystem identity。任何已发布条目
+的 checksum / size / identity mismatch 都会拒绝整个 rollback，返回
+`IMPORT_ROLLBACK_CHECKSUM_MISMATCH`，不会删除部分文件。`prepared` 条目若遇到
+create-only racing target 且 identity 不同，该 target 被证明不是 import-owned，rollback
+只清理自己的 staging 并保留该 target，即使两者 bytes/checksum 相同。
+初检通过后，rollback 在既有 shared journals lock 内完成 pending queue、所有 target /
+staging 的最终 confinement / identity / SHA-256 / size 复检以及全部 unlink；任一最终
+证据变化都在第一次删除前 fail closed。journals lock timeout/unavailable 返回可重试的
+既有 `IMPORT_INTERNAL_ERROR`，删除数为零。
 
 rollback 还会 resolve 每个 manifest path，确认目标仍在 `LIFE_INDEX_DATA_DIR`
 内；路径遍历、绝对路径、非普通文件等 unsafe path 返回
-`IMPORT_ROLLBACK_UNSAFE`，且不会删除任何文件。
+`IMPORT_ROLLBACK_UNSAFE`，且不会删除任何文件。该错误 fail-closed，但外向 envelope
+只含 locator-free 诊断（见下「Resolved path containment (R1b)」）：`reason`、计数与
+`created_files` entry index——绝不回显原始 hostile 绝对/遍历路径（原始路径仅写入
+用户自有 data dir 内的 durable manifest audit 记录）。
 
 成功 rollback 后：
 
@@ -2000,6 +2077,7 @@ rollback 还会 resolve 每个 manifest path，确认目标仍在 `LIFE_INDEX_DA
 |---|---|
 | `IMPORT_SOURCE_UNSUPPORTED` | 未知 source adapter |
 | `IMPORT_SOURCE_UNREADABLE` | source / fixture 无法读取 |
+| `IMPORT_ID_INVALID` | external / plan import id lexical 校验失败；不回显原始输入 |
 | `IMPORT_PLAN_SCHEMA_UNSUPPORTED` | plan schema version 不支持 |
 | `IMPORT_PLAN_INVALID` | plan JSON 缺少必要字段或语义非法 |
 | `IMPORT_PLAN_CONFLICTS_UNRESOLVED` | plan 含 unresolved conflicts，Tranche A fail-closed |
@@ -2012,7 +2090,66 @@ rollback 还会 resolve 每个 manifest path，确认目标仍在 `LIFE_INDEX_DA
 | `IMPORT_ROLLBACK_MANIFEST_MISSING` | 缺失 rollback evidence |
 | `IMPORT_ROLLBACK_CHECKSUM_MISMATCH` | rollback 文件当前 hash 与 manifest 不一致 |
 | `IMPORT_ROLLBACK_UNSAFE` | rollback 会触碰非安全 import-owned 文件或逃逸 data dir |
+| `IMPORT_LEDGER_CORRUPT` | 固定 ledger malformed/torn/unreadable；fail closed 且不重置/覆盖 |
 | `IMPORT_INTERNAL_ERROR` | 未归类内部错误 |
+
+#### Resolved path containment (R1b)
+
+每个由 external / plan-contained / stored / newly-minted id 或 relative locator 派生的
+import-job 路径，在首次使用前都会被 resolve 并按 component-wise（`relative_to`，非字符串
+前缀）证明是 resolved data dir 的严格后代。任何 traversal、绝对路径、junction/reparse/
+symlink 逃逸、sibling 前缀混淆、或 resolve 失败都在**产生任何 ledger / manifest / staging
+/ attachment 副作用之前** fail closed：不创建/读取/删除根外文件，不预留 child job，source
+字节不变，且错误输出不含 hostile 绝对路径或 traceback。
+
+下列既有错误码为此新增**附加安全 `reason`**（在 `error.details.reason`，不改变既有 error 含义、
+success shape 或 exit code 映射；`reason` 为开放描述，调用方不应视为闭合枚举严格校验）：
+
+| code | additive `reason` | 触发 |
+|---|---|---|
+| `IMPORT_WRITE_FAILURE` | `job_path_not_confined` | run / batch 的 manifest 派生路径逃逸 data dir |
+| `IMPORT_WRITE_FAILURE` | `review_path_not_confined` | confirm/stage/edit/review/run 的 parent job 路径逃逸（per-parent lock 之前）；rollback 对存储 `parent_review_job_id` 派生路径逃逸（同样 lock 之前） |
+| `IMPORT_ROLLBACK_UNSAFE` | `rollback_manifest_path_not_confined` | 存储的 `rollback_manifest_rel_path` 为绝对/遍历/逃逸 locator |
+| `IMPORT_ROLLBACK_UNSAFE` | `unsafe_manifest_entries` | manifest 中某 `created_by_import` 条目的 `rel_path` 逃逸 data dir，或其 `ownership_proof` 非法；`details` 另含 `unsafe_path_count` / `invalid_ownership_count` 与 `unsafe_entry_indices` / `invalid_ownership_entry_indices`（`created_files` 数组下标），均 locator-free、不回显原始路径 |
+| `IMPORT_LEDGER_CORRUPT` | `import_jobs_area_not_confined` | `.life-index/import-jobs` 区域本身是逃逸 link（首次 ledger I/O 前） |
+| `IMPORT_LEDGER_CORRUPT` | `review_plan_path_not_confined` | review-plan 派生路径逃逸 data dir（读写两侧均 raise，见下） |
+| `IMPORT_LEDGER_CORRUPT` | `job_id_invalid` | 持久化 ledger 的某个 `jobs` key 非闭合词法 import id（path-like/遍历/非词法）；在首次 `_read_ledger` 读时 fail-closed（见下） |
+| `IMPORT_LEDGER_CORRUPT` | `parent_authority_unrecoverable` | parent review job 缺失但 ledger 中存在其 batch child（`kind=="batch"` 且 `parent_review_job_id==parent`）时，从幸存 review plan rebuild 会把已导入 proposal 重置为 `confirmed`、`next_batch_sequence` 重置为 1（第二权威、re-import 风险），故 reconcile 的 rebuild 分支 fail-closed raise 而非 rebuild——覆盖 reconcile 的全部入口（status/confirm/edit/review/run/rollback，含 child rollback）；无 child 时仍保留 genuine first-confirm rebuild（既有行为不变） |
+| `IMPORT_PLAN_INVALID` | `duplicate_runnable_target` | `run` 的 runnable 集合中两个 proposal 声称同一 canonical journal/attachment `target_rel_path`（legacy/crafted plan，或 allocation 漏洞残留）；在 batching transition / 首次 durable write **之前** fail-closed，绝不产生 partial publish。`details` 另含 `kind`（`journal`/`attachment`）与 `proposal_ids` |
+| `IMPORT_PLAN_INVALID` | `source_facts_drift` | `run` 时从实际 source 文件 re-derive 的不可变 metadata（至少 `metadata_hash`，含 `capture_time` 的 value/source_tag/timezone_authority）与 plan 存储的 `source_facts` 不一致（plan 在 confirm 后被篡改：capture_time + coherently 重算的 metadata_hash）；在 publish **之前** fail-closed。source 无法 re-parse（不支持格式/不可读）同样 fail-closed。`details.proposals` 列出漂移 proposal ids |
+
+附加 surfacing 说明：
+
+- **`review_path_not_confined`（写路径，`IMPORT_WRITE_FAILURE`，`details.reason`）**：confirm/stage/
+  edit/review/run 在取 per-parent lock **之前**证明 parent job 路径 confined。rollback 对其**存储的**
+  `parent_review_job_id` 先做 lexical 校验——存储 locator 为绝对/遍历/逃逸值时先返回既有
+  `IMPORT_ID_INVALID`（lexical 失败，`details.reason` 为 `syntax` 等），lexical 合法但解析逃逸时返回
+  `review_path_not_confined`。所有这些写路径都在创建 lock 文件之前失败。
+- **`review_plan_path_not_confined`（读+写路径，`IMPORT_LEDGER_CORRUPT`，`details.reason`）**：写入侧
+  （`_write_review_plan_atomic`）与读取侧（`read_review_plan`，被 status/queue/preview 以及 `plan` 的
+  去重扫描调用）在 review-plan 路径逃逸时均 **raise `ImportLedgerCorruptError`**，CLI 统一映射为
+  `IMPORT_LEDGER_CORRUPT`。读取侧**绝不**把逃逸当作"plan 缺失"返回 `None`（否则 reconciliation 会误
+  abort 一个 pending intent、甚至 `jobs.pop(parent_id)` 这种由 containment 失败引起的破坏性 in-root
+  改动）。真正 confined 但磁盘上不存在的 plan 仍返回 `None`（既有"缺失"行为不变）。status 路径在
+  per-parent lock 之前用同一 probe 也会 raise，故 ledger 字节/SHA、jobs、proposal_states、intent 全不变。
+- **`job_id_invalid`（读+写路径，`IMPORT_LEDGER_CORRUPT`，`details.reason`）**：`_read_ledger` 在既有结构
+  校验之后，对**每个** `jobs` key 用 `validate_import_id(key, allow_child=True)` 做闭合词法校验——任一 key
+  非词法 import id（path-like/遍历/非词法）即 raise `ImportLedgerCorruptError(ledger_path, "job_id_invalid")`，
+  CLI 统一映射为 `IMPORT_LEDGER_CORRUPT`，退出码映射不变。这是 R1c 的 single-point 闭合：一个敌意的
+  durable `jobs` key 对**所有** consumer（status/`run`/`reviews` 读路径、`_derive_child_batches`/
+  `_child_batch_projection` 的 `batches` 投影、`_reconcile_parent` 的 settled 扫描）都不可达——在读时
+  fail-closed，故无修复、无路径派生、无泄漏、重复调用逐字节一致。敌意 key 值**绝不**进入 error
+  （仅 `reason = "job_id_invalid"`）。这同时也**强制**了 `batches` 投影的 locator-free 语义：派生它的
+  每个 job key 都已通过词法门，绝无 locator 能从 `data.batches[].import_id` 泄漏。
+- **`staging_path_not_confined`（`IMPORT_WRITE_FAILURE` 的 `message` 文本，**非** `details.reason`）**：
+  batch 的 staging 派生路径逃逸时，`_stream_copy` / `_publish_text_create_only` 返回
+  `(False, "staging_path_not_confined")`，该字符串作为 `RuntimeError` 信息冒泡进 `IMPORT_WRITE_FAILURE`
+  的 `message` 文本（形如 `"... staging_path_not_confined"`），**不**进入 `error.details.reason`
+  （`details` 仍为 `child_id`/`parent_id`/计数）。它与上表中的 `details.reason` 是不同的 surfacing，
+  这里明确区分，不混为一谈。
+
+合法的 contained 路径（普通 data dir、嵌套 job 目录、data dir 自身含 symlink 组件——两侧都
+resolve）继续正常工作，不被误拒。
 
 ### schema_version Policy
 
@@ -2035,6 +2172,465 @@ Tranche A 将以下内容纳入兼容性承诺：
 类型、改变必填语义、改变错误码含义，或改变 fingerprint / idempotency 公式，
 都属于破坏性变更，必须升级对应 schema 并补 contract tests。兼容扩展可以继续
 使用现有 schema，但不得让旧消费者误判 import state 或 durable write boundary。
+
+### Review queue & batch import（additive，M7 历史照片冷启动）
+
+本节是 **additive** 扩展：它新增一个可恢复照片审阅队列、分批导入、批次回滚和
+源不可变性能力，全部复用现有 import ledger / rollback manifest / fingerprint
+权威。`import plan` / `import run --plan … --confirm …` / `import status` /
+`import rollback` 的既有 Tranche A/B 行为保持不变；下列命令与字段均为新增，旧
+消费者忽略未知字段即可。`media.photo_timeline` 的 source facts 不可变：adapter /
+provenance、content SHA-256、size、source 相对路径、capture time value/source/
+timezone authority、GPS、source relation 与 attachment relation 都是 source facts；
+用户只能编辑 journal `title` / `date` / `topic` / `tags` / `content` 与 proposal /
+attachment selection，用户编辑是最高事实但不能改写 source facts。
+
+**Immutable attachment provenance**：一个 selected attachment 必须绑定到同一不可变
+source fact —— `source_sha256`、`source_rel_path`、`source_ref`、`media_type`、
+`size_bytes` 与确定的 `attachment_id`（`att_<source content prefix>`）都要与本
+proposal 内绑定的 source fact 完全一致；`confirm` 做绑定交叉校验，任何篡改
+（source_rel_path / source_ref / media_type / size / attachment_id / target 逃逸）
+返回 `IMPORT_PLAN_INVALID` 并拒绝持久化。对非 frozen 可编辑 proposal，canonical
+attachment target 与 journal target 在 `confirm` 时由 effective date + content **重新
+派生 / 校验**，绝不信任 incoming GUI 编辑；journal target 必须落在 canonical date
+路径 / sequence 内。attachment target / journal target 必须 lexical confined（拒绝
+绝对路径与 `..` 段），并在 run 时再经 confinement 复核。部分取消选择 / 全部取消选择
+的既有语义保持不变。
+
+#### Proposal lifecycle
+
+`media.photo_timeline` proposal 增加 additive 状态字段 `state`，取值：
+`pending`（`import stage` 初始入队、plan 阶段、或日期未解析）、`confirmed`（日期可解析后
+经 `import confirm` / 单 proposal `--edit` 持久化）、`skipped`（该 proposal 所有
+attachment 被取消选择，不创建空 journal）、`stale`（批次准备时 source 内容/大小已变或源
+文件被删除，从本批排除）、`batching`（已进入某个 active child batch）、`imported`
+（child batch committed）。
+`imported` / `batching` 是 frozen 状态：re-confirm / edit 时其内容权威且不变、绝不降级；
+`pending` / `confirmed` / `skipped` 接受安全编辑（含 attachment selection）。
+成功 rollback 一个 child batch 后，其 parent proposal 恢复为 `confirmed`。
+
+每个 proposal 携带显式 `date_resolution`（日期权威，绝不来自文件 mtime）：
+
+- `exif_authoritative`：可信 EXIF 提供日期（带 offset 用其本地 calendar date，
+  无 offset 按相机本地日期，不猜时区；含 `authority` 来源）。proposal 的
+  `journal.date` 与 journal / attachment `target_rel_path` 在 plan 阶段已派生。
+  **EXIF offset trust**：offset 只取与所选 capture tag **配对** 的 offset tag
+  （`OffsetTimeOriginal` ↔ `DateTimeOriginal`、`OffsetTimeDigitized` ↔ `CreateDate`、
+  `OffsetTime` ↔ `DateTime`），绝不借用兄弟 tag（如不用 `OffsetTimeDigitized` 配
+  `DateTimeOriginal`）。offset 必须有显式符号（`+`/`-`）、分钟合法（`00`–`59`）、且
+  落在真实世界 UTC 范围内（最多 ±14:00，`14` 仅配 `:00`）；否则视为不可信，日期仍按
+  相机本地 `exif_naive` 使用，**绝不换算**。`authority` 为 `exif_offset`（带可信
+  offset）或 `exif_naive`（无 offset）。
+- `user_confirmed`：用户在 `confirm` 时通过 `date_resolution.date` 显式给出
+  `YYYY-MM-DD`。这是最高权威——可解析一条不可变的 EXIF capture-time 冲突，
+  覆盖 EXIF 日期；`confirm` 校验日期合法性、派生 canonical journal target，然后
+  才允许 `confirmed`。
+- `unresolved`：缺日期或多日期冲突（`PHOTO_CAPTURE_TIME_MISSING` /
+  `PHOTO_CAPTURE_TIME_AMBIGUOUS`）。**无 1970-01-01 sentinel**：这种 proposal 的
+  `journal.date == ""`、`journal.target_rel_path == ""`、attachment
+  `target_rel_path == ""`，停留在显式 `pending` 区域且不可运行，直到用户给出
+  `user_confirmed` 解析；EXIF 冲突仍被如实记录。
+
+`media.photo_timeline` 现支持 JPEG/`.jpg`/`.jpeg`；`.heic` / `.heif` 明确
+unsupported：发出 `PHOTO_UNSUPPORTED_FORMAT` warning 且标记 preview unavailable，
+不静默跳过。adapter 递归只读扫描源目录，跳过 symlink / junction / reparse
+point、root escape 与目录循环；按精确字节哈希。精确 content SHA-256 去重：同名
+不同内容保留为独立记录。rescan 的去重集合包含两类来源（read-only）：
+
+1. 已 `committed` 的 child / legacy job 的 rollback manifest 中的 attachment
+   `sha256_after`；
+2. parent review job 中、authoritative state 为 `confirmed` / `batching` /
+   `imported` 的 proposal 的 attachment `source_sha256`。
+
+这使得「已排队但尚未导入」的照片在 rescan 时不被重复候选；被 rollback 恢复为
+`confirmed` 的 proposal 仍留在去重集合内（保持排除）。可信日聚合为一个 editable
+proposal（多附件）；缺日期/冲突的记录成为独立待处理 proposal（不自动归入某天）。
+attachment 列表即 selected set；全部取消选择 ⇒ `skipped`（无 runnable proposal）。
+Planning 阶段不复制任何正式附件字节。
+
+#### `import confirm`
+
+```bash
+# 持久化/再确认完整 review plan（legacy / stage 之外的整盘再确认）
+life-index import confirm --plan <review-plan.json> [--source-root <dir>] [--import-id <parent_id>] --json
+# 单 proposal 原子 confirm/edit（package-3）：--plan 与 --edit 互斥
+life-index import confirm --edit <review-edit.json> --import-id <parent_id> --expected-queue-revision <int> --json
+```
+
+把完整 review plan 原子持久化到固定路径
+`.life-index/import-jobs/<parent_id>/review-plan.json`，并在同一 ledger 记录一个
+parent review job（additive `kind: "review"`）。写入采用 temp 文件 + fsync +
+atomic replace；并发安全由全局 import-ledger transaction lock + per-parent
+single-writer lock 保证（均复用 repo 既有 `FileLock`，固定锁序为 ledger → parent）。
+`confirm` 必须重新计算 / 校验 immutable fingerprints 与 selected
+attachment ids；tamper（指纹/selected id 不匹配）返回 `IMPORT_PLAN_INVALID` 并
+拒绝持久化。
+
+`--edit` 走单 proposal 原子 confirm/edit 路径（见下「单 proposal edit」）：严格校验
+`import_review_edit.v1` payload、用 `--expected-queue-revision` 做乐观并发令牌、
+从持久化 immutable `source_facts` 重建选择、应用 journal 编辑与 decision。`--plan`
+与 `--edit` 互斥（同时给出为 usage error，非零退出）。
+
+`confirm` 在 per-parent lock 内先做 plan/ledger authority reconciliation（见下），
+若有未结算 active child 则拒绝（`IMPORT_BATCH_ALREADY_ACTIVE`），随后合并 incoming
+plan 到既有 review 状态：`imported` / `batching` proposal 冻结（内容权威不变、
+state 以 ledger 权威为准、绝不降级），其余 proposal（re-）派生 `date_resolution` 与
+canonical target。durable `next_batch_sequence` 在 re-confirm 时保留不变。
+
+**Crash-safe plan↔ledger 更新协议**：为消除「新 plan 已落盘但 ledger 仍是旧投影」
+的静默撕裂窗口，`confirm` 在 per-parent lock 内按 **intent → plan → finalize** 三步
+顺序更新，且 ledger 是唯一权威（不引入第二个 store）。先在内存中合并出最终 plan 与
+parent 投影，然后：
+
+1. **(I1) durable intent**：在 parent job 上原子写入一个 `pending_review_update`
+   intent（携带 `expected_plan_fingerprint` / `expected_plan_revision`、完整 finalize
+   投影字段、以及 prior 投影快照），保留既有权威字段（含 `next_batch_sequence`）；
+2. **(P) atomic plan replace**：temp + fsync + atomic replace 写入新 review-plan.json；
+3. **(F) finalize**：从 intent 把 parent 投影落盘并清除 intent，递增 `plan_revision`。
+
+confirm/status/run/rollback 都先做幂等 reconciliation 收敛三个 crash 窗口：intent
+的 `expected_plan_fingerprint` 与持久化 plan 指纹匹配 →（crash after plan / before
+finalize）幂等 finalize；intent 存在但 plan 仍是旧值/缺失 →（crash after intent /
+before plan）abandon intent，恢复 prior 投影（首次 confirm 的空 shell 直接移除）；
+**无 intent 但持久化 plan 指纹与 ledger `plan_fingerprint` 不一致** → fail closed
+（`recovery_required` + `authority_status = "plan_ledger_mismatch"`），绝不静默二选
+一。重复 status 收敛（幂等）。一次新的 `confirm` 用显式 incoming plan 重算指纹、可作
+为修复手段并在 finalize 后清除 `authority_status`。
+
+返回 `data.schema_version = "import_review.v1"`，含 `parent_id`、
+`source_root_identity`、各 proposal `state`、derived queue counts（`confirmed` /
+`skipped` / `pending` / `stale` 计数）、`plan_revision`、`queue_revision`。
+
+固定路径：
+
+```text
+.life-index/import-jobs/ledger.lock              (cross-process ledger transaction lock)
+.life-index/import-jobs/<parent_id>/review-plan.json
+.life-index/import-jobs/<parent_id>/review.lock   (per-parent single-writer lock)
+```
+
+##### 两个 revision、各自一个权威（package-3）
+
+parent review job 维护**两个**整数 revision，含义不同、绝不混用：
+
+- `plan_revision` —— review-plan **内容**权威。整盘 `confirm` / `stage` / 单 proposal
+  `--edit` 的 finalize 各递增一次；**state-only** 的 run（batching/stale 转移）、
+  rollback、reconciliation **永不**改动 `plan_revision`。
+- `queue_revision` —— parent-ledger 拥有的**客户端并发令牌**（初始 1）。每次「parent
+  可见投影的原子变更」递增恰好一次：stage；edit 或 legacy reconfirm finalize；
+  run 转移到 batching/stale；改变 proposal states/active child/recovery 的 child
+  commit/rollback/failure reconciliation；rebind（仅当 identity/recovery 可见字段变
+  化时）；plan-authority reconciliation（仅当可见复合投影变化时）。pending intent 携
+  带 finalize 后的精确 `queue_revision`，故 crash replay 幂等、绝不二次递增。
+  `updated_at` 等非权威字段单独变化**不**递增令牌。收敛后重复读为 no-write。
+
+#### `import stage`
+
+```bash
+life-index import stage --plan <review-plan.json> --source-root <dir> [--import-id <parent_id>] --json
+```
+
+把一批照片 stage 为**初始 pending** review 队列：复用 `confirm` 的
+validation / lock / review-plan / ledger / intent 协议，**不复制任何附件字节**。每个
+selected proposal 保持 `pending`（可信日与缺日均留在待处理区，日期权威与 target 派
+生推迟到后续 edit/confirm），空选择 ⇒ `skipped`。`queue_revision` 与 `plan_revision`
+均初始化为 1。
+
+**重复 source root 保护**：若同一 `source_root_identity` 已存在 actionable review job
+（任一 proposal 为 `pending` / `confirmed` / `batching`，或有 active child），返回
+non-retryable `IMPORT_REVIEW_ALREADY_STAGED`（带 `existing_import_id`），**不创建第二
+个 job/plan、零写入**。proposals 全为 `skipped` / `imported` / `stale` 且无 active
+child 的 job 视为已完成、**不**阻塞同一 root 的新 stage。
+
+#### 单 proposal edit（`import confirm --edit`）
+
+```bash
+life-index import confirm --edit <review-edit.json> --import-id <parent_id> --expected-queue-revision <int> --json
+```
+
+`import_review_edit.v1` payload 严格白名单：顶层仅允许
+`schema_version` / `proposal_id` / `decision` / `journal` / `selected_attachment_ids`；
+任何 source/provenance/target/fingerprint 字段 ⇒ `IMPORT_REVIEW_EDIT_INVALID`（零写
+入）。`journal` 仅允许 `title` / `date` / `topic` / `tags` / `content`（类型校验、
+`topic` 必须属于既定 taxonomy）；`selected_attachment_ids` 必须是该 proposal 已持久化
+`source_facts` 中的已知 attachment id。
+
+处理顺序：schema/字段校验（零写入）→ 令牌校验（`expected_queue_revision` 必须等于当前
+`queue_revision`，否则 retryable `IMPORT_REVIEW_REVISION_CONFLICT`，带
+`current_queue_revision`，零写入）→ 冻结检查（`batching`/`imported` ⇒
+`IMPORT_REVIEW_PROPOSAL_FROZEN`）→ 从 immutable `source_facts` 重建选择（保留全部
+`source_facts`，被取消选择的附件日后可仅凭 attachment id 重新选择）→ 应用 journal
+编辑与 decision。
+
+decision 语义：`confirmed` 需要可解析日期（用户提供或无 capture 冲突的 EXIF 日），否则
+保持 `pending` 并返回 soft reason code `IMPORT_REVIEW_DATE_REQUIRED`（编辑仍持久化、
+revisions 各递增一次）；空选择 ⇒ `skipped` + `IMPORT_REVIEW_EMPTY_SELECTION_SKIPPED`；
+`pending` 保存编辑但不晋升。两次链式 edit 只需用上一次响应的 `queue_revision` 作令牌
+（无需重新拉取 review）。`plan_revision` 与 `queue_revision` 各递增一次。
+
+#### `import review`（bounded read）
+
+```bash
+life-index import review --import-id <parent_id> [--offset 0] [--limit 20] [--state <STATE> ...] --json
+```
+
+per-parent lock 内 reconcile + capture 后，按持久化 plan 顺序、以 **ledger 权威 state**
+叠加（绝不取 plan 内 per-proposal `state` 字段）分页投影。`--limit` clamp 到 1..100
+（默认 20），`--offset` 越界返回空页；`--state` 可重复过滤。每个 proposal 仅暴露稳定、
+非定位字段 + `available_attachments`（`attachment_id` / `source_ref` / `media_type` /
+`size` / `selected`）——**绝不**暴露 source 文件系统定位（无 `source_rel_path`、无绝
+对路径）。recovery / mismatch ⇒ `IMPORT_REVIEW_RECOVERY_REQUIRED`。返回
+`total_all` / `total_filtered` / `offset` / `limit` / `has_more` / `next_offset` /
+`queue_revision`。收敛后重复读为稳定 no-write（ledger 不变）。
+
+**Restart-safe 顶层 plan-warning 投影**：响应还携带 `warnings[]`——持久化 review-plan
+顶层 scan-level warning（如 `.heic` / `.heif` 的 `PHOTO_UNSUPPORTED_FORMAT`，标记 photo
+unsupported 且 preview unavailable）的投影。这些 warning 在 `import plan` 阶段由 adapter
+产生、随 review-plan 落盘；GUI/CLI 重启后 `import review` 每次都从持久化 plan 重新读
+回并如实披露，**绝不静默遗漏**受影响的照片。投影只走显式安全 allowlist：`code` /
+`severity` / `runnable` / `format` / `preview_available`——**绝不**投影 adapter `message`
+（其文本可能内嵌 source 相对路径定位符），也**绝不**盲目透传任意 adapter 扩展字段；
+文件名 / 相对或绝对 source 路径 / 含定位符的 message 文本均不进入响应。重复读投影稳定
+且为 no-write（同 `queue_revision`、ledger 不变）。
+
+#### `import reviews`（discovery）
+
+```bash
+life-index import reviews [--after <import_id>] [--limit 20] --json
+```
+
+稳定读：除读取 ledger 外**不做** reconciliation。仅列出 parent review job（排除 child
+batch job），按 `import_id` 排序、`--after` 为排他游标、`--limit` clamp 到 1..100。每个
+条目携带 `plan_revision` / `queue_revision` / `queue_counts` / `state` /
+`active_child_id` / `recovery_required` / `created_at` / `updated_at`——**不含**定位符或
+proposal 内容；交错的 `updated_at` 变化不影响排序与 id 集合。
+
+#### `import validate` / `import rebind`
+
+```bash
+life-index import validate --source-root <dir> --json
+life-index import rebind --import-id <parent_id> --source-root <dir> --json
+```
+
+Directory path v1 不假装浏览器能 handle：定位是 explicit path + CLI
+validate/rebind。`validate` 返回 canonical readable dir 与 root identity
+fingerprint（基于目录规范化路径与稳定 filesystem identity 属性——device 与
+inode——的确定性 SHA-256）。该 identity 是 **content-stable**：在 root 内新增、删除
+或修改照片都不会改变它（故 POSIX 目录 `ctime` 不参与计算——它在每次目录项增删时
+bump，会既拒绝合法 run 又绕过同一物理 root 的重复 stage 保护）；不同物理 root 仍由
+device/inode 区分。parent 只存 root identity，不把绝对路径放进公开 plan/review-plan。
+restart 后可用 `import-id` 恢复队列；但 `confirm` / `run` / `preview` 必须用当前
+rebound locator（`rebind` 或 `--source-root`）重新验证同一 root identity，不匹配返回
+`IMPORT_SOURCE_ROOT_IDENTITY_MISMATCH`。
+
+#### `import preview`（read-only）
+
+```bash
+life-index import preview --import-id <parent_id> --attachment <attachment_id> [--proposal-id <proposal_id>] [--source-root <dir>] [--output -|<path>] [--metadata-output <path>] --json
+```
+
+只读：输入 parent / proposal / attachment + rebound source root，只读取已持久化
+`review-plan.json` 引用的文件，复用既有 confinement / reparse checks；先校验
+expected SHA-256 与 size，再输出可供 backend 流式传输的 bytes / metadata；绝不
+修改源 hash / mtime。预览钉在 `import_id` + `proposal_id` + `attachment_id`，并从持久化
+immutable `source_facts` 解析（非客户端提供），故**被取消选择的附件仍可预览**；给出
+`--proposal-id` 时附件必须属于该 proposal，否则返回 `IMPORT_PREVIEW_UNAVAILABLE`。
+`--source-root` 为瞬态定位符，按 `source_root_identity` 校验。`unsupported` / `stale` /
+`missing` / invalid root / unreferenced / proposal 不匹配的 attachment 返回结构化
+unavailable / error。`--output -` 时 stdout 为 raw bytes，metadata 经
+`--metadata-output` 落盘。
+
+#### Batch `import run`（single active child）
+
+```bash
+life-index import run --import-id <parent_id> [--source-root <dir>] --json
+```
+
+（与既有 `--plan/--confirm` 路径并存；带 `--import-id` 且该 id 是 parent review
+job 时进入 batch 路径。）parent 同一时刻只允许一个 active child batch。batch run
+在 per-parent lock 内：先做 plan/ledger authority reconciliation 与 prior active
+child 的幂等 reconciliation，再记录 `active_child_id` / selected proposal ids /
+transition intent（durable），并把 selected `confirmed` proposal 转为 `batching`；
+之后创建 child batch job。
+
+- 并发 / 重复 run（已有未结算 active child）返回 `IMPORT_BATCH_ALREADY_ACTIVE`。
+- child id 单调：parent 存 durable `next_batch_sequence`（下一个可用序号），
+  child id 形如 `<parent_id>#batch-<seq>`；每个 child job 记录其精确 `proposal_ids`
+  ——后续 rollback / reconciliation 从 child 自身成员投影，绝不复用 parent 的上一次
+  选择。
+- child 是同一 ledger / manifest / fingerprint 权威下的普通 batch job
+  （`kind: "batch"`，`parent_review_job_id` 指回 parent）。
+- 既有 fixture `--plan/--confirm` plan/run 行为保持不变。
+
+每次 parent status / new run / child rollback projection 都先在 parent lock 内做
+幂等 reconciliation：
+
+- 无 child 或无 durable evidence（无 ledger 条目 / 无 committed manifest）→ 清
+  active_child_id 并把相关 proposal 恢复 `confirmed`；
+- child `committed` → 投影 parent proposal 为 `imported`，清 active_child_id；
+- child partial / failed 且有 created evidence → 用既有 checksum-guarded rollback
+  补偿；补偿全成功才恢复 `confirmed`，否则保持 `batching` + `recovery_required`；
+- child `rolled_back` → 恢复 `confirmed`；
+- 未知证据 fail closed（保持 `batching` + `recovery_required`）。该 reconcile 覆盖
+  crash-after-batching-before-child、child-before-manifest、commit-before-projection、
+  重复 reconciliation 四个窗口。
+
+除 child 投影外，reconciliation 还收敛 **confirm 的 plan↔ledger crash 窗口**（见
+`import confirm` 的 intent→plan→finalize 协议）：pending intent 与持久化 plan 指纹匹配
+→幂等 finalize；intent 存在但 plan 仍旧/缺失 → abandon intent、恢复 prior 投影（或移除
+首次 confirm 的空 shell）；**无 intent 但持久化 plan 指纹与 ledger `plan_fingerprint`
+不一致** → fail closed（`recovery_required` + `authority_status =
+"plan_ledger_mismatch"`），`run` 此时返回 `IMPORT_RECOVERY_REQUIRED` 而不在不一致的
+plan 上动作。
+
+stale 默认确定：batch 准备阶段对 selected proposal 重新哈希 source，changed /
+deleted 的 proposal 标 `stale` 并从本批排除，其余继续；全 stale / 无 runnable 则
+不创建 child，返回结构化 `IMPORT_NO_RUNNABLE_PROPOSALS`。实际复制时再次关闭
+TOCTOU：source 以只读流式复制到 create-only staging，同时计算 SHA-256 / size；
+匹配后才 atomic 发布 final attachment；journal frontmatter 在发布前不得引用
+staging；不匹配触发 child failure + manifest compensation。M7 staging 使用 child job
+目录内的确定性名字。final path 出现前，rollback manifest 已 durable 记录 target
+`kind` / `rel_path` / expected SHA-256 / size，以及 staging inode 的
+`hardlink_identity` ownership proof；publish 只通过该 staging inode 的 create-only
+hard link 完成。故进程在 final publish 后、下一次 manifest 更新前崩溃时，新进程仍能
+证明并补偿 owned final；相同 bytes 但不同 identity 的预先存在/racing target 绝不删除。
+commit 或成功 rollback 后不保留 staging 文件/目录。源 hash / mtime 保持不变。
+
+**batching transition 之前的三道确定性闸门（F1b/F2b/F3，均在首次 durable write / publish
+之前 fail-closed，绝不留半成品）。** 在 stale 检测选出 runnable 集合之后、confirmed→
+batching 转换之前依次校验：(1) runnable 集合不得有两个 proposal 声称同一 canonical
+journal/attachment `target_rel_path`——否则 `IMPORT_PLAN_INVALID` +
+`reason=duplicate_runnable_target`（覆盖 legacy/crafted plan，无 partial publish）；(2)
+从实际 source 文件 re-derive 不可变 metadata（至少 `metadata_hash`，含 `capture_time`
+value/source_tag/timezone_authority）必须与 plan 存储的 `source_facts` 一致——否则
+`IMPORT_PLAN_INVALID` + `reason=source_facts_drift`（plan 在 confirm 后被篡改、或
+source 无法 re-parse 时不支持格式/不可读）；(3) mint 出的 child id
+`<parent>#batch-<seq>` 经 `validate_import_id(..., allow_child=True)` 复验——失败返回既有
+`IMPORT_ID_INVALID`（既有 `reason` 如 `child_sequence`；child 分支的 sequence 检查先于总长
+检查且 parent≤128、seq≤9 位时总长必然 ≤144，故 child-`length` 不可达；`length` 仍适用于
+parent-only 路径——覆盖 `next_batch_sequence`
+超出 9 位后缀的退化情形）。合法 parent 因 child 分支独立长度预算必然 mint 合法 child，
+故 (3) 正常流程不触发。三道闸门均在 reservation / child job write / publish 之前。
+
+child batch journal 必须符合 canonical journal schema（`schema_version`、合法
+`topic`——photo 默认 `life`，不扩展 canonical topic 集合、`field_sources`、
+provenance、frontmatter `attachments` 为 SSOT），只发布 selected attachments，尽
+量复用现有 canonical helpers / authority。失败可返回明确 `recovery_required`，但
+不得留下模糊半成品。
+
+#### `import status`（additive）
+
+对 parent review job，`status` 额外返回各 proposal `state`、derived queue counts、
+`active_child_id`、`recovery_required`、`authority_status`（`null`，或 fail-closed 时
+`"plan_ledger_mismatch"`，或存储的 child 权威损坏时投影为
+`"invalid_child_authority"`）、`plan_fingerprint`、`plan_revision`、`queue_revision`、
+`source_root_identity`，以及 `batches`：**ledger-derived、restart-safe、locator-free** 的
+durable child batch 历史。`batches` 在每次读时从 ledger 中 `kind == "batch"` 且
+`parent_review_job_id == <parent>` 的 job 派生——GUI 绝不缓存 child id 作为第二真相，这是 GUI
+发现可回滚 batch 的**唯一来源**。稳定排序：oldest/lowest numeric `<parent>#batch-<seq>` 在前，
+legacy/malformed id 走稳定 fallback（不依赖 dict 插入序）。`batches` 的 **locator-free** 语义现在由
+`_read_ledger` 的 job-key 完整性门**强制**：任何 path-like/遍历/非词法的 durable `jobs` key 在派生
+`batches` 之前就以 `IMPORT_LEDGER_CORRUPT`（`reason = "job_id_invalid"`）fail-closed，故 `import_id`
+字段只能是闭合词法 id，绝无 locator 能经此泄漏；稳定 fallback 仅处理词法合法的 legacy plain id。
+每个 batch 投影仅含安全字段：
+`import_id`（child id，`#` 原样保留——GUI 之后放在 JSON rollback body 而非 URL path）、`state`、
+`proposal_ids`（opaque ids）、`proposal_count`、`created_at`（legacy child 缺失时 fallback 到
+`updated_at` 或 `null`）、`updated_at`、`rollback_available`；**绝不**暴露
+`rollback_manifest_rel_path`、data-dir / source / journal 路径或 manifest 内容。`rollback_available`
+为 true 仅当 child 与 rollback manifest **同时**满足：manifest 是 dict、`schema_version`
+为 canonical rollback-manifest 版本、`import_id` 精确等于该 child id、
+`parent_review_job_id` 精确等于该 parent id（显式传入、绝不从 child id 字符串推断）、`created_files`
+为 list，且两处 state 同为 `committed`，或同为显式可恢复的 `rollback_in_progress` /
+`rollback_failed` 并且两处 `rollback_retryable == true`。任一不满足即 fail closed 为 false——
+`rolled_back`、non-retryable rollback failure、manifest 缺失、schema 错或缺失、state 不一致、
+import_id 或 parent_review_job_id 错链、`created_files` 非 list、其他状态均为 false（status 不重新
+实现 rollback、不 hash 用户文件、只读取既有 manifest 的结构 + 链接字段；真正 retry 仍执行完整
+ownership / identity / hash / size revalidation）。
+该投影在既有 authority reconciliation 之后**只读派生**：不改写
+ledger、不递增 `queue_revision`、不重写文件；收敛后重复读为稳定 no-write。既有 job（fixture /
+child batch）的 status 字段不变。
+
+**损坏的存储 child 权威为只读（R1c）。** 当 parent job 存储的 `active_child_id` 损坏/恶意
+（类型错误、非字符串、空/空白、path-like/词法非法、声称别的 parent 的 `#batch-<seq>` id、或
+存在但否认属于本 parent 的 child 记录）时，`status`/`reviews` 这条**读路径**绝不自动修复、绝不
+持久化、绝不由该敌意值派生路径、绝不 traceback、绝不泄漏该定位符。它在响应里确定性投影
+`recovery_required = true` + `authority_status = "invalid_child_authority"` + `active_child_id = null`
+（敌意值仍原样留在 ledger 上，仅不被外露），且重复调用逐字节一致——ledger bytes / SHA-256 /
+size / mtime / `queue_revision` / `updated_at` / `proposal_states` 可证不变。判别在 reconciliation
+与路径派生**之前**完成（词法校验先于 jobs dict 查找，故 unhashable/path-like 值既不逃逸也不崩溃）。
+`None`/缺 key 是正常 settled 状态，**不**判为损坏（既有 no-op 行为不变）。各 mutation 路径
+（`run`/`confirm`/`review`/`rollback`）对损坏权威确定地 fail closed：沿用各自既有 recovery 错误码
+（`IMPORT_RECOVERY_REQUIRED` / `IMPORT_REVIEW_RECOVERY_REQUIRED`，退出码映射不变），仅加式带上
+`authority_status = "invalid_child_authority"`，既不静默修复篡改、也不派生路径、也不泄漏。**有效**
+权威（真实一致的 child，含崩溃窗口）的合法 crash-window 收敛行为完全不变。
+
+**child 权威判别的精细区分（R1c rework）。** 一个无 child 记录的存储 `active_child_id` 现在按 id
+形式二分：**正确前缀的 `<parent>#batch-<seq>` id**（`run_batch` 在写 child job entry **之前**就原子持久化
+`active_child_id` + `selected_proposal_ids` + `batching`，故崩溃后该状态真实出现）仍判为 `"valid"`——
+这是合法的 reservation-gap 崩溃窗口，读路径照常收敛（restore confirmed + clear，**允许**持久化）；
+**任何其它**无记录 id（plain/legacy id、或已在上文判为 foreign 的 `#batch` id）均判为 `"invalid"` 损坏
+权威——读路径只投影 recovery、绝不修复（candidate 曾把 plain unknown id 当 crash-window 静默
+repair：restore + clear + persist，现已移除）。存在但不一致的 child 记录仍为 `"invalid"`（不变）。该
+判别在路径派生与 jobs dict 查找之前完成。此外，一个**敌意的 durable `jobs` key**（path-like/遍历/非词法）
+根本到不了判别这一步：`_read_ledger` 的 job-key 完整性门在上文 `job_id_invalid` 处对所有 consumer
+single-point fail-closed——既不会进入 `batches` 投影（ locator-free 由该门**强制**），也不会被 settled
+扫描提升为 `active_child_id`。
+
+#### `import rollback`（additive）
+
+`import rollback --import-id <parent_id>` 明确返回
+`IMPORT_ROLLBACK_PARENT_NOT_ALLOWED`：parent review job 不可整体回滚，应回滚其
+child batch job。child batch job 的 rollback **在 parent 的 per-parent lock 内**执行
+（与 `run` 同一把锁，固定锁序为 ledger → parent → journals）：先做 plan/ledger authority
+reconciliation，再把 child 自身精确 `proposal_ids` durable 投影为 `batching` +
+`active_child_id=<child>` + `recovery_required=true`（一次 `queue_revision` 递增），之后才执行既有
+checksum-guarded child rollback，然后用同一 membership 把对应 proposal 恢复 `confirmed`——
+投影由本 child 实际成员驱动，绝不
+复用 parent 的上一次选择。成功后 rescan 仍识别 `confirmed` / `imported`，被 rollback
+恢复的 `confirmed` 不重复。无 parent 的 legacy / standalone batch job 使用
+ledger → journals 锁序；不创建新 lock/store。删除前 manifest 与 child ledger 都先 durable
+写入 `rollback_in_progress` + `rollback_retryable == true`；中途 unlink 失败返回 retryable
+`IMPORT_ROLLBACK_INTERRUPTED`，parent 保持 `batching` + `recovery_required`，重试跳过已缺失的
+owned target、重新验证仍存在目标后继续。仅所有删除完成且 manifest / ledger 收敛到
+`rolled_back` 后，parent 才恢复 `confirmed`（再递增一次 `queue_revision`）。若在 child 开始前
+中断，status 看到仍有效的 committed child 会恢复 `imported` 并清除 marker；若 child 已
+`rolled_back`、但 final parent 投影前中断，status 会在确认 owned artifacts 已消失后恢复
+`confirmed` 并清除 marker。首次 rollback 在任何删除 intent 前因 checksum 等 non-retryable
+校验失败，会撤销本次 pending 投影并恢复 `imported`；parent pending 投影内部同时记录本次
+rollback 开始时的 child state（不进入 status / GUI 投影，也不形成第二个 public state/store；
+仅此内部 marker 改变时持久化但不递增 `queue_revision`）。若进程在同步撤销前中断，status 仅在
+child 与正确链接 manifest **同时**为 non-retryable `rollback_failed` 且内部 origin 为
+`committed` 时判定为 pre-delete refusal、恢复 `imported` 并清除 marker；从 durable
+`rollback_in_progress` 开始的 retry 或缺失/不可信 origin 继续 fail closed 保持 recovery。
+
+#### Review/batch additive 错误码
+
+| code | 说明 |
+|---|---|
+| `IMPORT_ROLLBACK_PARENT_NOT_ALLOWED` | 对 parent review job 调用 rollback 被拒绝 |
+| `IMPORT_ROLLBACK_INTERRUPTED` | owned target 顺序删除中断；retryable，durable rollback intent 保留并要求恢复 |
+| `IMPORT_BATCH_ALREADY_ACTIVE` | parent 已有未结算 active child batch |
+| `IMPORT_NO_RUNNABLE_PROPOSALS` | 本批无 runnable proposal（全 stale / 全 skipped） |
+| `IMPORT_SOURCE_ROOT_UNREADABLE` | source root 不可读或非目录 |
+| `IMPORT_SOURCE_ROOT_IDENTITY_MISMATCH` | 当前 locator 的 root identity 与 parent 记录不符 |
+| `IMPORT_REVIEW_PLAN_MISSING` | 缺少持久化 review-plan.json |
+| `IMPORT_PREVIEW_UNAVAILABLE` | preview 目标 unavailable（unsupported / stale / missing / unreferenced / proposal 不匹配） |
+| `IMPORT_RECOVERY_REQUIRED` | parent 处于需要人工/补偿恢复的 `batching` 状态，或 plan/ledger 权威不一致（`authority_status = "plan_ledger_mismatch"`），或 `run` 命中损坏的存储 child 权威（`authority_status = "invalid_child_authority"`）——均拒绝 fail-closed，退出码映射不变 |
+| `IMPORT_REVIEW_ALREADY_STAGED` | 同一 source root 已有 actionable review job 或 active child，拒绝创建第二个 job/plan（带 `existing_import_id`，non-retryable，零写入） |
+| `IMPORT_REVIEW_EDIT_INVALID` | `import_review_edit.v1` payload 校验失败（未知字段/类型/topic/decision/未知 attachment id；零写入） |
+| `IMPORT_REVIEW_PROPOSAL_FROZEN` | edit 目标 proposal 处于 `batching`/`imported` 冻结态，不可编辑 |
+| `IMPORT_REVIEW_REVISION_CONFLICT` | edit 令牌过期（`expected_queue_revision` ≠ 当前值），retryable，带 `current_queue_revision`，零写入 |
+| `IMPORT_REVIEW_RECOVERY_REQUIRED` | `import review` / edit / rollback 读到 recovery / plan-ledger mismatch 状态，或命中损坏的存储 child 权威（`authority_status = "invalid_child_authority"`），fail-closed，退出码映射不变 |
+| `IMPORT_REVIEW_EMPTY_SELECTION_SKIPPED` | soft reason code：edit 空选择被强转为 `skipped`（成功响应，revisions 已递增） |
+| `IMPORT_REVIEW_DATE_REQUIRED` | soft reason code：`confirmed` 但无可解析日期，保持 `pending`（成功响应，revisions 已递增） |
+
+#### Review/batch additive schema versions
+
+新增子对象 schema（additive，不改动既有 `import_*` 字符串）：
+`import_review.v1`（confirm / stage / edit / review / reviews 响应）、
+`import_review_plan.v1`（持久化 review-plan.json）、
+`import_review_edit.v1`（单 proposal edit payload）、
+`import_preview.v1`（preview metadata）。消费者必须忽略未知字段。
 
 ---
 

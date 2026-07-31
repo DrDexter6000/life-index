@@ -23,6 +23,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # Constants from PRD §5 / §9 / §10
 # ---------------------------------------------------------------------------
@@ -120,6 +122,58 @@ def _fixture_path(name: str) -> str:
     return str(FIXTURES_DIR / name)
 
 
+def _prepare_r1a_route_legacy_plan(
+    data_dir: Path, tmp_path: Path
+) -> tuple[Path, str, set[str]]:
+    """Create a valid legacy plan without mutating the isolated data directory."""
+    plan_result = _run_import(
+        data_dir,
+        "plan",
+        "--source",
+        "fixture.import_records",
+        "--input",
+        _fixture_path("minimal_plan_source.json"),
+        "--json",
+    )
+    assert (
+        plan_result.returncode == 0
+    ), f"plan stdout: {plan_result.stdout}\nstderr: {plan_result.stderr}"
+    plan_data = _payload(plan_result)["data"]
+    plan_file = tmp_path / "r1a-route-plan.json"
+    plan_file.write_text(json.dumps(plan_data), encoding="utf-8")
+    return plan_file, plan_data["import_id"], set(plan_data["write_set_preview"]["create_files"])
+
+
+def _r1a_route_data_files(data_dir: Path) -> set[str]:
+    """Return regular-file paths relative to the isolated data directory."""
+    return {
+        path.relative_to(data_dir).as_posix()
+        for path in data_dir.rglob("*")
+        if path.is_file()
+    }
+
+
+def _assert_r1a_route_import_id_invalid(
+    result: subprocess.CompletedProcess[str], reason: str
+) -> None:
+    """Assert the exact fail-closed import-id envelope."""
+    assert result.returncode != 0
+    assert result.stderr == ""
+    payload = _payload(result)
+    assert payload == {
+        "schema_version": ENVELOPE_SCHEMA_VERSION,
+        "success": False,
+        "command": "import.run",
+        "data": None,
+        "error": {
+            "code": "IMPORT_ID_INVALID",
+            "message": "Import id is invalid.",
+            "details": {"reason": reason},
+            "retryable": False,
+        },
+    }
+
+
 def _seed_journal(
     data_dir: Path,
     *,
@@ -184,6 +238,164 @@ def _plan_then_run(
     ), f"run stdout: {run_result.stdout}\nstderr: {run_result.stderr}"
     run_payload = _payload(run_result)
     return plan_data, run_payload, import_id
+
+
+# ===================================================================
+# M7 R1a: the real CLI router distinguishes option presence from truthiness
+# ===================================================================
+
+
+def test_r1a_route_legacy_plan_without_confirm_preserves_confirmation_error(
+    tmp_path: Path,
+) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+    plan_file, _import_id, proposed_paths = _prepare_r1a_route_legacy_plan(
+        data_dir, tmp_path
+    )
+
+    result = _run_import(data_dir, "run", "--plan", str(plan_file), "--json")
+
+    assert result.returncode != 0
+    payload = _payload(result)
+    assert payload["error"] == {
+        "code": "IMPORT_CONFIRMATION_REQUIRED",
+        "message": "The --confirm flag is required for import run.",
+        "details": {"import_id": _import_id},
+        "retryable": False,
+    }
+    assert not (proposed_paths & _r1a_route_data_files(data_dir))
+
+
+def test_r1a_route_legacy_plan_with_matching_confirm_succeeds(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+    plan_file, import_id, proposed_paths = _prepare_r1a_route_legacy_plan(
+        data_dir, tmp_path
+    )
+
+    result = _run_import(
+        data_dir,
+        "run",
+        "--plan",
+        str(plan_file),
+        "--confirm",
+        import_id,
+        "--json",
+    )
+
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    payload = _payload(result)
+    assert payload["success"] is True
+    assert payload["data"]["state"] == "committed"
+    assert proposed_paths <= _r1a_route_data_files(data_dir)
+    assert sum(path.startswith("Journals/") for path in proposed_paths) == 2
+    assert sum(path.startswith("attachments/") for path in proposed_paths) == 2
+
+
+def test_r1a_route_valid_import_id_selects_batch_route(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+
+    result = _run_import(
+        data_dir, "run", "--import-id", "valid_parent", "--json"
+    )
+
+    assert result.returncode != 0
+    assert result.stderr == ""
+    payload = _payload(result)
+    assert payload["error"]["code"] == "IMPORT_JOB_NOT_FOUND"
+    assert _r1a_route_data_files(data_dir) == {
+        ".life-index/import-jobs/ledger.lock",
+        ".life-index/import-jobs/valid_parent/review.lock",
+    }
+
+
+def test_r1a_route_valid_import_id_wins_over_valid_legacy_args(
+    tmp_path: Path,
+) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+    plan_file, import_id, proposed_paths = _prepare_r1a_route_legacy_plan(
+        data_dir, tmp_path
+    )
+
+    result = _run_import(
+        data_dir,
+        "run",
+        "--import-id",
+        "valid_parent",
+        "--plan",
+        str(plan_file),
+        "--confirm",
+        import_id,
+        "--json",
+    )
+
+    assert result.returncode != 0
+    payload = _payload(result)
+    assert payload["error"]["code"] == "IMPORT_JOB_NOT_FOUND"
+    assert not (proposed_paths & _r1a_route_data_files(data_dir))
+    assert _r1a_route_data_files(data_dir) == {
+        ".life-index/import-jobs/ledger.lock",
+        ".life-index/import-jobs/valid_parent/review.lock",
+    }
+
+
+@pytest.mark.parametrize(
+    ("import_id", "reason"),
+    [
+        pytest.param("", "empty", id="empty"),
+        pytest.param(" ", "syntax", id="whitespace"),
+    ],
+)
+def test_r1a_route_invalid_import_id_without_legacy_args_fails_closed(
+    tmp_path: Path, import_id: str, reason: str
+) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+
+    result = _run_import(data_dir, "run", "--import-id", import_id, "--json")
+
+    _assert_r1a_route_import_id_invalid(result, reason)
+    assert _r1a_route_data_files(data_dir) == {
+        ".life-index/import-jobs/ledger.lock"
+    }
+
+
+@pytest.mark.parametrize(
+    ("import_id", "reason"),
+    [
+        pytest.param("", "empty", id="empty"),
+        pytest.param(" ", "syntax", id="whitespace"),
+    ],
+)
+def test_r1a_route_invalid_import_id_with_valid_legacy_args_fails_closed(
+    tmp_path: Path, import_id: str, reason: str
+) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+    plan_file, confirm_id, proposed_paths = _prepare_r1a_route_legacy_plan(
+        data_dir, tmp_path
+    )
+
+    result = _run_import(
+        data_dir,
+        "run",
+        "--import-id",
+        import_id,
+        "--plan",
+        str(plan_file),
+        "--confirm",
+        confirm_id,
+        "--json",
+    )
+
+    _assert_r1a_route_import_id_invalid(result, reason)
+    assert not (proposed_paths & _r1a_route_data_files(data_dir))
+    assert _r1a_route_data_files(data_dir) == {
+        ".life-index/import-jobs/ledger.lock"
+    }
 
 
 # ===================================================================
@@ -1630,9 +1842,15 @@ def test_import_rollback_refuses_unsafe_manifest_path(
     assert (
         result["error"]["code"] == "IMPORT_ROLLBACK_UNSAFE"
     ), f"Expected IMPORT_ROLLBACK_UNSAFE but got {result['error']['code']}"
-    assert (
-        unsafe_rel in result["error"]["details"]["unsafe_paths"]
-    ), f"Unsafe path not listed in details: {result['error']['details']}"
+    # The outward envelope is locator-free: only reason + counts + entry indices.
+    # The raw hostile/traversal rel_path must never be echoed back.
+    details = result["error"]["details"]
+    expected_unsafe_index = len(manifest["created_files"]) - 1
+    assert details["reason"] == "unsafe_manifest_entries"
+    assert "unsafe_paths" not in details
+    assert details["unsafe_path_count"] >= 1
+    assert expected_unsafe_index in details["unsafe_entry_indices"]
+    assert unsafe_rel not in json.dumps(details)
 
     # The outside sentinel must survive
     assert sentinel.exists(), "OUTSIDE SENTINEL WAS DELETED — path confinement failed!"

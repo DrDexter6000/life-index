@@ -1,7 +1,13 @@
 """media.photo_timeline source adapter.
 
-Scans a directory for JPEG photos, extracts EXIF metadata via Pillow,
-and returns normalized import records compatible with the import plan pipeline.
+Scans a directory tree for JPEG photos (read-only, recursive), extracts EXIF
+metadata via Pillow, and returns normalized import records compatible with the
+import plan pipeline.
+
+Source facts are immutable: content SHA-256, size, source relative path, capture
+time value/source/timezone authority, GPS, camera make/model, orientation and
+provenance. User edits may change journal title/date/topic/tags/content and
+proposal/attachment selection, never the source facts.
 """
 
 from __future__ import annotations
@@ -18,6 +24,7 @@ from tools.ingest.adapters._exif_common import (
     normalize_orientation,
     parse_capture_time,
 )
+from tools.ingest.adapters._scan import iter_source_files
 from tools.ingest.fingerprint import (
     compute_source_record_fingerprint,
 )
@@ -26,15 +33,32 @@ from tools.ingest.fingerprint import (
 # Constants
 # ---------------------------------------------------------------------------
 
-_SUPPORTED_EXTENSIONS = frozenset({".jpg", ".jpeg"})
+# Supported photo formats (Tranche B additive)
+_JPEG_EXTENSIONS = frozenset({".jpg", ".jpeg"})
+# Explicitly-unsupported formats that must NOT be silently skipped.
+_HEIC_EXTENSIONS = frozenset({".heic", ".heif"})
+# Conflict codes that mark a photo's capture time as unresolved. Such records
+# carry an empty date/target and an explicit ``date_resolution`` so the review
+# queue keeps them pending until the user supplies a date.
+_CAPTURE_CONFLICT_CODES = frozenset({"PHOTO_CAPTURE_TIME_MISSING", "PHOTO_CAPTURE_TIME_AMBIGUOUS"})
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 
-def scan_photo_directory(input_dir: Path) -> dict[str, Any]:
-    """Scan a photo directory and return normalised import records.
+def scan_photo_directory(
+    input_dir: Path,
+    *,
+    known_shas: set[str] | None = None,
+) -> dict[str, Any]:
+    """Scan a photo directory tree and return normalised import records.
+
+    Read-only recursive scan. Skips symlink/junction/reparse entries, root
+    escape and directory cycles. Deduplicates by exact content SHA-256 (same
+    name with different content is preserved; identical content is kept once).
+    Files whose content SHA already appears in *known_shas* (confirmed/imported
+    attachment SHAs from the import ledger authority) are skipped as duplicates.
 
     Returns a dict with::
 
@@ -48,26 +72,36 @@ def scan_photo_directory(input_dir: Path) -> dict[str, Any]:
     """
     warnings: list[dict[str, Any]] = []
     records: list[dict[str, Any]] = []
+    known = known_shas or set()
+    seen_shas: set[str] = set()
 
-    # Sort files deterministically by name for stable ordering
-    files = sorted(
-        [f for f in input_dir.iterdir() if f.is_file()],
-        key=lambda f: f.name.lower(),
-    )
-
-    for file_path in files:
+    for file_path, rel_path in iter_source_files(input_dir):
         ext = file_path.suffix.lower()
-        if ext not in _SUPPORTED_EXTENSIONS:
+        if ext in _HEIC_EXTENSIONS:
+            # Unsupported format: warn explicitly, mark preview unavailable,
+            # never silently skip.
+            warnings.append(
+                _warning(
+                    "PHOTO_UNSUPPORTED_FORMAT",
+                    f"Unsupported photo format (preview unavailable): {rel_path}",
+                    runnable=False,
+                    extra={"format": ext, "preview_available": False},
+                )
+            )
+            continue
+        if ext not in _JPEG_EXTENSIONS:
             warnings.append(
                 _warning(
                     "PHOTO_UNSUPPORTED_FILE_SKIPPED",
-                    f"Unsupported file type skipped: {file_path.name}",
+                    f"Unsupported file type skipped: {rel_path}",
                 )
             )
             continue
 
-        record_result = _process_jpeg(file_path)
-        records.append(record_result["record"])
+        record_result = _process_jpeg(file_path, rel_path, seen_shas, known, warnings)
+        record = record_result["record"]
+        if record is not None:
+            records.append(record)
         warnings.extend(record_result.get("warnings", []))
 
     return {
@@ -84,55 +118,61 @@ def scan_photo_directory(input_dir: Path) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _process_jpeg(file_path: Path) -> dict[str, Any]:
-    """Process a single JPEG file and return a record dict."""
+def _extract_exif_facts(
+    file_path: Path, rel_path: str
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Read a JPEG's EXIF-derived immutable facts (read-only, shared).
+
+    Single source of truth for EXIF parsing: the scan path (``_process_jpeg``)
+    and the run-time source-immutability re-derivation both call this so the two
+    can never diverge. Returns ``(facts, conflicts, warnings)`` where:
+
+    - ``facts`` holds the camera / orientation / gps / capture-time fields plus
+      an ``exif_readable`` flag;
+    - ``conflicts`` is the capture-time conflict list (e.g. missing/ambiguous);
+    - ``warnings`` is the file-level EXIF warning list (e.g. unreadable EXIF).
+
+    Never raises on EXIF/PIL errors: a corrupt read yields ``exif_readable=False``
+    plus a warning, matching scan-time graceful degradation.
+    """
     from PIL import Image
 
-    warnings: list[dict[str, Any]] = []
+    facts: dict[str, Any] = {
+        "exif_readable": False,
+        "camera_make": "",
+        "camera_model": "",
+        "orientation": None,
+        "gps": None,
+        "capture_time_iso": None,
+        "capture_source_tag": None,
+        "timezone_authority": None,
+    }
     conflicts: list[dict[str, Any]] = []
-    all_warnings: list[dict[str, Any]] = []
-
-    # --- Read file bytes and compute content hash ---
-    try:
-        file_bytes = file_path.read_bytes()
-    except OSError as exc:
-        return _unreadable_record(file_path, exc)
-
-    content_sha256 = hashlib.sha256(file_bytes).hexdigest()
-    content_hash = f"sha256:{content_sha256}"
-    content_hash_prefix = content_sha256[:12]
-
-    # --- Open with Pillow and extract EXIF ---
-    camera_make = ""
-    camera_model = ""
-    orientation: int | None = None
-    gps: dict | None = None
-    capture_time_iso: str | None = None
-    exif_readable = False
+    warnings: list[dict[str, Any]] = []
 
     try:
         with Image.open(file_path) as img:
             exif_data = img.getexif()
 
             if exif_data:
-                exif_readable = True
+                facts["exif_readable"] = True
                 # Extract basic tags
-                camera_make = _decode_exif_text(exif_data.get(271, ""))  # Make
-                camera_model = _decode_exif_text(exif_data.get(272, ""))  # Model
+                facts["camera_make"] = _decode_exif_text(exif_data.get(271, ""))  # Make
+                facts["camera_model"] = _decode_exif_text(exif_data.get(272, ""))  # Model
                 orientation_raw = exif_data.get(274)  # Orientation
                 if orientation_raw is not None:
                     try:
-                        orientation = int(orientation_raw)
+                        facts["orientation"] = int(orientation_raw)
                     except (TypeError, ValueError):
                         pass
 
                 # Build a piexif-compatible dict for our helpers
                 piexif_data: dict[str, Any] = {
-                    "Make": camera_make,
-                    "Model": camera_model,
+                    "Make": facts["camera_make"],
+                    "Model": facts["camera_model"],
                 }
-                if orientation is not None:
-                    piexif_data["Orientation"] = orientation
+                if facts["orientation"] is not None:
+                    piexif_data["Orientation"] = facts["orientation"]
 
                 # Read ExifIFD (sub-IFD) for DateTimeOriginal and DateTimeDigitized
                 exif_ifd = exif_data.get_ifd(0x8769)  # ExifIFD
@@ -146,6 +186,14 @@ def _process_jpeg(file_path: Path) -> dict[str, Any]:
                     dt_digitized = exif_ifd.get(36868)
                     if dt_digitized:
                         piexif_data["DateTimeDigitized"] = dt_digitized
+
+                    # OffsetTimeOriginal (0x9011) / OffsetTimeDigitized (0x9012)
+                    off_original = exif_ifd.get(0x9011)
+                    if off_original:
+                        piexif_data["OffsetTimeOriginal"] = off_original
+                    off_digitized = exif_ifd.get(0x9012)
+                    if off_digitized:
+                        piexif_data["OffsetTimeDigitized"] = off_digitized
 
                     # DateTime (tag 306 in main IFD, but sometimes also in ExifIFD)
                     if "DateTime" not in piexif_data:
@@ -169,10 +217,15 @@ def _process_jpeg(file_path: Path) -> dict[str, Any]:
                 # GPS data
                 gps_info = exif_data.get_ifd(0x8825)  # GPSInfo IFD
                 if gps_info and gps_info.get(2):
-                    gps = canonicalize_gps(gps_info)
+                    facts["gps"] = canonicalize_gps(gps_info)
 
-                # Parse capture time
-                capture_time_iso, _source_tag, time_conflicts = parse_capture_time(piexif_data)
+                # Parse capture time (with timezone authority)
+                (
+                    facts["capture_time_iso"],
+                    facts["capture_source_tag"],
+                    time_conflicts,
+                    facts["timezone_authority"],
+                ) = parse_capture_time(piexif_data)
                 conflicts.extend(time_conflicts)
 
     except Exception as exc:
@@ -180,15 +233,110 @@ def _process_jpeg(file_path: Path) -> dict[str, Any]:
         warnings.append(
             _warning(
                 "PHOTO_EXIF_UNREADABLE",
-                f"Cannot read EXIF from {file_path.name}: {exc}",
+                f"Cannot read EXIF from {rel_path}: {exc}",
             )
         )
 
     # --- If no capture time was found (no EXIF or unreadable), add conflict ---
-    if capture_time_iso is None and not any(
+    if facts["capture_time_iso"] is None and not any(
         conflict.get("code") == "PHOTO_CAPTURE_TIME_MISSING" for conflict in conflicts
     ):
         conflicts.append(_conflict("PHOTO_CAPTURE_TIME_MISSING", "No EXIF capture time found"))
+
+    return facts, conflicts, warnings
+
+
+def rederive_source_facts(file_path: Path) -> dict[str, Any] | None:
+    """Re-derive a JPEG's immutable source facts from its bytes (read-only).
+
+    Execution-time source-immutability entry point: re-reads the file and
+    recomputes the same content / metadata fields the scan produced, so a plan
+    whose stored ``source_facts`` disagree with the real source fails closed
+    before any journal/attachment is published. Returns ``None`` when the source
+    cannot be re-parsed (unreadable). Reuses ``_extract_exif_facts`` so the
+    re-derivation can never diverge from the scan path.
+    """
+    try:
+        file_bytes = file_path.read_bytes()
+    except OSError:
+        return None
+    content_sha256 = "sha256:" + hashlib.sha256(file_bytes).hexdigest()
+    facts, _conflicts, _warnings = _extract_exif_facts(file_path, file_path.name)
+    metadata_hash = compute_metadata_hash(
+        capture_time=facts["capture_time_iso"],
+        gps=facts["gps"],
+        camera_make=facts["camera_make"],
+        camera_model=facts["camera_model"],
+        orientation=facts["orientation"],
+    )
+    return {
+        "content_sha256": content_sha256,
+        "size_bytes": len(file_bytes),
+        "capture_time": {
+            "value": facts["capture_time_iso"],
+            "source_tag": facts["capture_source_tag"],
+            "timezone_authority": facts["timezone_authority"],
+        },
+        "gps": facts["gps"],
+        "camera_make": facts["camera_make"],
+        "camera_model": facts["camera_model"],
+        "orientation": facts["orientation"],
+        "metadata_hash": metadata_hash,
+    }
+
+
+def _process_jpeg(
+    file_path: Path,
+    rel_path: str,
+    seen_shas: set[str],
+    known_shas: set[str],
+    out_warnings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Process a single JPEG file and return a record dict (or None if skipped)."""
+    warnings: list[dict[str, Any]] = []
+    conflicts: list[dict[str, Any]] = []
+    all_warnings: list[dict[str, Any]] = []
+
+    # --- Read file bytes and compute content hash ---
+    try:
+        file_bytes = file_path.read_bytes()
+    except OSError as exc:
+        out_warnings.append(
+            _warning(
+                "PHOTO_EXIF_UNREADABLE",
+                f"Cannot read source file {rel_path}: {exc}",
+            )
+        )
+        return {"record": None, "warnings": []}
+
+    content_sha256 = hashlib.sha256(file_bytes).hexdigest()
+    content_hash = f"sha256:{content_sha256}"
+    content_hash_prefix = content_sha256[:12]
+
+    # --- Exact content dedup (within scan and vs known imported SHAs) ---
+    if content_hash in seen_shas or content_hash in known_shas:
+        out_warnings.append(
+            _warning(
+                "PHOTO_DUPLICATE_SKIPPED",
+                f"Duplicate photo content skipped: {rel_path}",
+                extra={"content_sha256": content_hash},
+            )
+        )
+        return {"record": None, "warnings": []}
+    seen_shas.add(content_hash)
+
+    # --- Open with Pillow and extract EXIF (shared with re-derivation) ---
+    exif_facts, exif_conflicts, exif_warnings = _extract_exif_facts(file_path, rel_path)
+    camera_make = exif_facts["camera_make"]
+    camera_model = exif_facts["camera_model"]
+    orientation = exif_facts["orientation"]
+    gps = exif_facts["gps"]
+    capture_time_iso = exif_facts["capture_time_iso"]
+    capture_source_tag = exif_facts["capture_source_tag"]
+    timezone_authority = exif_facts["timezone_authority"]
+    exif_readable = exif_facts["exif_readable"]
+    conflicts.extend(exif_conflicts)
+    warnings.extend(exif_warnings)
 
     # --- Normalize orientation (only when EXIF was readable) ---
     if exif_readable:
@@ -199,13 +347,13 @@ def _process_jpeg(file_path: Path) -> dict[str, Any]:
 
     # --- GPS warning ---
     if exif_readable and gps is None:
-        all_warnings.append(_warning("PHOTO_GPS_MISSING", f"No GPS data found in {file_path.name}"))
+        all_warnings.append(_warning("PHOTO_GPS_MISSING", f"No GPS data found in {rel_path}"))
 
     if exif_readable and (not camera_make or not camera_model):
         all_warnings.append(
             _warning(
                 "PHOTO_CAMERA_MISSING",
-                f"Camera make/model metadata incomplete in {file_path.name}",
+                f"Camera make/model metadata incomplete in {rel_path}",
             )
         )
 
@@ -228,40 +376,79 @@ def _process_jpeg(file_path: Path) -> dict[str, Any]:
     )
 
     # --- Build journal ---
-    if capture_time_iso:
-        date = capture_time_iso[:10]
-        title = f"Photo import: {date}"
-        content = (
-            f"Imported photo captured on {date}. " f"Review and edit this entry before confirming."
-        )
-    else:
-        # Placeholder date for photos without capture time
-        date = "1970-01-01"
+    # Capture-time authority is the EXIF date (offset = recorded local calendar
+    # date, no UTC conversion; naive = camera-local) — never the filesystem
+    # mtime. A record with a capture-time conflict (missing/ambiguous) is
+    # UNRESOLVED: its date and target path stay empty and it carries an explicit
+    # ``date_resolution`` so the review queue keeps it in the pending area until
+    # the user supplies an explicit resolution. There is no 1970-01-01 sentinel.
+    has_capture_conflict = any(
+        conflict.get("code") in _CAPTURE_CONFLICT_CODES for conflict in conflicts
+    )
+    if has_capture_conflict:
+        date = ""
         title = "Photo import: missing capture time"
         content = (
             "Imported photo with unknown capture time. "
             "Review and edit this entry before confirming."
         )
+        date_resolution: dict[str, Any] = {"status": "unresolved", "date": ""}
+    else:
+        # No capture conflict => a trustworthy EXIF date was recovered; the
+        # ``or ""`` keeps mypy happy (it cannot see the conflict/date invariant).
+        date = (capture_time_iso or "")[:10]
+        title = f"Photo import: {date}"
+        content = (
+            f"Imported photo captured on {date}. " f"Review and edit this entry before confirming."
+        )
+        date_resolution = {
+            "status": "exif_authoritative",
+            "date": date,
+            "authority": timezone_authority or "exif_naive",
+        }
 
     # --- Build source references ---
     src_record_id = f"photo_{content_hash_prefix}"
     src_ref = f"source://media.photo_timeline/{content_hash_prefix}"
 
     # --- Build attachment ---
-    if capture_time_iso:
-        year, month, _day = capture_time_iso[:10].split("-")
+    if date:
+        year, month, _day = date.split("-")
+        att_target = f"attachments/{year}/{month}/import_{content_hash_prefix}.jpg"
     else:
-        year, month = "1970", "01"
+        # Unresolved: target deferred until the user resolves the date.
+        att_target = ""
 
     attachment = {
         "attachment_id": f"att_{content_hash_prefix}",
         "source_ref": src_ref,
         "source_sha256": content_hash,
-        "source_rel_path": file_path.name,
-        "target_rel_path": f"attachments/{year}/{month}/import_{content_hash_prefix}.jpg",
+        "source_rel_path": rel_path,
+        "target_rel_path": att_target,
         "media_type": "image/jpeg",
         "size_bytes": len(file_bytes),
         "copy_mode": "copy",
+    }
+
+    # --- Immutable source facts (provenance) ---
+    source_facts: dict[str, Any] = {
+        "adapter_id": ADAPTER_ID,
+        "adapter_version": ADAPTER_VERSION,
+        "content_sha256": content_hash,
+        "size_bytes": len(file_bytes),
+        "source_rel_path": rel_path,
+        "source_ref": src_ref,
+        "media_type": "image/jpeg",
+        "capture_time": {
+            "value": capture_time_iso,
+            "source_tag": capture_source_tag,
+            "timezone_authority": timezone_authority,
+        },
+        "gps": gps,
+        "camera_make": camera_make,
+        "camera_model": camera_model,
+        "orientation": orientation,
+        "metadata_hash": metadata_hash,
     }
 
     # --- Build record ---
@@ -269,13 +456,15 @@ def _process_jpeg(file_path: Path) -> dict[str, Any]:
         "source_record_id": src_record_id,
         "source_record_fingerprint": source_record_fp,
         "source_ref": src_ref,
+        "source_facts": source_facts,
         "journal": {
             "title": title,
             "date": date,
-            "topic": "imported",
+            "topic": "life",
             "tags": ["imported", "photo"],
             "content": content,
         },
+        "date_resolution": date_resolution,
         "attachments": [attachment],
         "warnings": [_normalize_warning(warning) for warning in all_warnings],
         "conflicts": [_normalize_conflict(conflict) for conflict in conflicts],
@@ -289,58 +478,23 @@ def _process_jpeg(file_path: Path) -> dict[str, Any]:
     }
 
 
-def _unreadable_record(file_path: Path, exc: OSError) -> dict[str, Any]:
-    """Build a blocked record when the source file bytes cannot be read."""
-    identity = hashlib.sha256(file_path.name.encode("utf-8")).hexdigest()
-    content_hash = f"sha256:{hashlib.sha256(b'').hexdigest()}"
-    metadata_hash = compute_metadata_hash(
-        capture_time=None,
-        gps=None,
-        camera_make="",
-        camera_model="",
-        orientation=None,
-    )
-    source_record_fp = compute_source_record_fingerprint(
-        adapter_id=ADAPTER_ID,
-        adapter_version=ADAPTER_VERSION,
-        normalized_identity=f"unreadable:{identity}",
-        content_hash=content_hash,
-        metadata_hash=metadata_hash,
-    )
-    record: dict[str, Any] = {
-        "source_record_id": f"photo_unreadable_{identity[:12]}",
-        "source_record_fingerprint": source_record_fp,
-        "source_ref": f"source://media.photo_timeline/unreadable/{identity[:12]}",
-        "journal": {
-            "title": "Photo import: unreadable source",
-            "date": "1970-01-01",
-            "topic": "imported",
-            "tags": ["imported", "photo"],
-            "content": (
-                "Imported photo source could not be read. "
-                "Review the source file before confirming."
-            ),
-        },
-        "attachments": [],
-        "warnings": [],
-        "conflicts": [
-            _conflict(
-                "PHOTO_SOURCE_UNREADABLE",
-                f"Cannot read source file {file_path.name}: {exc}",
-            )
-        ],
-    }
-    return {"record": record, "warnings": []}
-
-
-def _warning(code: str, message: str) -> dict[str, Any]:
+def _warning(
+    code: str,
+    message: str,
+    *,
+    runnable: bool = True,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Build a structured photo warning."""
-    return {
+    entry: dict[str, Any] = {
         "code": code,
         "severity": "warning",
-        "runnable": True,
+        "runnable": runnable,
         "message": message,
     }
+    if extra:
+        entry.update(extra)
+    return entry
 
 
 def _conflict(code: str, message: str) -> dict[str, Any]:

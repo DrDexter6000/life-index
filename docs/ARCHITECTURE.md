@@ -621,6 +621,70 @@ Round 19 Phase 1-D 在搜索子系统中新增以下能力：
 - **Structured Intent Match Bonus**（R1 safe）：`STRUCTURED_*` 常量组在 keyword-only 路径上对同时命中 date_range + topic_hints 的候选结果加分（+50 keyword path），安全实现不做全局排序补丁。
 - **Broad/private eval advisory**：Broad/private quality metrics remain observable and advisory; weak or errored broad metrics do not enter blocking failures or override exact Core results. 私有查询数、阈值、指标与语料事实仅存于公开制品之外的 operator evidence。
 
+### 5.11 Import review queue authority（M7 历史照片冷启动）
+
+`media.photo_timeline` 在既有 import ledger / rollback manifest / fingerprint 权威之上
+additive 一个可恢复照片审阅队列。其权威架构有三条不变量（实现见 `tools/ingest/review.py`，
+权威契约见 `docs/API.md` 「Review queue & batch import」）：
+
+- **Ledger transaction + per-parent single-writer 权威**：所有 import ledger 读改写
+  事务先取跨进程 `FileLock`（`.life-index/import-jobs/ledger.lock`），覆盖完整
+  read-modify-write；`ledger.json` 只用同目录 temp + fsync + atomic replace 更新，已存在
+  但 malformed/torn/unreadable 时 fail closed，绝不重置为空。需要 parent 投影的事务再
+  取 `.life-index/import-jobs/<parent_id>/review.lock`，全局固定锁序为 **ledger →
+  parent → journals**（journals 仅为 rollback 最终删除段的 innermost lock）；进程内嵌套
+  helper 复用外层 ledger transaction，避免重入死锁。`confirm` / `rebind` / `run` /
+  `status` / child `rollback` / reconciliation 均遵守该顺序。child rollback 的 parent
+  投影由 child 自身精确 `proposal_ids` 驱动，绝不复用 parent 上一次选择。
+
+- **Crash-safe plan↔ledger 更新（intent/reconciliation）**：ledger 是唯一权威（不引入
+  第二个 store）。`confirm` 按 **durable intent → atomic plan replace → finalize** 三步
+  在锁内更新：先在 parent job 写入 `pending_review_update` intent（含
+  `expected_plan_fingerprint` / `expected_plan_revision`、完整 finalize 投影、prior 投影
+  快照），再 atomic 替换 review-plan.json，最后从 intent finalize 并清 intent。reconcile
+  （confirm/status/run/rollback 共用）收敛三窗口：intent 指纹匹配持久化 plan → 幂等
+  finalize；intent 存在但 plan 仍旧/缺失 → abandon intent、恢复 prior 投影（首次 confirm
+  空 shell 移除）；**无 intent 但 plan 与 ledger 指纹不一致** → fail closed
+  （`recovery_required` + `authority_status = "plan_ledger_mismatch"`），`run` 返回
+  `IMPORT_RECOVERY_REQUIRED`，绝不静默二选一。重复 status 收敛。
+
+- **Crash-safe child publication ownership**：M7 child 在既有 job 目录内使用确定性
+  staging 名。attachment/journal final path 出现前，既有 rollback manifest 已 durable
+  记录 target kind/path、expected hash/size 与 staging filesystem identity；final 只由
+  该 staging inode 以 create-only hard link 发布。故 post-publish/pre-manifest crash 可
+  在重启后由 identity + checksum 证明并补偿 owned artifact；相同 bytes 但不同 identity
+  的 preexisting/racing target 保留。committed manifest validation 与 rollback 都对新
+  ownership proof fail closed；rollback 初检后在 shared journals lock 内排队 pending，
+  紧邻首次 unlink 前对所有 target / staging 再做 confinement / identity / hash / size
+  复检，任一变化则零删除失败；commit/成功 rollback 清除 staging。该证据是
+  `import_rollback_manifest.v1` 的 additive 字段，不增加第二权威或 schema break。
+
+- **Immutable provenance 权威**：source facts（adapter/provenance、content SHA-256、size、
+  source 相对路径/ref、capture time value/source/timezone authority、GPS）不可变；一个
+  selected attachment 必须绑定到同一不可变 source fact（`source_sha256` / `source_rel_path`
+  / `source_ref` / `media_type` / `size_bytes` + 确定 `attachment_id`），`confirm` 做绑定
+  交叉校验拒绝任何篡改。非 frozen proposal 的 canonical attachment / journal target 由
+  effective date + content 在 `confirm` 时重新派生，绝不信任 incoming GUI 编辑。EXIF 日期
+  权威绝不来自文件 mtime；offset 只取与所选 capture tag 配对的 offset tag（不借用兄弟
+  tag），且必须有显式符号、合法分钟、落在 ±14:00 真实世界范围内，否则按相机本地 naive
+  使用、绝不换算。单 proposal edit（`confirm --edit`）与 preview 都从持久化 immutable
+  `source_facts` 解析 attachment（非客户端提供），故被取消选择的附件仍可重新选择 /
+  预览；全部 `source_facts` 始终保留。
+
+- **两个 revision、各自一个权威（M7-B package-3）**：parent review job 维护
+  `plan_revision`（review-plan 内容）与 parent-ledger 拥有的 `queue_revision`（客户端并发
+  令牌，初始 1）。每次「parent 可见投影的原子变更」令 `queue_revision` 恰好递增一次
+  （stage / edit / legacy reconfirm finalize / run 转移到 batching 或 stale / 改变
+  proposal states·active child·recovery 的 child commit-rollback-failure reconciliation /
+  identity 变化的 rebind / 可见复合投影变化的 plan-authority reconciliation），而
+  state-only 的 run / rollback / reconciliation **永不**改动 `plan_revision`。pending
+  intent 携带 finalize 后的精确 `queue_revision`，crash replay 幂等、绝不二次递增；
+  `updated_at` 等非权威字段单独变化不递增令牌；收敛后重复读为 no-write。`import stage`
+  对重复 `source_root_identity`（actionable job 或 active child）拒绝创建第二个 job/plan
+  （`IMPORT_REVIEW_ALREADY_STAGED`，零写入）；全 `skipped`/`imported`/`stale` 且无 active
+  child 的 job 视为已完成、不阻塞新 stage。`import review` / `import reviews` 为有界分页 /
+  发现的稳定只读投影，绝不暴露 source 文件系统定位或 proposal 正文。
+
 ---
 
 ## 6. 工程规范

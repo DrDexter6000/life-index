@@ -7,11 +7,17 @@ update ledger) and ``query_status`` (read ledger + manifest, return status).
 from __future__ import annotations
 
 import datetime
+import functools
 import hashlib
+import inspect
 import json
+import os
 import shutil
+import tempfile
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Iterator, TypeVar
 
 from tools.ingest.fingerprint import (
     compute_attachment_fingerprint,
@@ -20,6 +26,7 @@ from tools.ingest.fingerprint import (
     compute_proposal_fingerprint,
     compute_source_fingerprint,
 )
+from tools.ingest.ids import import_id_invalid, validate_import_id
 from tools.ingest.schemas import (
     DEFAULT_NORMALIZED_IMPORT_OPTIONS_HASH,
     DEFAULT_NORMALIZED_WRITE_POLICY_HASH,
@@ -30,16 +37,108 @@ from tools.ingest.schemas import (
     RUN_SCHEMA_VERSION,
     STATUS_SCHEMA_VERSION,
 )
+from tools.lib.config import FILE_LOCK_TIMEOUT_DEFAULT
 from tools.lib.pending_writes import mark_pending
+from tools.lib.file_lock import FileLock, LockTimeoutError, get_journals_lock_path
+
+
+class ImportLedgerCorruptError(RuntimeError):
+    """The durable import ledger exists but cannot be trusted or recovered."""
+
+    def __init__(self, ledger_path: Path, reason: str):
+        self.ledger_path = ledger_path
+        self.reason = reason
+        super().__init__(f"Import ledger is corrupt at {ledger_path}: {reason}")
+
+
+_LEDGER_LOCK_TIMEOUT_SECONDS = 30.0
+_LEDGER_LOCK_STACK: ContextVar[tuple[str, ...]] = ContextVar(
+    "life_index_import_ledger_lock_stack", default=()
+)
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+
+def _ledger_path(data_dir: Path) -> Path:
+    return data_dir / ".life-index" / "import-jobs" / "ledger.json"
+
+
+def _ledger_lock_path(data_dir: Path) -> Path:
+    return data_dir / ".life-index" / "import-jobs" / "ledger.lock"
+
+
+def _assert_import_jobs_area_confined(data_dir: Path) -> None:
+    """Prove the resolved import-jobs area is a strict descendant of the data dir.
+
+    The durable ledger / manifest / staging area (``.life-index/import-jobs``) may
+    itself be a planted junction/reparse/symlink that redirects outside the
+    trusted data directory. Both ``data_dir`` and the area are resolved before a
+    component-wise (``relative_to``) containment proof; any escape fails closed
+    as an untrusted durable area (surfaced by the CLI as ``IMPORT_LEDGER_CORRUPT``)
+    BEFORE the first byte of ledger / lock I/O. Legitimate areas — including a
+    data dir that itself contains a symlink component, resolved on both sides —
+    keep working.
+    """
+    resolved_data = data_dir.resolve()
+    area = (data_dir / ".life-index" / "import-jobs").resolve()
+    try:
+        area.relative_to(resolved_data)
+    except ValueError:
+        raise ImportLedgerCorruptError(_ledger_path(data_dir), "import_jobs_area_not_confined")
+
+
+@contextmanager
+def _ledger_transaction(data_dir: Path) -> Iterator[None]:
+    """Hold the one cross-process import-ledger lock, re-entrantly per context.
+
+    Lock order is always ledger lock first, then an optional per-parent
+    ``review.lock``, then the shared journals lock when rollback reaches its
+    final delete critical section. Public runner/review transactions enter here
+    before taking narrower locks. Nested helpers reuse the outer ledger lock
+    rather than trying to acquire the non-reentrant file lock again.
+    """
+    key = str(data_dir.resolve())
+    stack = _LEDGER_LOCK_STACK.get()
+    if key in stack:
+        yield
+        return
+
+    # Prove the import-jobs area is confined before creating the cross-process
+    # lock file inside it (the first durable byte of a mutation transaction).
+    _assert_import_jobs_area_confined(data_dir)
+    lock = FileLock(_ledger_lock_path(data_dir), timeout=_LEDGER_LOCK_TIMEOUT_SECONDS)
+    with lock:
+        token = _LEDGER_LOCK_STACK.set((*stack, key))
+        try:
+            yield
+        finally:
+            _LEDGER_LOCK_STACK.reset(token)
+
+
+def _ledger_serialized(func: _F) -> _F:
+    """Decorate a public ledger operation as one complete locked transaction."""
+    signature = inspect.signature(func)
+
+    @functools.wraps(func)
+    def wrapped(*args: Any, **kwargs: Any) -> Any:
+        bound = signature.bind_partial(*args, **kwargs)
+        data_dir = bound.arguments.get("data_dir")
+        if not isinstance(data_dir, Path):
+            raise TypeError("ledger-serialized operation requires data_dir: Path")
+        with _ledger_transaction(data_dir):
+            return func(*args, **kwargs)
+
+    return wrapped  # type: ignore[return-value]
+
 
 # ---------------------------------------------------------------------------
 # execute_run
 # ---------------------------------------------------------------------------
 
 
+@_ledger_serialized
 def execute_run(  # noqa: C901
     plan_path: str,
-    confirm_id: str,
+    confirm_id: Any,
     data_dir: Path,
     source_root: str | None = None,
 ) -> dict[str, Any]:
@@ -48,6 +147,11 @@ def execute_run(  # noqa: C901
     Returns a dict with ``success`` (bool) and either ``data`` or ``error``.
     The caller wraps this into the standard envelope.
     """
+    if confirm_id is not None:
+        invalid_reason = validate_import_id(confirm_id, allow_child=False)
+        if invalid_reason is not None:
+            return import_id_invalid(invalid_reason)
+
     # --- 1. Read and parse plan JSON ---
     plan_file = Path(plan_path)
     if not plan_file.exists():
@@ -69,9 +173,12 @@ def execute_run(  # noqa: C901
             retryable=False,
         )
 
-    # --- 2. Validate --confirm ---
+    # --- 2. Validate plan import_id, then --confirm compatibility ---
     plan_import_id = plan.get("import_id", "")
-    if not confirm_id:
+    invalid_reason = validate_import_id(plan_import_id, allow_child=False)
+    if invalid_reason is not None:
+        return import_id_invalid(invalid_reason)
+    if confirm_id is None:
         return _err(
             "IMPORT_CONFIRMATION_REQUIRED",
             "The --confirm flag is required for import run.",
@@ -362,6 +469,18 @@ def execute_run(  # noqa: C901
     # --- 6. Create ledger entry with state=running BEFORE durable writes (PRD §9) ---
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     rollback_rel = f".life-index/import-jobs/{plan_import_id}/rollback-manifest.json"
+    # Prove the job manifest path resolves inside the data directory BEFORE any
+    # ledger reservation or manifest init: a planted link at the derived job path
+    # must fail closed with no reservation and no outside write. Use the resolved
+    # path for every subsequent I/O (never re-join a second expression).
+    rollback_abs = _resolve_confined_job_path(data_dir, rollback_rel)
+    if rollback_abs is None:
+        return _err(
+            "IMPORT_WRITE_FAILURE",
+            "Import job path is not confined to the data directory.",
+            {"reason": "job_path_not_confined", "import_id": plan_import_id},
+            retryable=False,
+        )
 
     ledger_jobs: dict[str, Any] = ledger.get("jobs", {})
     ledger_jobs[plan_import_id] = {
@@ -376,7 +495,6 @@ def execute_run(  # noqa: C901
     _write_ledger(data_dir, ledger)
 
     # --- 7. Initialize rollback manifest BEFORE durable writes (PRD §10) ---
-    rollback_abs = data_dir / rollback_rel
     rollback_abs.parent.mkdir(parents=True, exist_ok=True)
 
     created_files: list[dict[str, Any]] = []
@@ -553,6 +671,7 @@ def execute_run(  # noqa: C901
 # ---------------------------------------------------------------------------
 
 
+@_ledger_serialized
 def query_status(
     import_id: str,
     data_dir: Path,
@@ -617,6 +736,7 @@ def query_status(
 # ---------------------------------------------------------------------------
 
 
+@_ledger_serialized
 def execute_rollback(
     import_id: str,
     data_dir: Path,
@@ -626,6 +746,10 @@ def execute_rollback(
     Returns a dict with ``success`` (bool) and either ``data`` or ``error``.
     The caller wraps this into the standard envelope.
     """
+    invalid_reason = validate_import_id(import_id, allow_child=True)
+    if invalid_reason is not None:
+        return import_id_invalid(invalid_reason)
+
     # --- 1. Read ledger, find job ---
     ledger = _read_ledger(data_dir)
     jobs: dict[str, Any] = ledger.get("jobs", {})
@@ -666,44 +790,104 @@ def execute_rollback(
         )
 
     rollback_rel = job.get("rollback_manifest_rel_path", "")
-    manifest_abs = data_dir / rollback_rel
+    # The stored locator is untrusted: a corrupt or hostile absolute/traversal
+    # ``rollback_manifest_rel_path`` must fail closed before any manifest write.
+    # Use the resolved path for all subsequent audit writes (never re-join).
+    manifest_abs = _resolve_confined_job_path(data_dir, rollback_rel)
+    if manifest_abs is None:
+        return _err(
+            "IMPORT_ROLLBACK_UNSAFE",
+            "Rollback aborted: rollback manifest path is not confined to the data directory.",
+            {"reason": "rollback_manifest_path_not_confined", "import_id": import_id},
+            retryable=False,
+        )
 
     # --- 4. First pass: verify all manifest paths are confined under data_dir ---
+    # ``unsafe_paths`` / ``invalid_ownership`` hold raw rel_paths for the durable
+    # manifest audit record ONLY; they never reach the outward envelope. The
+    # parallel ``*_entry_indices`` lists (positions into ``created_files``) are
+    # the safe, locator-free diagnostics surfaced to the CLI/agent caller.
     unsafe_paths: list[str] = []
+    invalid_ownership: list[str] = []
+    unsafe_entry_indices: list[int] = []
+    invalid_ownership_entry_indices: list[int] = []
     safe_paths: dict[str, Path] = {}
-    for file_entry in manifest.get("created_files", []):
+    safe_staging_paths: dict[str, Path] = {}
+    ownership_proofs: dict[str, dict[str, Any]] = {}
+    for idx, file_entry in enumerate(manifest.get("created_files", [])):
         if not file_entry.get("created_by_import", False):
             continue
-        rel_path = file_entry["rel_path"]
+        rel_path = file_entry.get("rel_path", "")
         safe_path = _resolve_confined_file_path(data_dir, rel_path)
         if safe_path is None:
             unsafe_paths.append(rel_path)
+            unsafe_entry_indices.append(idx)
         else:
             safe_paths[rel_path] = safe_path
+        proof = file_entry.get("ownership_proof")
+        if proof is None:
+            continue
+        if not isinstance(proof, dict) or proof.get("method") != "hardlink_identity":
+            invalid_ownership.append(rel_path)
+            invalid_ownership_entry_indices.append(idx)
+            continue
+        staging_rel = proof.get("staging_rel_path")
+        expected_prefix = f".life-index/import-jobs/{import_id}/publication-staging/"
+        if (
+            not isinstance(staging_rel, str)
+            or not staging_rel.startswith(expected_prefix)
+            or not isinstance(proof.get("device"), int)
+            or not isinstance(proof.get("inode"), int)
+        ):
+            invalid_ownership.append(rel_path)
+            invalid_ownership_entry_indices.append(idx)
+            continue
+        staging_path = _resolve_confined_file_path(data_dir, staging_rel)
+        if staging_path is None:
+            invalid_ownership.append(rel_path)
+            invalid_ownership_entry_indices.append(idx)
+            continue
+        ownership_proofs[rel_path] = proof
+        safe_staging_paths[rel_path] = staging_path
 
-    if unsafe_paths:
+    if unsafe_paths or invalid_ownership:
         now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
         manifest["state"] = "rollback_failed"
-        manifest["errors"] = [f"Unsafe path (traversal/absolute): {p}" for p in unsafe_paths]
+        manifest["rollback_retryable"] = False
+        manifest["errors"] = [
+            *[f"Unsafe path (traversal/absolute): {p}" for p in unsafe_paths],
+            *[f"Invalid hardlink ownership proof: {p}" for p in invalid_ownership],
+        ]
         _write_manifest(manifest_abs, manifest)
 
         jobs[import_id]["state"] = "rollback_failed"
+        jobs[import_id]["rollback_retryable"] = False
         jobs[import_id]["updated_at"] = now_iso
         _write_ledger(data_dir, ledger)
 
+        # Outward envelope: fail-closed, but surface only locator-free
+        # diagnostics. A hostile absolute/traversal rel_path is untrusted
+        # manifest content and must never be echoed back to the caller.
         return _err(
             "IMPORT_ROLLBACK_UNSAFE",
-            (
-                f"Rollback aborted: {len(unsafe_paths)} manifest path(s) "
-                f"resolve outside the data directory."
-            ),
-            {"unsafe_paths": unsafe_paths},
+            "Rollback aborted: manifest path or ownership proof is unsafe.",
+            {
+                "reason": "unsafe_manifest_entries",
+                "import_id": import_id,
+                "unsafe_path_count": len(unsafe_paths),
+                "invalid_ownership_count": len(invalid_ownership),
+                "unsafe_entry_indices": unsafe_entry_indices,
+                "invalid_ownership_entry_indices": invalid_ownership_entry_indices,
+            },
             retryable=False,
         )
 
     # --- 5. Second pass: check all checksums (PRD §10) ---
     to_delete: list[dict[str, Any]] = []
+    staging_to_delete: list[Path] = []
     blocked: list[dict[str, Any]] = []
+    target_baselines: dict[str, dict[str, Any] | None] = {}
+    staging_baselines: dict[str, dict[str, Any] | None] = {}
 
     for file_entry in manifest.get("created_files", []):
         if not file_entry.get("created_by_import", False):
@@ -711,19 +895,64 @@ def execute_rollback(
 
         rel_path = file_entry["rel_path"]
         expected_sha256 = file_entry["sha256_after"]
+        expected_size = file_entry.get("size_bytes")
         file_path = safe_paths[rel_path]
+        proof = ownership_proofs.get(rel_path)
 
-        if not file_path.exists():
+        if proof is not None:
+            expected_identity = (proof["device"], proof["inode"])
+            staging_path = safe_staging_paths[rel_path]
+            staging_evidence = _rollback_path_evidence(staging_path)
+            staging_baselines[rel_path] = staging_evidence
+            if staging_evidence is not None:
+                if (
+                    staging_evidence["identity"] != expected_identity
+                    or staging_evidence["sha256"] != expected_sha256
+                    or (expected_size is not None and staging_evidence["size"] != expected_size)
+                ):
+                    blocked.append(
+                        {
+                            "rel_path": rel_path,
+                            "reason": "staging_ownership_mismatch",
+                        }
+                    )
+                else:
+                    staging_to_delete.append(staging_path)
+
+        target_evidence = _rollback_path_evidence(file_path)
+        target_baselines[rel_path] = target_evidence
+        if target_evidence is None:
             # Already removed — idempotent, skip
             continue
 
-        current_sha256 = f"sha256:{_file_sha256(file_path)}"
-        if current_sha256 != expected_sha256:
+        current_sha256 = target_evidence["sha256"]
+        current_size = target_evidence["size"]
+        if proof is not None and target_evidence["identity"] != (
+            proof["device"],
+            proof["inode"],
+        ):
+            # A prepared entry may encounter a create-only collision. The final
+            # path is provably not our staged inode, so preserve it. A durable
+            # "published" claim whose identity changed fails closed.
+            if file_entry.get("publication_state") == "prepared":
+                continue
+            blocked.append(
+                {
+                    "rel_path": rel_path,
+                    "reason": "target_ownership_mismatch",
+                }
+            )
+        elif current_sha256 != expected_sha256 or (
+            expected_size is not None and current_size != expected_size
+        ):
             blocked.append(
                 {
                     "rel_path": rel_path,
                     "expected_sha256": expected_sha256,
                     "current_sha256": current_sha256,
+                    "expected_size": expected_size,
+                    "current_size": current_size,
+                    "reason": "content_mismatch",
                 }
             )
         else:
@@ -732,63 +961,137 @@ def execute_rollback(
                     "rel_path": rel_path,
                     "path": file_path,
                     "kind": file_entry.get("kind", ""),
+                    "identity": target_evidence["identity"],
                 }
             )
 
     # --- 6. If any blocked, refuse entire rollback (PRD §10) ---
     if blocked:
-        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        manifest["state"] = "rollback_failed"
-        manifest["errors"] = [
-            (
-                f"Checksum mismatch: {b['rel_path']} "
-                f"expected {b['expected_sha256']} "
-                f"got {b['current_sha256']}"
-            )
-            for b in blocked
-        ]
-        _write_manifest(manifest_abs, manifest)
-
-        jobs[import_id]["state"] = "rollback_failed"
-        jobs[import_id]["updated_at"] = now_iso
-        _write_ledger(data_dir, ledger)
-
-        return _err(
-            "IMPORT_ROLLBACK_CHECKSUM_MISMATCH",
-            (f"Rollback blocked: {len(blocked)} file(s) have " f"checksum mismatches."),
-            {"blocked_files": blocked},
-            retryable=False,
+        return _record_rollback_mismatch(
+            data_dir=data_dir,
+            import_id=import_id,
+            manifest_abs=manifest_abs,
+            manifest=manifest,
+            ledger=ledger,
+            blocked=blocked,
         )
 
-    # --- 7. Queue journal removals before deletion ---
-    # A successful rollback must let the next normal search remove any stale
-    # FTS rows. Queue only after all path/checksum validation has passed, and
-    # before deletion so a queue persistence failure cannot leave an untracked
-    # source deletion behind.
+    # --- 7. Serialize the final rollback critical section with journal edits ---
+    # Global order: import ledger -> optional parent review -> journals. Initial
+    # validation stays outside this innermost lock; after acquisition we queue
+    # pending removals, revalidate every target/staging fact, then unlink.
+    journals_lock = FileLock(get_journals_lock_path(), timeout=FILE_LOCK_TIMEOUT_DEFAULT)
     try:
-        for file_entry in manifest.get("created_files", []):
-            if file_entry.get("created_by_import", False) and file_entry.get("kind") == "journal":
-                mark_pending(file_entry["rel_path"])
-    except OSError as exc:
+        journals_lock.acquire(blocking=True)
+    except LockTimeoutError:
         return _err(
             "IMPORT_INTERNAL_ERROR",
-            "Rollback could not queue journal removals for index update.",
-            {"import_id": import_id, "error": str(exc)},
+            "Rollback could not acquire the journals lock.",
+            {"import_id": import_id, "reason": "journals_lock_timeout"},
+            retryable=True,
+        )
+    except OSError:
+        return _err(
+            "IMPORT_INTERNAL_ERROR",
+            "Rollback could not acquire the journals lock.",
+            {"import_id": import_id, "reason": "journals_lock_unavailable"},
             retryable=True,
         )
 
-    # --- 8. Third pass: delete all matching files ---
-    deleted_count = 0
-    for entry in to_delete:
-        entry["path"].unlink()
-        deleted_count += 1
+    try:
+        # A successful rollback must let the next normal search remove stale FTS
+        # rows. Queue under the journals lock, before any deletion.
+        try:
+            for file_entry in manifest.get("created_files", []):
+                if (
+                    file_entry.get("created_by_import", False)
+                    and file_entry.get("kind") == "journal"
+                ):
+                    mark_pending(file_entry["rel_path"])
+        except OSError as exc:
+            return _err(
+                "IMPORT_INTERNAL_ERROR",
+                "Rollback could not queue journal removals for index update.",
+                {"import_id": import_id, "error": str(exc)},
+                retryable=True,
+            )
+
+        # Immediately before the first unlink, repeat confinement, presence,
+        # filesystem identity, checksum, and size validation for EVERY manifest
+        # target and prepared-ownership staging path. Any drift aborts the whole
+        # rollback before a single file is deleted.
+        final_blocked = _final_rollback_revalidation(
+            data_dir=data_dir,
+            manifest=manifest,
+            safe_paths=safe_paths,
+            safe_staging_paths=safe_staging_paths,
+            ownership_proofs=ownership_proofs,
+            target_baselines=target_baselines,
+            staging_baselines=staging_baselines,
+            to_delete=to_delete,
+            staging_to_delete=staging_to_delete,
+        )
+        if final_blocked:
+            return _record_rollback_mismatch(
+                data_dir=data_dir,
+                import_id=import_id,
+                manifest_abs=manifest_abs,
+                manifest=manifest,
+                ledger=ledger,
+                blocked=final_blocked,
+            )
+
+        # --- 8. Persist restart-safe intent, then delete revalidated files ---
+        # Both existing authorities must say recovery is in progress before the
+        # first unlink. If the process stops mid-loop, a later status/rollback
+        # can recover from this durable fact instead of projecting committed.
+        rollback_started_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        manifest["state"] = "rollback_in_progress"
+        manifest["rollback_retryable"] = True
+        manifest["errors"] = []
+        _write_manifest(manifest_abs, manifest)
+        jobs[import_id]["state"] = "rollback_in_progress"
+        jobs[import_id]["rollback_retryable"] = True
+        jobs[import_id]["updated_at"] = rollback_started_at
+        _write_ledger(data_dir, ledger)
+
+        deleted_count = 0
+        try:
+            for entry in to_delete:
+                entry["path"].unlink()
+                deleted_count += 1
+            for staging_path in dict.fromkeys(staging_to_delete):
+                if staging_path.exists():
+                    staging_path.unlink()
+                try:
+                    staging_path.parent.rmdir()
+                except OSError:
+                    pass
+        except OSError:
+            # ``rollback_in_progress`` was durably written to both authorities
+            # before deletion began. Preserve that restart point instead of
+            # introducing another two-write transition after partial deletion.
+            return _err(
+                "IMPORT_ROLLBACK_INTERRUPTED",
+                "Rollback was interrupted while removing owned files.",
+                {
+                    "import_id": import_id,
+                    "reason": "filesystem_delete_failed",
+                    "deleted_count": deleted_count,
+                },
+                retryable=True,
+            )
+    finally:
+        journals_lock.release()
 
     # --- 9. Preserve manifest as audit evidence, update ledger ---
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     manifest["state"] = "rolled_back"
+    manifest["rollback_retryable"] = False
     _write_manifest(manifest_abs, manifest)
 
     jobs[import_id]["state"] = "rolled_back"
+    jobs[import_id]["rollback_retryable"] = False
     jobs[import_id]["updated_at"] = now_iso
     _write_ledger(data_dir, ledger)
 
@@ -909,9 +1212,19 @@ def _validate_plan_integrity(
                 retryable=False,
             )
 
-        source_record_fingerprints.append(source_record_fp)
         if _resolve_confined_file_path(data_dir, journal_rel) is None:
             unsafe_paths.append(journal_rel)
+
+        # Aggregated photo proposals carry the full member source-record
+        # fingerprint list so the plan-level source fingerprint can be
+        # recomputed over every scanned record. Legacy/fixture proposals omit
+        # the list and contribute their singular fingerprint, preserving the
+        # original 1:1 reconciliation behaviour exactly.
+        member_fps = proposal.get("source_record_fingerprints")
+        if isinstance(member_fps, list) and member_fps:
+            source_record_fingerprints.extend(member_fps)
+        else:
+            source_record_fingerprints.append(source_record_fp)
 
         attachment_fingerprints: list[str] = []
         for att_index, attachment in enumerate(attachments):
@@ -1081,50 +1394,138 @@ def _resolve_confined_source_path(source_root: Path, rel_path: str) -> Path | No
     return resolved_target
 
 
+def _resolve_confined_job_path(data_dir: Path, rel_path: str) -> Path | None:
+    """Return a RESOLVED import-job area path only when it is confined.
+
+    Intended for job-area paths (manifest directories, staging files) that may
+    not yet exist or that name a directory created on first use. Unlike
+    :func:`_resolve_confined_file_path`, this does NOT require an existing target
+    to be a regular file — a job area is created on demand. Returns the RESOLVED
+    target so callers use the validated path for every subsequent I/O (never
+    validate one expression and join a second path later).
+
+    Rejects empty/absolute ``rel_path``, traversal escapes, and any resolved
+    target that is not a strict descendant of the resolved data dir. Containment
+    is component-wise (``relative_to``): a planted junction/reparse/symlink that
+    escapes and a sibling ``<data_dir>-evil`` are both rejected, while a data dir
+    that itself contains a symlink component is resolved on both sides.
+    """
+    if not rel_path:
+        return None
+    p = Path(rel_path)
+    if p.is_absolute():
+        return None
+    resolved_data = data_dir.resolve()
+    resolved_target = (data_dir / rel_path).resolve()
+    if resolved_target == resolved_data:
+        return None
+    try:
+        resolved_target.relative_to(resolved_data)
+    except ValueError:
+        return None
+    return resolved_target
+
+
 def _read_ledger(data_dir: Path) -> dict[str, Any]:
-    """Read the import job ledger, returning defaults if it doesn't exist."""
-    ledger_path = data_dir / ".life-index" / "import-jobs" / "ledger.json"
-    if not ledger_path.exists():
+    """Read one stable ledger snapshot; malformed durable state fails closed."""
+    _assert_import_jobs_area_confined(data_dir)
+    ledger_path = _ledger_path(data_dir)
+    lock_key = str(data_dir.resolve())
+    # Preserve plan/dry-run no-write semantics. If no ledger exists and this is
+    # not already a mutation transaction, the empty snapshot linearizes before
+    # any later creator; no lock file or import-jobs directory is created.
+    if lock_key not in _LEDGER_LOCK_STACK.get() and not ledger_path.exists():
         return {
             "schema_version": LEDGER_SCHEMA_VERSION,
             "jobs": {},
             "idempotency_index": {},
         }
-    try:
-        ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
-        if isinstance(ledger, dict):
-            return ledger
-    except (json.JSONDecodeError, OSError):
-        pass
-    return {
-        "schema_version": LEDGER_SCHEMA_VERSION,
-        "jobs": {},
-        "idempotency_index": {},
-    }
+    with _ledger_transaction(data_dir):
+        if not ledger_path.exists():
+            return {
+                "schema_version": LEDGER_SCHEMA_VERSION,
+                "jobs": {},
+                "idempotency_index": {},
+            }
+        try:
+            ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
+            raise ImportLedgerCorruptError(ledger_path, str(exc)) from exc
+        if not isinstance(ledger, dict):
+            raise ImportLedgerCorruptError(ledger_path, "root must be a JSON object")
+        if not isinstance(ledger.get("jobs"), dict):
+            raise ImportLedgerCorruptError(ledger_path, "jobs must be a JSON object")
+        if not isinstance(ledger.get("idempotency_index"), dict):
+            raise ImportLedgerCorruptError(ledger_path, "idempotency_index must be a JSON object")
+        # Job-key integrity gate. Every ``jobs`` key is a closed-lexical import id
+        # (a parent id or a ``<parent>#batch-<seq>`` child id). A hostile durable
+        # key — path-like, traversal, non-lexical — is unreachable to EVERY
+        # consumer by failing closed HERE, before any key is used as a locator,
+        # indexed into the batches projection, surfaced by the reviews list, or
+        # promoted into an ``active_child_id`` by ``_reconcile_parent``'s settled
+        # scan. The result is deterministic across the read and mutation paths:
+        # no repair, no derivation, no leak, and byte-identical on repeat. The
+        # offending key value is never placed in the error.
+        for job_id in ledger["jobs"]:
+            if validate_import_id(job_id, allow_child=True) is not None:
+                raise ImportLedgerCorruptError(ledger_path, "job_id_invalid")
+        return ledger
 
 
 def _write_ledger(data_dir: Path, ledger: dict[str, Any]) -> None:
-    """Write the import job ledger."""
-    ledger.setdefault("schema_version", LEDGER_SCHEMA_VERSION)
-    ledger_path = data_dir / ".life-index" / "import-jobs" / "ledger.json"
-    ledger_path.parent.mkdir(parents=True, exist_ok=True)
-    ledger_path.write_text(
-        json.dumps(ledger, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    """Atomically and durably replace the ledger while holding its lock."""
+    with _ledger_transaction(data_dir):
+        ledger.setdefault("schema_version", LEDGER_SCHEMA_VERSION)
+        _atomic_write_json(_ledger_path(data_dir), ledger)
 
 
 def _write_manifest(path: Path, manifest: dict[str, Any]) -> None:
-    """Write the rollback manifest to the given path."""
-    path.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    """Atomically and durably replace a rollback manifest."""
+    _atomic_write_json(path, manifest)
+
+
+def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    """Write JSON through a same-directory temp file, fsync, and atomic replace."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.tmp-")
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+        try:
+            directory_fd = os.open(path.parent, os.O_RDONLY)
+        except OSError:
+            directory_fd = None
+        if directory_fd is not None:
+            try:
+                os.fsync(directory_fd)
+            except OSError:
+                pass
+            finally:
+                os.close(directory_fd)
+    finally:
+        if temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
 
 
 def _read_rollback_manifest(data_dir: Path, import_id: str) -> dict[str, Any] | None:
-    """Read the rollback manifest for an import job, or None."""
-    manifest_path = data_dir / ".life-index" / "import-jobs" / import_id / "rollback-manifest.json"
+    """Read the rollback manifest for an import job, or None.
+
+    The manifest path is resolved and proven confined before any read: a planted
+    link in the job area that would redirect the read outside the data directory
+    fails closed (None) rather than reading untrusted bytes.
+    """
+    manifest_path = _resolve_confined_job_path(
+        data_dir, f".life-index/import-jobs/{import_id}/rollback-manifest.json"
+    )
+    if manifest_path is None:
+        return None
     if not manifest_path.exists():
         return None
     try:
@@ -1139,6 +1540,134 @@ def _read_rollback_manifest(data_dir: Path, import_id: str) -> dict[str, Any] | 
 def _file_sha256(path: Path) -> str:
     """Compute raw hex sha256 of a file."""
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _path_identity(path: Path) -> tuple[int, int]:
+    """Return the filesystem identity used by hard-link ownership proofs."""
+    stat = path.stat()
+    return stat.st_dev, stat.st_ino
+
+
+def _rollback_path_evidence(path: Path) -> dict[str, Any] | None:
+    """Snapshot the identity, content hash, and size used by rollback validation."""
+    if not path.exists():
+        return None
+    return {
+        "identity": _path_identity(path),
+        "sha256": f"sha256:{_file_sha256(path)}",
+        "size": path.stat().st_size,
+    }
+
+
+def _final_rollback_revalidation(
+    *,
+    data_dir: Path,
+    manifest: dict[str, Any],
+    safe_paths: dict[str, Path],
+    safe_staging_paths: dict[str, Path],
+    ownership_proofs: dict[str, dict[str, Any]],
+    target_baselines: dict[str, dict[str, Any] | None],
+    staging_baselines: dict[str, dict[str, Any] | None],
+    to_delete: list[dict[str, Any]],
+    staging_to_delete: list[Path],
+) -> list[dict[str, Any]]:
+    """Revalidate every rollback target immediately before the first unlink."""
+    blocked: list[dict[str, Any]] = []
+    delete_rel_paths = {entry["rel_path"] for entry in to_delete}
+    staging_delete_paths = set(staging_to_delete)
+
+    for file_entry in manifest.get("created_files", []):
+        if not file_entry.get("created_by_import", False):
+            continue
+        rel_path = file_entry["rel_path"]
+        expected_sha256 = file_entry["sha256_after"]
+        expected_size = file_entry.get("size_bytes")
+        expected_path = safe_paths[rel_path]
+        current_path = _resolve_confined_file_path(data_dir, rel_path)
+        if current_path is None or current_path != expected_path:
+            blocked.append({"rel_path": rel_path, "reason": "target_path_changed_after_validation"})
+            continue
+        try:
+            target_evidence = _rollback_path_evidence(current_path)
+        except OSError:
+            blocked.append({"rel_path": rel_path, "reason": "target_unreadable_after_validation"})
+            continue
+        if target_evidence != target_baselines.get(rel_path):
+            blocked.append({"rel_path": rel_path, "reason": "target_changed_after_validation"})
+            continue
+
+        proof = ownership_proofs.get(rel_path)
+        if rel_path in delete_rel_paths and target_evidence is not None:
+            if (
+                target_evidence["sha256"] != expected_sha256
+                or (expected_size is not None and target_evidence["size"] != expected_size)
+                or (
+                    proof is not None
+                    and target_evidence["identity"] != (proof["device"], proof["inode"])
+                )
+            ):
+                blocked.append({"rel_path": rel_path, "reason": "target_revalidation_mismatch"})
+                continue
+
+        if proof is None:
+            continue
+        staging_rel = proof["staging_rel_path"]
+        expected_staging_path = safe_staging_paths[rel_path]
+        current_staging_path = _resolve_confined_file_path(data_dir, staging_rel)
+        if current_staging_path is None or current_staging_path != expected_staging_path:
+            blocked.append(
+                {"rel_path": rel_path, "reason": "staging_path_changed_after_validation"}
+            )
+            continue
+        try:
+            staging_evidence = _rollback_path_evidence(current_staging_path)
+        except OSError:
+            blocked.append({"rel_path": rel_path, "reason": "staging_unreadable_after_validation"})
+            continue
+        if staging_evidence != staging_baselines.get(rel_path):
+            blocked.append({"rel_path": rel_path, "reason": "staging_changed_after_validation"})
+            continue
+        if current_staging_path in staging_delete_paths and staging_evidence is not None:
+            if (
+                staging_evidence["identity"] != (proof["device"], proof["inode"])
+                or staging_evidence["sha256"] != expected_sha256
+                or (expected_size is not None and staging_evidence["size"] != expected_size)
+            ):
+                blocked.append({"rel_path": rel_path, "reason": "staging_revalidation_mismatch"})
+
+    return blocked
+
+
+def _record_rollback_mismatch(
+    *,
+    data_dir: Path,
+    import_id: str,
+    manifest_abs: Path,
+    manifest: dict[str, Any],
+    ledger: dict[str, Any],
+    blocked: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Persist one fail-closed rollback mismatch result."""
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    manifest["state"] = "rollback_failed"
+    manifest["rollback_retryable"] = False
+    manifest["errors"] = [
+        f"Rollback ownership/content mismatch: {item['rel_path']} ({item['reason']})"
+        for item in blocked
+    ]
+    _write_manifest(manifest_abs, manifest)
+
+    ledger["jobs"][import_id]["state"] = "rollback_failed"
+    ledger["jobs"][import_id]["rollback_retryable"] = False
+    ledger["jobs"][import_id]["updated_at"] = now_iso
+    _write_ledger(data_dir, ledger)
+
+    return _err(
+        "IMPORT_ROLLBACK_CHECKSUM_MISMATCH",
+        (f"Rollback blocked: {len(blocked)} file(s) have " "ownership or content mismatches."),
+        {"blocked_files": blocked},
+        retryable=False,
+    )
 
 
 def _ok(data: dict[str, Any]) -> dict[str, Any]:

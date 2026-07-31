@@ -20,6 +20,13 @@ LEDGER_SCHEMA_VERSION = "import_job_ledger.v1"
 ROLLBACK_MANIFEST_SCHEMA_VERSION = "import_rollback_manifest.v1"
 ROLLBACK_SCHEMA_VERSION = "import_rollback.v1"
 
+# Additive sub-object schema versions (M7 review queue & batch import).
+# These do not alter the existing ``import_*`` strings; consumers must ignore
+# unknown sub-object schema versions.
+REVIEW_SCHEMA_VERSION = "import_review.v1"
+REVIEW_PLAN_SCHEMA_VERSION = "import_review_plan.v1"
+PREVIEW_SCHEMA_VERSION = "import_preview.v1"
+
 # ---------------------------------------------------------------------------
 # Tranche A fixed defaults (PRD §7)
 # ---------------------------------------------------------------------------
