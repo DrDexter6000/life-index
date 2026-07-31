@@ -118,81 +118,61 @@ def scan_photo_directory(
 # ---------------------------------------------------------------------------
 
 
-def _process_jpeg(
-    file_path: Path,
-    rel_path: str,
-    seen_shas: set[str],
-    known_shas: set[str],
-    out_warnings: list[dict[str, Any]],
-) -> dict[str, Any]:
-    """Process a single JPEG file and return a record dict (or None if skipped)."""
+def _extract_exif_facts(
+    file_path: Path, rel_path: str
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Read a JPEG's EXIF-derived immutable facts (read-only, shared).
+
+    Single source of truth for EXIF parsing: the scan path (``_process_jpeg``)
+    and the run-time source-immutability re-derivation both call this so the two
+    can never diverge. Returns ``(facts, conflicts, warnings)`` where:
+
+    - ``facts`` holds the camera / orientation / gps / capture-time fields plus
+      an ``exif_readable`` flag;
+    - ``conflicts`` is the capture-time conflict list (e.g. missing/ambiguous);
+    - ``warnings`` is the file-level EXIF warning list (e.g. unreadable EXIF).
+
+    Never raises on EXIF/PIL errors: a corrupt read yields ``exif_readable=False``
+    plus a warning, matching scan-time graceful degradation.
+    """
     from PIL import Image
 
-    warnings: list[dict[str, Any]] = []
+    facts: dict[str, Any] = {
+        "exif_readable": False,
+        "camera_make": "",
+        "camera_model": "",
+        "orientation": None,
+        "gps": None,
+        "capture_time_iso": None,
+        "capture_source_tag": None,
+        "timezone_authority": None,
+    }
     conflicts: list[dict[str, Any]] = []
-    all_warnings: list[dict[str, Any]] = []
-
-    # --- Read file bytes and compute content hash ---
-    try:
-        file_bytes = file_path.read_bytes()
-    except OSError as exc:
-        out_warnings.append(
-            _warning(
-                "PHOTO_EXIF_UNREADABLE",
-                f"Cannot read source file {rel_path}: {exc}",
-            )
-        )
-        return {"record": None, "warnings": []}
-
-    content_sha256 = hashlib.sha256(file_bytes).hexdigest()
-    content_hash = f"sha256:{content_sha256}"
-    content_hash_prefix = content_sha256[:12]
-
-    # --- Exact content dedup (within scan and vs known imported SHAs) ---
-    if content_hash in seen_shas or content_hash in known_shas:
-        out_warnings.append(
-            _warning(
-                "PHOTO_DUPLICATE_SKIPPED",
-                f"Duplicate photo content skipped: {rel_path}",
-                extra={"content_sha256": content_hash},
-            )
-        )
-        return {"record": None, "warnings": []}
-    seen_shas.add(content_hash)
-
-    # --- Open with Pillow and extract EXIF ---
-    camera_make = ""
-    camera_model = ""
-    orientation: int | None = None
-    gps: dict | None = None
-    capture_time_iso: str | None = None
-    capture_source_tag: str | None = None
-    timezone_authority: str | None = None
-    exif_readable = False
+    warnings: list[dict[str, Any]] = []
 
     try:
         with Image.open(file_path) as img:
             exif_data = img.getexif()
 
             if exif_data:
-                exif_readable = True
+                facts["exif_readable"] = True
                 # Extract basic tags
-                camera_make = _decode_exif_text(exif_data.get(271, ""))  # Make
-                camera_model = _decode_exif_text(exif_data.get(272, ""))  # Model
+                facts["camera_make"] = _decode_exif_text(exif_data.get(271, ""))  # Make
+                facts["camera_model"] = _decode_exif_text(exif_data.get(272, ""))  # Model
                 orientation_raw = exif_data.get(274)  # Orientation
                 if orientation_raw is not None:
                     try:
-                        orientation = int(orientation_raw)
+                        facts["orientation"] = int(orientation_raw)
                     except (TypeError, ValueError):
                         pass
 
                 # Build a piexif-compatible dict for our helpers
                 piexif_data: dict[str, Any] = {
-                    "Make": camera_make,
-                    "Model": camera_model,
+                    "Make": facts["camera_make"],
+                    "Model": facts["camera_model"],
                 }
-                if orientation is not None:
-                    piexif_data["Orientation"] = orientation
+                if facts["orientation"] is not None:
+                    piexif_data["Orientation"] = facts["orientation"]
 
                 # Read ExifIFD (sub-IFD) for DateTimeOriginal and DateTimeDigitized
                 exif_ifd = exif_data.get_ifd(0x8769)  # ExifIFD
@@ -237,14 +217,14 @@ def _process_jpeg(
                 # GPS data
                 gps_info = exif_data.get_ifd(0x8825)  # GPSInfo IFD
                 if gps_info and gps_info.get(2):
-                    gps = canonicalize_gps(gps_info)
+                    facts["gps"] = canonicalize_gps(gps_info)
 
                 # Parse capture time (with timezone authority)
                 (
-                    capture_time_iso,
-                    capture_source_tag,
+                    facts["capture_time_iso"],
+                    facts["capture_source_tag"],
                     time_conflicts,
-                    timezone_authority,
+                    facts["timezone_authority"],
                 ) = parse_capture_time(piexif_data)
                 conflicts.extend(time_conflicts)
 
@@ -258,10 +238,105 @@ def _process_jpeg(
         )
 
     # --- If no capture time was found (no EXIF or unreadable), add conflict ---
-    if capture_time_iso is None and not any(
+    if facts["capture_time_iso"] is None and not any(
         conflict.get("code") == "PHOTO_CAPTURE_TIME_MISSING" for conflict in conflicts
     ):
         conflicts.append(_conflict("PHOTO_CAPTURE_TIME_MISSING", "No EXIF capture time found"))
+
+    return facts, conflicts, warnings
+
+
+def rederive_source_facts(file_path: Path) -> dict[str, Any] | None:
+    """Re-derive a JPEG's immutable source facts from its bytes (read-only).
+
+    Execution-time source-immutability entry point: re-reads the file and
+    recomputes the same content / metadata fields the scan produced, so a plan
+    whose stored ``source_facts`` disagree with the real source fails closed
+    before any journal/attachment is published. Returns ``None`` when the source
+    cannot be re-parsed (unreadable). Reuses ``_extract_exif_facts`` so the
+    re-derivation can never diverge from the scan path.
+    """
+    try:
+        file_bytes = file_path.read_bytes()
+    except OSError:
+        return None
+    content_sha256 = "sha256:" + hashlib.sha256(file_bytes).hexdigest()
+    facts, _conflicts, _warnings = _extract_exif_facts(file_path, file_path.name)
+    metadata_hash = compute_metadata_hash(
+        capture_time=facts["capture_time_iso"],
+        gps=facts["gps"],
+        camera_make=facts["camera_make"],
+        camera_model=facts["camera_model"],
+        orientation=facts["orientation"],
+    )
+    return {
+        "content_sha256": content_sha256,
+        "size_bytes": len(file_bytes),
+        "capture_time": {
+            "value": facts["capture_time_iso"],
+            "source_tag": facts["capture_source_tag"],
+            "timezone_authority": facts["timezone_authority"],
+        },
+        "gps": facts["gps"],
+        "camera_make": facts["camera_make"],
+        "camera_model": facts["camera_model"],
+        "orientation": facts["orientation"],
+        "metadata_hash": metadata_hash,
+    }
+
+
+def _process_jpeg(
+    file_path: Path,
+    rel_path: str,
+    seen_shas: set[str],
+    known_shas: set[str],
+    out_warnings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Process a single JPEG file and return a record dict (or None if skipped)."""
+    warnings: list[dict[str, Any]] = []
+    conflicts: list[dict[str, Any]] = []
+    all_warnings: list[dict[str, Any]] = []
+
+    # --- Read file bytes and compute content hash ---
+    try:
+        file_bytes = file_path.read_bytes()
+    except OSError as exc:
+        out_warnings.append(
+            _warning(
+                "PHOTO_EXIF_UNREADABLE",
+                f"Cannot read source file {rel_path}: {exc}",
+            )
+        )
+        return {"record": None, "warnings": []}
+
+    content_sha256 = hashlib.sha256(file_bytes).hexdigest()
+    content_hash = f"sha256:{content_sha256}"
+    content_hash_prefix = content_sha256[:12]
+
+    # --- Exact content dedup (within scan and vs known imported SHAs) ---
+    if content_hash in seen_shas or content_hash in known_shas:
+        out_warnings.append(
+            _warning(
+                "PHOTO_DUPLICATE_SKIPPED",
+                f"Duplicate photo content skipped: {rel_path}",
+                extra={"content_sha256": content_hash},
+            )
+        )
+        return {"record": None, "warnings": []}
+    seen_shas.add(content_hash)
+
+    # --- Open with Pillow and extract EXIF (shared with re-derivation) ---
+    exif_facts, exif_conflicts, exif_warnings = _extract_exif_facts(file_path, rel_path)
+    camera_make = exif_facts["camera_make"]
+    camera_model = exif_facts["camera_model"]
+    orientation = exif_facts["orientation"]
+    gps = exif_facts["gps"]
+    capture_time_iso = exif_facts["capture_time_iso"]
+    capture_source_tag = exif_facts["capture_source_tag"]
+    timezone_authority = exif_facts["timezone_authority"]
+    exif_readable = exif_facts["exif_readable"]
+    conflicts.extend(exif_conflicts)
+    warnings.extend(exif_warnings)
 
     # --- Normalize orientation (only when EXIF was readable) ---
     if exif_readable:

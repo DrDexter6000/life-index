@@ -1789,3 +1789,239 @@ def test_malformed_ledger_fails_closed_without_reset_or_overwrite(
     payload = _err(result)
     assert payload["error"]["code"] == "IMPORT_LEDGER_CORRUPT"
     assert ledger_path.read_bytes() == torn
+
+
+# ===================================================================
+# F1 — journal target collision across single-proposal edits + run-time defense
+# ===================================================================
+
+
+def test_edit_collision_two_dateless_same_date_distinct_targets(tmp_path: Path) -> None:
+    """Two date-less photos edited separately to the SAME date must receive
+    distinct canonical journal targets, and the batch must publish both with no
+    half-product.
+
+    Regression for F1(a): ``next_seq_for_date`` only considered on-disk journals
+    + pass-local ``used_seqs``, so the second single-proposal edit reused the
+    first proposal's seq (both proposals wrote ``..._001.md``) and the batch then
+    half-published (create-only failed on the second → ``recovery_required``).
+    """
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "a.jpg", color=(1, 2, 3), date_original=None)
+    _make_jpeg(src / "b.jpg", color=(4, 5, 6), date_original=None)
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    proposals = plan["proposals"]
+    assert len(proposals) == 2
+    pid_a, pid_b = proposals[0]["proposal_id"], proposals[1]["proposal_id"]
+    _stage(data_dir, plan, src, tmp_path)
+
+    # Each date-less proposal edited separately to confirmed with the SAME date.
+    _ok(_edit(
+        data_dir, parent_id,
+        _edit_payload(pid_a, decision="confirmed", journal={"date": "2024-06-15"}),
+        1, tmp_path,
+    ))
+    _ok(_edit(
+        data_dir, parent_id,
+        _edit_payload(pid_b, decision="confirmed", journal={"date": "2024-06-15"}),
+        2, tmp_path,
+    ))
+
+    # F1(a): the two confirmed proposals must hold DISTINCT journal targets.
+    rp = _review_plan(data_dir, parent_id)
+    targets = sorted(p["journal"]["target_rel_path"] for p in rp["proposals"])
+    assert len(set(targets)) == 2, f"colliding journal targets: {targets}"
+
+    # End-to-end: the batch publishes both with no half-product.
+    run = _ok(_run_import(
+        data_dir, "run", "--import-id", parent_id,
+        "--source-root", str(src), "--json",
+    ))["data"]
+    assert run["state"] == "committed"
+    assert run["created_journal_count"] == 2
+    for target in targets:
+        assert (data_dir / target).exists()
+    # no residual recovery_required / active child
+    parent_job = _ledger(data_dir)["jobs"][parent_id]
+    assert parent_job["active_child_id"] is None
+    assert parent_job["recovery_required"] is False
+
+
+def test_run_rejects_duplicate_runnable_targets_before_publish(tmp_path: Path) -> None:
+    """A legacy/crafted plan whose runnable set shares a journal (or attachment)
+    target must fail closed BEFORE the batching transition / first durable write
+    — no partial publish is possible (F1(b) run-time defense)."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "a.jpg", color=(1, 2, 3), date_original="2024:06:15 10:00:00")
+    _make_jpeg(src / "b.jpg", color=(4, 5, 6), date_original="2024:07:20 10:00:00")
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    # Craft a duplicate journal target: force proposal b onto proposal a's target.
+    rp = _review_plan(data_dir, parent_id)
+    target_a = rp["proposals"][0]["journal"]["target_rel_path"]
+    rp["proposals"][1]["journal"]["target_rel_path"] = target_a
+    (data_dir / ".life-index" / "import-jobs" / parent_id / "review-plan.json").write_text(
+        json.dumps(rp), encoding="utf-8"
+    )
+    ledger_before = _ledger(data_dir)
+    child_count_before = sum(
+        1 for j in ledger_before["jobs"].values() if j.get("parent_review_job_id") == parent_id
+    )
+
+    res = _err(_run_import(
+        data_dir, "run", "--import-id", parent_id,
+        "--source-root", str(src), "--json",
+    ))
+    # F1(b): deterministic fail-closed before any publish.
+    assert res["error"]["code"] == "IMPORT_PLAN_INVALID"
+    assert res["error"]["details"]["reason"] == "duplicate_runnable_target"
+    # no child batch created, no journal published.
+    assert not (data_dir / target_a).exists()
+    ledger_after = _ledger(data_dir)
+    child_count_after = sum(
+        1 for j in ledger_after["jobs"].values() if j.get("parent_review_job_id") == parent_id
+    )
+    assert child_count_after == child_count_before
+
+
+# ===================================================================
+# F2 — over-long child id self-corruption + run-time child-id validation
+# ===================================================================
+
+
+def test_run_long_parent_mints_valid_child_no_self_corruption(tmp_path: Path) -> None:
+    """A lexically valid 124-char parent must mint a lexically valid child id.
+
+    Regression for F2: ``run_batch`` mints ``{parent}#batch-{seq}``; with only a
+    whole-id 128-char budget, a valid 124-char parent yielded a 132-char child,
+    so the R1c ``_read_ledger`` job-key gate judged the system's OWN ledger
+    corrupt (``job_id_invalid``) AFTER publishing — self-condemnation + half-
+    product. The child branch now carries its own budget (parent 128 + suffix 16).
+    """
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    long_parent = "p" + "a" * 123  # 124 chars, valid parent (≤128)
+    assert len(long_parent) == 124
+    plan_file = _plan_file(tmp_path, plan, name=f"review_{long_parent}.json")
+    _ok(_run_import(
+        data_dir, "confirm", "--plan", str(plan_file),
+        "--import-id", long_parent, "--source-root", str(src), "--json",
+    ))
+    child_id = f"{long_parent}#batch-1"  # 132 chars
+
+    run = _ok(_run_import(
+        data_dir, "run", "--import-id", long_parent,
+        "--source-root", str(src), "--json",
+    ))["data"]
+    assert run["state"] == "committed"
+    assert run["import_id"] == child_id
+    # The ledger stays readable (no job_id_invalid self-condemnation) and the
+    # child is committed — no half-product.
+    ledger = _ledger(data_dir)
+    assert ledger["jobs"][child_id]["state"] == "committed"
+    assert ledger["jobs"][long_parent]["active_child_id"] is None
+
+
+def test_run_rejects_child_id_overflow_before_any_write(tmp_path: Path) -> None:
+    """F2(b): the minted child id is validated BEFORE the batching transition /
+    reservation. A ``next_batch_sequence`` that outgrows the 9-digit suffix fails
+    closed with a deterministic ``IMPORT_ID_INVALID`` and zero batch effect."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    # Craft a sequence that overflows the 9-digit child suffix budget.
+    ledger = _ledger(data_dir)
+    ledger["jobs"][parent_id]["next_batch_sequence"] = 1000000000  # 10 digits
+    _save_ledger(data_dir, ledger)
+
+    res = _err(_run_import(
+        data_dir, "run", "--import-id", parent_id,
+        "--source-root", str(src), "--json",
+    ))
+    assert res["error"]["code"] == "IMPORT_ID_INVALID"
+    assert res["error"]["details"]["reason"] == "child_sequence"
+    # no batching transition / reservation / child write occurred.
+    parent_after = _ledger(data_dir)["jobs"][parent_id]
+    assert parent_after["active_child_id"] is None
+    assert parent_after["next_batch_sequence"] == 1000000000
+
+
+# ===================================================================
+# F3 — source-facts re-derivation at run time (tamper anchor)
+# ===================================================================
+
+
+def test_run_rejects_tampered_source_facts_before_publish(tmp_path: Path) -> None:
+    """A plan edited after confirm — a tampered capture time plus a coherently
+    recomputed ``metadata_hash`` and moved journal/attachment targets — must fail
+    closed at run time, before any publish.
+
+    Regression for F3: the plan's immutable source facts were only ever re-hashed
+    FROM THE PLAN ITSELF, so editing ``source_facts[0].capture_time.value`` +
+    ``metadata_hash`` coherently let ``import run`` land the journal at the
+    TAMPERED date although the real EXIF says otherwise. The run path now
+    re-derives the immutable metadata from the actual source bytes and compares.
+    """
+    from tools.ingest.adapters._exif_common import compute_metadata_hash
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg_rich(
+        src / "shot.jpg", color=(1, 2, 3), make="TestCam", model="X100",
+        dt_original="2024:06:15 10:00:00", offset_original="+05:30",
+    )
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+    real_target = _review_plan(data_dir, parent_id)["proposals"][0]["journal"]["target_rel_path"]
+
+    # Tamper: move the immutable capture time to a different date and recompute
+    # metadata_hash coherently (the plan stays internally self-consistent), then
+    # move the journal/attachment targets to the tampered date. plan_fingerprint
+    # is left untouched so no plan_ledger_mismatch is triggered.
+    rp = _review_plan(data_dir, parent_id)
+    prop = rp["proposals"][0]
+    fact = prop["source_facts"][0]
+    fake_iso = "2024-08-20T10:00:00"
+    fact["capture_time"]["value"] = fake_iso
+    fact["metadata_hash"] = compute_metadata_hash(
+        capture_time=fake_iso,
+        gps=fact.get("gps"),
+        camera_make=fact.get("camera_make", ""),
+        camera_model=fact.get("camera_model", ""),
+        orientation=fact.get("orientation"),
+    )
+    prop["journal"]["date"] = "2024-08-20"
+    prop["journal"]["target_rel_path"] = "Journals/2024/08/life-index_2024-08-20_001.md"
+    prefix = str(fact.get("content_sha256", "")).removeprefix("sha256:")[:12]
+    prop["attachments"][0]["target_rel_path"] = f"attachments/2024/08/import_{prefix}.jpg"
+    (data_dir / ".life-index" / "import-jobs" / parent_id / "review-plan.json").write_text(
+        json.dumps(rp), encoding="utf-8"
+    )
+    tampered_target = prop["journal"]["target_rel_path"]
+
+    res = _err(_run_import(
+        data_dir, "run", "--import-id", parent_id,
+        "--source-root", str(src), "--json",
+    ))
+    assert res["error"]["code"] == "IMPORT_PLAN_INVALID"
+    assert res["error"]["details"]["reason"] == "source_facts_drift"
+    # nothing published — neither at the tampered date nor the real date.
+    assert not (data_dir / tampered_target).exists()
+    assert not (data_dir / real_target).exists()

@@ -1274,6 +1274,23 @@ def test_r1a_reason_precedence_is_closed_and_deterministic(
     _r1a_assert_no_data_or_outside_writes(data_dir, tmp_path)
 
 
+def test_r1a_child_id_has_own_length_budget_so_valid_parent_mints_valid_child() -> None:
+    """F2(a): the child branch carries its own length budget — a lexically valid
+    parent (≤128) must ALWAYS mint a lexically valid child
+    ``<parent>#batch-<seq>``, so ``run_batch`` appending the ``#batch-<seq>``
+    suffix can never self-corrupt the ledger's job-key gate."""
+    from tools.ingest.ids import validate_import_id
+
+    # A 124-char parent + "#batch-1" = 132 chars: valid parent → valid child.
+    assert validate_import_id("a" * 124 + "#batch-1", allow_child=True) is None
+    # A max 128-char parent + the max 9-digit seq = exactly 144 chars: valid.
+    assert validate_import_id("a" * 128 + "#batch-999999999", allow_child=True) is None
+    # 145 chars (one past the child budget) still fails as `length`.
+    assert validate_import_id("a" * 128 + "#batch-1000000000", allow_child=True) == "child_sequence"
+    # Parent part over 128 still fails as `child_parent_length`.
+    assert validate_import_id("a" * 129 + "#batch-1", allow_child=True) == "child_parent_length"
+
+
 def test_r1a_valid_differing_confirm_override_remains_effective_parent(
     tmp_path: Path,
 ) -> None:

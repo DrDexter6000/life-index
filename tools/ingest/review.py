@@ -210,6 +210,51 @@ def next_seq_for_date(date: str, data_dir: Path, used_seqs: dict[str, int]) -> i
     return next_seq
 
 
+def _parse_journal_target_seq(target_rel_path: Any) -> tuple[str, int] | None:
+    """Extract ``(date, seq)`` from a canonical journal ``target_rel_path``.
+
+    Returns ``None`` for a non-canonical / empty / malformed path. Purely lexical
+    (no filesystem access); reuses the canonical journal filename grammar.
+    """
+    if not isinstance(target_rel_path, str) or not target_rel_path:
+        return None
+    name = target_rel_path.rsplit("/", 1)[-1]
+    m = _JOURNAL_SEQ_RE.match(name)
+    if m is None:
+        return None
+    return m.group(1), int(m.group(2))
+
+
+def _seed_used_seqs_from_siblings(
+    proposals: Any,
+    used_seqs: dict[str, int],
+    *,
+    skip_proposal_id: str | None = None,
+) -> None:
+    """Pre-seed *used_seqs* with journal seqs already allocated to sibling proposals.
+
+    Canonical journal allocation must never hand two confirmed proposals the same
+    target. ``next_seq_for_date`` already excludes on-disk journals and pass-local
+    allocations; this adds the third authority — targets already recorded in the
+    parent's current plan for OTHER proposals (e.g. a sibling confirmed in a prior
+    single-proposal edit whose journal is not yet published on disk). The proposal
+    being (re-)derived is excluded via *skip_proposal_id* so it never blocks its
+    own re-derivation. Mutates *used_seqs* in place.
+    """
+    for proposal in proposals or []:
+        if not isinstance(proposal, dict):
+            continue
+        if skip_proposal_id is not None and proposal.get("proposal_id") == skip_proposal_id:
+            continue
+        target = (proposal.get("journal") or {}).get("target_rel_path", "")
+        parsed = _parse_journal_target_seq(target)
+        if parsed is None:
+            continue
+        date, seq = parsed
+        if seq > used_seqs.get(date, 0):
+            used_seqs[date] = seq
+
+
 def journal_target_rel_path(date: str, seq: int) -> str:
     """Canonical journal target path for a *date* + sequence."""
     year, month, _day = date.split("-")
@@ -1152,6 +1197,21 @@ def _rebuild_review_job_from_plan(
     }
 
 
+def _parent_has_batch_children(jobs: dict[str, Any], parent_id: str) -> bool:
+    """True iff the ledger holds any batch child of *parent_id*.
+
+    Used by the review-authority rebuild path (F4): a surviving plan with batch
+    children means the parent already imported, so the parent is NOT a clean
+    first-confirm crash window and must not be rebuilt.
+    """
+    for job in jobs.values():
+        if not isinstance(job, dict):
+            continue
+        if job.get("kind") == "batch" and job.get("parent_review_job_id") == parent_id:
+            return True
+    return False
+
+
 def _apply_intent_finalize(jobs: dict[str, Any], parent_id: str, intent: dict[str, Any]) -> None:
     """Apply a finalized projection from *intent* in place (caller persists).
 
@@ -1251,6 +1311,18 @@ def _reconcile_review_authority_locked(
 
     if not isinstance(job, dict) or job.get("kind") != "review":
         if isinstance(plan, dict):
+            # F4: a surviving plan WITH batch children means the parent already
+            # imported — rebuilding would reset imported proposals back to the
+            # plan's ``confirmed`` and ``next_batch_sequence`` back to 1, a second
+            # authority that resurrects imported history (re-import risk). Fail
+            # closed instead. No children => genuine first-confirm crash window =>
+            # the rebuild below is kept (existing tests stay green).
+            if _parent_has_batch_children(jobs, parent_id):
+                from tools.ingest.runner import ImportLedgerCorruptError, _ledger_path
+
+                raise ImportLedgerCorruptError(
+                    _ledger_path(data_dir), "parent_authority_unrecoverable"
+                )
             _rebuild_review_job_from_plan(jobs, parent_id, plan)
             return True
         return False
@@ -1568,6 +1640,14 @@ def confirm_review(  # noqa: C901
         merged: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
         used_seqs: dict[str, int] = {}
+        # F1(a): exclude journal targets held by proposals whose targets are KEPT
+        # verbatim (frozen / already-imported) and therefore not re-derived in the
+        # merge below. Non-frozen proposals are re-derived in pass order and the
+        # pass-local ``used_seqs`` accumulation (plus this seed) guarantees no two
+        # confirmed proposals share a canonical journal target.
+        for kept_pid, kept_prop in existing_by_id.items():
+            if existing_states.get(kept_pid) in FROZEN_STATES:
+                _seed_used_seqs_from_siblings([kept_prop], used_seqs)
         for proposal in proposals:
             pid = proposal.get("proposal_id", "")
             seen_ids.add(pid)
@@ -1917,6 +1997,12 @@ def edit_review(  # noqa: C901
 
         # Apply the decision -> state + optional soft reason code.
         used_seqs: dict[str, int] = {}
+        # F1(a): exclude journal targets already allocated to sibling proposals in
+        # the current plan, so two confirmed proposals can never share a target
+        # (the proposal being re-derived is skipped so it never blocks itself).
+        _seed_used_seqs_from_siblings(
+            plan.get("proposals", []), used_seqs, skip_proposal_id=proposal_id
+        )
         new_state, reason_code = _apply_edit_decision(
             proposal, data_dir, used_seqs, decision, has_user_date
         )
@@ -2973,6 +3059,121 @@ def _detect_stale(
         else:
             runnable.append(proposal)
     return runnable, stale_ids
+
+
+def _detect_duplicate_runnable_targets(
+    proposals: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Return details of the first duplicate journal/attachment target, else None.
+
+    F1(b) run-time defense: even a legacy or crafted plan must never reach the
+    create-only publish with two runnable proposals claiming the same canonical
+    target. The first collision found is returned as
+    ``{"kind": "journal"|"attachment", "proposal_ids": [first, second]}`` so the
+    caller fails closed deterministically before any durable write.
+    """
+    seen_journal: dict[str, str] = {}
+    seen_attachment: dict[str, str] = {}
+    for proposal in proposals:
+        pid = proposal.get("proposal_id", "")
+        journal = proposal.get("journal") or {}
+        journal_target = journal.get("target_rel_path", "")
+        if isinstance(journal_target, str) and journal_target:
+            if journal_target in seen_journal:
+                return {
+                    "kind": "journal",
+                    "proposal_ids": [seen_journal[journal_target], pid],
+                }
+            seen_journal[journal_target] = pid
+        for att in proposal.get("attachments", []) or []:
+            if not isinstance(att, dict):
+                continue
+            att_target = att.get("target_rel_path", "")
+            if isinstance(att_target, str) and att_target:
+                if att_target in seen_attachment:
+                    return {
+                        "kind": "attachment",
+                        "proposal_ids": [seen_attachment[att_target], pid],
+                    }
+                seen_attachment[att_target] = pid
+    return None
+
+
+def _capture_time_matches(rederived: Any, stored: Any) -> bool:
+    """True iff a re-derived capture_time equals the plan's stored capture_time.
+
+    Compares the immutable EXIF authority fields (``value`` / ``source_tag`` /
+    ``timezone_authority``) the scan recorded, normalizing ``None`` / missing /
+    empty as equivalent (absent on both sides). None of these are filesystem-
+    derived, so they are a stable immutability anchor.
+    """
+    if not isinstance(stored, dict):
+        stored = {}
+    if not isinstance(rederived, dict):
+        rederived = {}
+
+    def _norm(values: dict[str, Any], key: str) -> Any:
+        value = values.get(key)
+        return value if value not in (None, "") else ""
+
+    return all(
+        _norm(rederived, key) == _norm(stored, key)
+        for key in ("value", "source_tag", "timezone_authority")
+    )
+
+
+def _detect_source_facts_drift(proposals: list[dict[str, Any]], root: Path) -> list[str]:
+    """Re-derive each selected attachment's immutable source facts from disk and
+    compare to the plan's stored ``source_facts``.
+
+    Returns the proposal_ids whose recomputed immutable metadata diverges from
+    the plan, or whose source cannot be re-parsed. Read-only on the source.
+
+    The persisted plan's source facts are an anchor of immutability, but they
+    were originally derived FROM the plan and re-hashed self-referentially at
+    confirm time. The run path re-derives them from the actual source bytes
+    (reusing the adapter's EXIF/metadata path) so a plan edited after the fact —
+    a tampered capture time plus a coherently recomputed ``metadata_hash`` —
+    fails closed before any journal/attachment is published.
+    """
+    from tools.ingest.adapters.photo_timeline import rederive_source_facts
+    from tools.ingest.runner import _resolve_confined_source_path
+
+    drifted: list[str] = []
+    for proposal in proposals:
+        facts_by_sha: dict[str, dict[str, Any]] = {}
+        for facts in proposal.get("source_facts") or []:
+            if isinstance(facts, dict):
+                content_sha = facts.get("content_sha256")
+                if isinstance(content_sha, str):
+                    facts_by_sha[content_sha] = facts
+        is_drift = False
+        for att in proposal.get("attachments", []) or []:
+            if not isinstance(att, dict):
+                continue
+            src = _resolve_confined_source_path(root, att.get("source_rel_path", ""))
+            if src is None or not src.exists():
+                is_drift = True
+                break
+            rederived = rederive_source_facts(src)
+            if rederived is None:
+                # Unsupported / unreadable source: fail closed the same way.
+                is_drift = True
+                break
+            content_sha = rederived.get("content_sha256")
+            bound = facts_by_sha.get(content_sha) if isinstance(content_sha, str) else None
+            if not isinstance(bound, dict):
+                is_drift = True
+                break
+            if rederived.get("metadata_hash") != bound.get("metadata_hash"):
+                is_drift = True
+                break
+            if not _capture_time_matches(rederived.get("capture_time"), bound.get("capture_time")):
+                is_drift = True
+                break
+        if is_drift:
+            drifted.append(proposal.get("proposal_id", ""))
+    return drifted
 
 
 # Bounded chunk size for streaming attachment/journal bytes into staging. The
@@ -4033,6 +4234,45 @@ def run_batch(  # noqa: C901
                 retryable=False,
             )
 
+        # 6b. F1(b) run-time defense: the runnable set must not contain two
+        #     proposals claiming the same canonical journal/attachment target.
+        #     Catch it BEFORE the batching transition / first durable write so no
+        #     partial publish is possible, even from a legacy or crafted plan.
+        duplicate = _detect_duplicate_runnable_targets(runnable)
+        if duplicate is not None:
+            return _err(
+                "IMPORT_PLAN_INVALID",
+                "Runnable proposals share a duplicate canonical target; "
+                "the review plan is internally inconsistent.",
+                {
+                    "import_id": parent_id,
+                    "reason": "duplicate_runnable_target",
+                    "kind": duplicate["kind"],
+                    "proposal_ids": duplicate["proposal_ids"],
+                },
+                retryable=False,
+            )
+
+        # 6c. F3: re-derive immutable source facts from the actual source files
+        #     and verify they match the plan's stored source_facts. The plan's
+        #     fingerprints anchor immutability but were derived from the plan
+        #     itself; the run path re-derives from source so a plan edited after
+        #     confirm (a tampered capture time + coherently recomputed
+        #     metadata_hash) fails closed before any publish.
+        drift_ids = _detect_source_facts_drift(runnable, root)
+        if drift_ids:
+            return _err(
+                "IMPORT_PLAN_INVALID",
+                "Source facts re-derived from the source files disagree with the "
+                "review plan; the plan is stale or was edited after confirm.",
+                {
+                    "import_id": parent_id,
+                    "reason": "source_facts_drift",
+                    "proposals": drift_ids,
+                },
+                retryable=False,
+            )
+
         # 7. Monotonic child id (durable next_batch_sequence) + durable
         #    batching transition. The child job records the exact proposal_ids
         #    of THIS batch so later rollback/reconciliation projects from the
@@ -4041,6 +4281,16 @@ def run_batch(  # noqa: C901
         #    always strictly greater than any child seq already assigned.
         seq = int(job.get("next_batch_sequence", 1))
         child_id = _child_id_for_seq(parent_id, seq)
+        # F2(b): validate the minted child id BEFORE the batching transition /
+        # reservation. A lexically valid parent always mints a lexically valid
+        # child (ids.py budgets the child suffix separately), so this only fires
+        # for a degenerate state (e.g. a ``next_batch_sequence`` that outgrows the
+        # 9-digit suffix) — but it must fail closed with no effect rather than
+        # write a child key the R1c ``_read_ledger`` job-key gate would later
+        # judge corrupt (self-condemnation after publishing).
+        child_invalid = validate_import_id(child_id, allow_child=True)
+        if child_invalid is not None:
+            return import_id_invalid(child_invalid)
         proposal_ids = [p.get("proposal_id", "") for p in runnable]
         # Prove the minted child job area resolves inside the data directory
         # BEFORE the confirmed->batching transition and active-child reservation:

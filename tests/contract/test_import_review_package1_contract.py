@@ -912,6 +912,47 @@ def test_plan_only_rebuilds_projection_from_review_plan(tmp_path: Path) -> None:
     assert status["kind"] == "review"
 
 
+def test_status_refuses_rebuild_when_batch_children_exist(tmp_path: Path) -> None:
+    """F4: deleting the parent job AFTER a batch import must NOT rebuild the
+    parent from the surviving review plan.
+
+    A rebuild would reset imported proposals back to the plan's ``confirmed`` and
+    ``next_batch_sequence`` back to 1 — a second authority that resurrects already
+    imported history (re-import risk). When batch children of the parent exist in
+    the ledger, the parent is NOT a clean first-confirm crash window: status fails
+    closed instead of rebuilding. The no-children rebuild above stays green.
+    """
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["data"]["import_id"]
+    _confirm(data_dir, plan["data"], source_root=src)
+    # run -> a committed batch child; the parent proposal is now imported.
+    _ok(_run_import(
+        data_dir, "run", "--import-id", parent_id, "--source-root", str(src), "--json"
+    ))
+    ledger = _ledger(data_dir)
+    assert any(
+        job.get("parent_review_job_id") == parent_id for job in ledger["jobs"].values()
+    )
+
+    # Delete ONLY the parent job (keep the committed batch child + review plan).
+    ledger = _ledger(data_dir)
+    ledger["jobs"].pop(parent_id, None)
+    (data_dir / ".life-index" / "import-jobs" / "ledger.json").write_text(
+        json.dumps(ledger), encoding="utf-8"
+    )
+
+    # status must fail closed rather than rebuild (no resurrected history).
+    raw = _run_import(data_dir, "status", "--import-id", parent_id, "--json")
+    assert raw.returncode != 0, f"expected IMPORT_LEDGER_CORRUPT; stdout:\n{raw.stdout}"
+    err = _payload(raw)
+    assert err["error"]["code"] == "IMPORT_LEDGER_CORRUPT"
+    assert err["error"]["details"]["reason"] == "parent_authority_unrecoverable"
+
+
 def test_ledger_only_status_ok_run_reports_missing_plan(tmp_path: Path) -> None:
     """Plan lost, ledger present -> status from ledger; run reports explicit missing."""
     data_dir = tmp_path / "Life-Index"

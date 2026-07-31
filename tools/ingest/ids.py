@@ -11,6 +11,15 @@ IMPORT_ID_INVALID_MESSAGE = "Import id is invalid."
 _PARENT_RE = re.compile(r"[a-z0-9][a-z0-9_-]*\Z", re.ASCII)
 _CHILD_SEQUENCE_RE = re.compile(r"[1-9][0-9]{0,8}\Z", re.ASCII)
 _MAX_IMPORT_ID_LENGTH = 128
+# A child id is ``<parent>#batch-<seq>``. The parent part keeps the full parent
+# budget (``_MAX_IMPORT_ID_LENGTH``); the suffix ``#batch-`` plus up to 9 sequence
+# digits carries its own fixed budget, so a lexically valid parent ALWAYS mints a
+# lexically valid child. Without a separate budget a valid 128-char parent would
+# mint an over-long child and ``run_batch`` would self-corrupt the ledger's
+# job-key gate (which re-validates the minted child id on the next read).
+_CHILD_ID_SEPARATOR = "#batch-"
+_CHILD_SEQUENCE_MAX_DIGITS = 9
+_MAX_CHILD_ID_LENGTH = _MAX_IMPORT_ID_LENGTH + len(_CHILD_ID_SEPARATOR) + _CHILD_SEQUENCE_MAX_DIGITS
 _RESERVED_NAMES = frozenset(
     {
         "CON",
@@ -53,7 +62,9 @@ def validate_import_id(value: Any, *, allow_child: bool) -> str | None:
             return "child_parent_length"
         if _CHILD_SEQUENCE_RE.fullmatch(sequence) is None:
             return "child_sequence"
-        if len(value) > _MAX_IMPORT_ID_LENGTH:
+        # The child carries its own total-length budget (parent budget + suffix),
+        # so a valid parent always mints a valid child (see _MAX_CHILD_ID_LENGTH).
+        if len(value) > _MAX_CHILD_ID_LENGTH:
             return "length"
         if _PARENT_RE.fullmatch(parent) is None:
             return "syntax"

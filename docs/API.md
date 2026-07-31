@@ -1892,8 +1892,12 @@ review-plan、rollback manifest、ledger state 或 durable data 访问前，先�
 
 - parent：lowercase ASCII `[a-z0-9][a-z0-9_-]*`，长度 1..128；
   `CON` / `PRN` / `AUX` / `NUL` / `COM1..9` / `LPT1..9` 大小写不敏感地保留；
-- child：`<valid-parent>#batch-[1-9][0-9]{0,8}`，总长不超过 128，sequence
-  不得前导零且不超过 `999999999`；
+- child：`<valid-parent>#batch-[1-9][0-9]{0,8}`，parent 部分长度 1..128、整体总长
+  不超过 144（parent 预算 128 + 固定后缀 `#batch-` 7 + 最多 9 位 sequence），sequence
+  不得前导零且不超过 `999999999`；child 分支拥有**独立长度预算**，故一个合法 parent
+  必然 mint 出合法 child——`run_batch` 追加 `#batch-<seq>` 后缀后，child id 不会超过
+  ledger job-key gate 的闭合词法预算（避免系统自身 mint 出的 child id 在下次
+  `_read_ledger` 被判为 `job_id_invalid` 的自我腐蚀）；
 - parent-only surfaces：`confirm` 的 external override 与 plan id、`confirm --edit`、
   `stage` 的 external override 与 plan id、`review`、`rebind`、`preview`、batch
   `run --import-id`、legacy `run` 的 plan id 与非缺席 `--confirm`；
@@ -2106,6 +2110,9 @@ success shape 或 exit code 映射；`reason` 为开放描述，调用方不应�
 | `IMPORT_LEDGER_CORRUPT` | `import_jobs_area_not_confined` | `.life-index/import-jobs` 区域本身是逃逸 link（首次 ledger I/O 前） |
 | `IMPORT_LEDGER_CORRUPT` | `review_plan_path_not_confined` | review-plan 派生路径逃逸 data dir（读写两侧均 raise，见下） |
 | `IMPORT_LEDGER_CORRUPT` | `job_id_invalid` | 持久化 ledger 的某个 `jobs` key 非闭合词法 import id（path-like/遍历/非词法）；在首次 `_read_ledger` 读时 fail-closed（见下） |
+| `IMPORT_LEDGER_CORRUPT` | `parent_authority_unrecoverable` | parent review job 缺失但 ledger 中存在其 batch child（`kind=="batch"` 且 `parent_review_job_id==parent`）时，从幸存 review plan rebuild 会把已导入 proposal 重置为 `confirmed`、`next_batch_sequence` 重置为 1（第二权威、re-import 风险），故 status/reconcile 在 rebuild 分支 fail-closed raise 而非 rebuild；无 child 时仍保留 genuine first-confirm rebuild（既有行为不变） |
+| `IMPORT_PLAN_INVALID` | `duplicate_runnable_target` | `run` 的 runnable 集合中两个 proposal 声称同一 canonical journal/attachment `target_rel_path`（legacy/crafted plan，或 allocatioin 漏洞残留）；在 batching transition / 首次 durable write **之前** fail-closed，绝不产生 partial publish。`details` 另含 `kind`（`journal`/`attachment`）与 `proposal_ids` |
+| `IMPORT_PLAN_INVALID` | `source_facts_drift` | `run` 时从实际 source 文件 re-derive 的不可变 metadata（至少 `metadata_hash`，含 `capture_time` 的 value/source_tag/timezone_authority）与 plan 存储的 `source_facts` 不一致（plan 在 confirm 后被篡改：capture_time + coherently 重算的 metadata_hash）；在 publish **之前** fail-closed。source 无法 re-parse（不支持格式/不可读）同样 fail-closed。`details.proposals` 列出漂移 proposal ids |
 
 附加 surfacing 说明：
 
@@ -2481,6 +2488,20 @@ staging；不匹配触发 child failure + manifest compensation。M7 staging 使
 hard link 完成。故进程在 final publish 后、下一次 manifest 更新前崩溃时，新进程仍能
 证明并补偿 owned final；相同 bytes 但不同 identity 的预先存在/racing target 绝不删除。
 commit 或成功 rollback 后不保留 staging 文件/目录。源 hash / mtime 保持不变。
+
+**batching transition 之前的三道确定性闸门（F1b/F2b/F3，均在首次 durable write / publish
+之前 fail-closed，绝不留半成品）。** 在 stale 检测选出 runnable 集合之后、confirmed→
+batching 转换之前依次校验：(1) runnable 集合不得有两个 proposal 声称同一 canonical
+journal/attachment `target_rel_path`——否则 `IMPORT_PLAN_INVALID` +
+`reason=duplicate_runnable_target`（覆盖 legacy/crafted plan，无 partial publish）；(2)
+从实际 source 文件 re-derive 不可变 metadata（至少 `metadata_hash`，含 `capture_time`
+value/source_tag/timezone_authority）必须与 plan 存储的 `source_facts` 一致——否则
+`IMPORT_PLAN_INVALID` + `reason=source_facts_drift`（plan 在 confirm 后被篡改、或
+source 无法 re-parse 时不支持格式/不可读）；(3) mint 出的 child id
+`<parent>#batch-<seq>` 经 `validate_import_id(..., allow_child=True)` 复验——失败返回既有
+`IMPORT_ID_INVALID`（既有 `reason` 如 `child_sequence`/`length`，覆盖 `next_batch_sequence`
+超出 9 位后缀的退化情形）。合法 parent 因 child 分支独立长度预算必然 mint 合法 child，
+故 (3) 正常流程不触发。三道闸门均在 reservation / child job write / publish 之前。
 
 child batch journal 必须符合 canonical journal schema（`schema_version`、合法
 `topic`——photo 默认 `life`，不扩展 canonical topic 集合、`field_sources`、
