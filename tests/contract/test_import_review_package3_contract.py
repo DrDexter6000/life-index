@@ -2025,3 +2025,85 @@ def test_run_rejects_tampered_source_facts_before_publish(tmp_path: Path) -> Non
     # nothing published — neither at the tampered date nor the real date.
     assert not (data_dir / tampered_target).exists()
     assert not (data_dir / real_target).exists()
+
+
+# ===================================================================
+# I) confirmed-topic preservation — a legitimate topic edited and
+#    confirmed through the formal review edit path must land verbatim in
+#    the final published Journal; an unedited proposal must keep the
+#    adapter-generated default ``life``. Exercised across separate CLI
+#    stage / edit(confirm) / run invocations and asserted by parsing the
+#    materialized Journal frontmatter (the on-disk authority for topic).
+#    An invalid topic is still rejected by the existing edit validator
+#    (see test_edit_rejects_invalid_topic above).
+# ===================================================================
+
+
+def test_run_preserves_confirmed_topic_edited_and_default(tmp_path: Path) -> None:
+    """M7 confirmed-topic preservation (RED-first regression).
+
+    Two resolved proposals go through the public CLI stage -> edit(confirm)
+    -> run flow. One proposal has its topic edited to a VALID ``work`` and is
+    confirmed; the other is confirmed without touching the topic. The final
+    published Journals are parsed from frontmatter:
+
+      * the edited proposal's topic must be exactly ``work`` (not silently
+        rewritten to the adapter default ``life``);
+      * the unedited proposal's topic must remain the default ``life``.
+    """
+    from tools.lib.frontmatter import parse_frontmatter
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    # two resolved photos on distinct days -> two confirmable proposals
+    _make_jpeg(src / "a.jpg", color=(1, 2, 3), date_original="2024:06:15 10:30:00")
+    _make_jpeg(src / "b.jpg", color=(4, 5, 6), date_original="2024:07:20 10:30:00")
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    proposals = plan["proposals"]
+    assert len(proposals) == 2
+    # track by proposal_id (order is irrelevant to the assertion)
+    work_pid = proposals[0]["proposal_id"]
+    life_pid = proposals[1]["proposal_id"]
+
+    # stage -> pending review job + persisted plan (adapter default topic = life)
+    _stage(data_dir, plan, src, tmp_path)
+
+    # proposal A: formal edit changing the topic to a VALID "work", confirmed.
+    r1 = _ok(_edit(
+        data_dir, parent_id,
+        _edit_payload(work_pid, decision="confirmed", journal={"topic": "work"}),
+        1, tmp_path,
+    ))["data"]
+    assert r1["proposal"]["state"] == "confirmed"
+    assert r1["proposal"]["journal"]["topic"] == "work"
+
+    # proposal B: formal confirm WITHOUT touching the topic -> keeps default life.
+    r2 = _ok(_edit(
+        data_dir, parent_id,
+        _edit_payload(life_pid, decision="confirmed"),
+        r1["queue_revision"], tmp_path,
+    ))["data"]
+    assert r2["proposal"]["state"] == "confirmed"
+    assert r2["proposal"]["journal"]["topic"] == "life"
+
+    # batch run materializes the journals
+    run = _ok(_run_import(
+        data_dir, "run", "--import-id", parent_id,
+        "--source-root", str(src), "--json",
+    ))["data"]
+    assert run["state"] == "committed"
+    assert run["created_journal_count"] == 2
+
+    # parse the FINAL Journal frontmatter — the on-disk authority for topic.
+    persisted = _review_plan(data_dir, parent_id)
+    targets = {
+        p["proposal_id"]: p["journal"]["target_rel_path"] for p in persisted["proposals"]
+    }
+    work_fm, _ = parse_frontmatter((data_dir / targets[work_pid]).read_text("utf-8"))
+    life_fm, _ = parse_frontmatter((data_dir / targets[life_pid]).read_text("utf-8"))
+
+    # edited topic preserved verbatim; unedited keeps the adapter default life
+    assert work_fm["topic"] == ["work"], "edited confirmed topic must land verbatim"
+    assert life_fm["topic"] == ["life"], "unedited proposal must keep default life"
