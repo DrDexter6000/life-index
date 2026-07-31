@@ -403,16 +403,20 @@ def _visible_projection_changed(before: dict[str, Any] | None, after: dict[str, 
 def compute_source_root_identity(source_root: Path) -> str:
     """Deterministic identity fingerprint for a source root directory.
 
-    Based on the canonical resolved path plus stable filesystem attributes
-    (device / inode / creation time). The creation time survives renames and
-    moves on the same volume, so a rebound locator that points at the same
-    physical root re-validates after a path change. Fully reproducible from
-    the directory alone (no persisted state required).
+    Based on the canonical resolved path plus stable filesystem identity
+    attributes (device / inode). The identity is intentionally **content-stable**:
+    it must NOT change when photos are added, deleted, or modified inside the
+    directory. For that reason the directory ``ctime`` is excluded — on POSIX it
+    is the inode *change* time and bumps on every entry add/remove, which would
+    both refuse a legitimate run (identity mismatch) and silently bypass the
+    duplicate-stage protection for the same physical root. Device + inode still
+    distinguish different physical roots. Fully reproducible from the directory
+    alone (no persisted state required).
     """
     resolved = source_root.resolve()
     try:
         st = resolved.stat()
-        attrs = [str(st.st_dev), str(st.st_ino), str(st.st_ctime_ns)]
+        attrs = [str(st.st_dev), str(st.st_ino)]
     except OSError:
         attrs = []
     parts = [

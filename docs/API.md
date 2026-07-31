@@ -2059,7 +2059,10 @@ staging 的最终 confinement / identity / SHA-256 / size 复检以及全部 unl
 
 rollback 还会 resolve 每个 manifest path，确认目标仍在 `LIFE_INDEX_DATA_DIR`
 内；路径遍历、绝对路径、非普通文件等 unsafe path 返回
-`IMPORT_ROLLBACK_UNSAFE`，且不会删除任何文件。
+`IMPORT_ROLLBACK_UNSAFE`，且不会删除任何文件。该错误 fail-closed，但外向 envelope
+只含 locator-free 诊断（见下「Resolved path containment (R1b)」）：`reason`、计数与
+`created_files` entry index——绝不回显原始 hostile 绝对/遍历路径（原始路径仅写入
+用户自有 data dir 内的 durable manifest audit 记录）。
 
 成功 rollback 后：
 
@@ -2107,6 +2110,7 @@ success shape 或 exit code 映射；`reason` 为开放描述，调用方不应�
 | `IMPORT_WRITE_FAILURE` | `job_path_not_confined` | run / batch 的 manifest 派生路径逃逸 data dir |
 | `IMPORT_WRITE_FAILURE` | `review_path_not_confined` | confirm/stage/edit/review/run 的 parent job 路径逃逸（per-parent lock 之前）；rollback 对存储 `parent_review_job_id` 派生路径逃逸（同样 lock 之前） |
 | `IMPORT_ROLLBACK_UNSAFE` | `rollback_manifest_path_not_confined` | 存储的 `rollback_manifest_rel_path` 为绝对/遍历/逃逸 locator |
+| `IMPORT_ROLLBACK_UNSAFE` | `unsafe_manifest_entries` | manifest 中某 `created_by_import` 条目的 `rel_path` 逃逸 data dir，或其 `ownership_proof` 非法；`details` 另含 `unsafe_path_count` / `invalid_ownership_count` 与 `unsafe_entry_indices` / `invalid_ownership_entry_indices`（`created_files` 数组下标），均 locator-free、不回显原始路径 |
 | `IMPORT_LEDGER_CORRUPT` | `import_jobs_area_not_confined` | `.life-index/import-jobs` 区域本身是逃逸 link（首次 ledger I/O 前） |
 | `IMPORT_LEDGER_CORRUPT` | `review_plan_path_not_confined` | review-plan 派生路径逃逸 data dir（读写两侧均 raise，见下） |
 | `IMPORT_LEDGER_CORRUPT` | `job_id_invalid` | 持久化 ledger 的某个 `jobs` key 非闭合词法 import id（path-like/遍历/非词法）；在首次 `_read_ledger` 读时 fail-closed（见下） |
@@ -2410,10 +2414,13 @@ life-index import rebind --import-id <parent_id> --source-root <dir> --json
 
 Directory path v1 不假装浏览器能 handle：定位是 explicit path + CLI
 validate/rebind。`validate` 返回 canonical readable dir 与 root identity
-fingerprint（基于目录规范化路径与稳定属性的确定性 SHA-256）。parent 只存 root
-identity，不把绝对路径放进公开 plan/review-plan。restart 后可用 `import-id`
-恢复队列；但 `confirm` / `run` / `preview` 必须用当前 rebound locator（`rebind`
-或 `--source-root`）重新验证同一 root identity，不匹配返回
+fingerprint（基于目录规范化路径与稳定 filesystem identity 属性——device 与
+inode——的确定性 SHA-256）。该 identity 是 **content-stable**：在 root 内新增、删除
+或修改照片都不会改变它（故 POSIX 目录 `ctime` 不参与计算——它在每次目录项增删时
+bump，会既拒绝合法 run 又绕过同一物理 root 的重复 stage 保护）；不同物理 root 仍由
+device/inode 区分。parent 只存 root identity，不把绝对路径放进公开 plan/review-plan。
+restart 后可用 `import-id` 恢复队列；但 `confirm` / `run` / `preview` 必须用当前
+rebound locator（`rebind` 或 `--source-root`）重新验证同一 root identity，不匹配返回
 `IMPORT_SOURCE_ROOT_IDENTITY_MISMATCH`。
 
 #### `import preview`（read-only）

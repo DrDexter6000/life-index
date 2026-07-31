@@ -803,18 +803,25 @@ def execute_rollback(
         )
 
     # --- 4. First pass: verify all manifest paths are confined under data_dir ---
+    # ``unsafe_paths`` / ``invalid_ownership`` hold raw rel_paths for the durable
+    # manifest audit record ONLY; they never reach the outward envelope. The
+    # parallel ``*_entry_indices`` lists (positions into ``created_files``) are
+    # the safe, locator-free diagnostics surfaced to the CLI/agent caller.
     unsafe_paths: list[str] = []
     invalid_ownership: list[str] = []
+    unsafe_entry_indices: list[int] = []
+    invalid_ownership_entry_indices: list[int] = []
     safe_paths: dict[str, Path] = {}
     safe_staging_paths: dict[str, Path] = {}
     ownership_proofs: dict[str, dict[str, Any]] = {}
-    for file_entry in manifest.get("created_files", []):
+    for idx, file_entry in enumerate(manifest.get("created_files", [])):
         if not file_entry.get("created_by_import", False):
             continue
         rel_path = file_entry.get("rel_path", "")
         safe_path = _resolve_confined_file_path(data_dir, rel_path)
         if safe_path is None:
             unsafe_paths.append(rel_path)
+            unsafe_entry_indices.append(idx)
         else:
             safe_paths[rel_path] = safe_path
         proof = file_entry.get("ownership_proof")
@@ -822,6 +829,7 @@ def execute_rollback(
             continue
         if not isinstance(proof, dict) or proof.get("method") != "hardlink_identity":
             invalid_ownership.append(rel_path)
+            invalid_ownership_entry_indices.append(idx)
             continue
         staging_rel = proof.get("staging_rel_path")
         expected_prefix = f".life-index/import-jobs/{import_id}/publication-staging/"
@@ -832,10 +840,12 @@ def execute_rollback(
             or not isinstance(proof.get("inode"), int)
         ):
             invalid_ownership.append(rel_path)
+            invalid_ownership_entry_indices.append(idx)
             continue
         staging_path = _resolve_confined_file_path(data_dir, staging_rel)
         if staging_path is None:
             invalid_ownership.append(rel_path)
+            invalid_ownership_entry_indices.append(idx)
             continue
         ownership_proofs[rel_path] = proof
         safe_staging_paths[rel_path] = staging_path
@@ -855,12 +865,19 @@ def execute_rollback(
         jobs[import_id]["updated_at"] = now_iso
         _write_ledger(data_dir, ledger)
 
+        # Outward envelope: fail-closed, but surface only locator-free
+        # diagnostics. A hostile absolute/traversal rel_path is untrusted
+        # manifest content and must never be echoed back to the caller.
         return _err(
             "IMPORT_ROLLBACK_UNSAFE",
             "Rollback aborted: manifest path or ownership proof is unsafe.",
             {
-                "unsafe_paths": unsafe_paths,
-                "invalid_ownership": invalid_ownership,
+                "reason": "unsafe_manifest_entries",
+                "import_id": import_id,
+                "unsafe_path_count": len(unsafe_paths),
+                "invalid_ownership_count": len(invalid_ownership),
+                "unsafe_entry_indices": unsafe_entry_indices,
+                "invalid_ownership_entry_indices": invalid_ownership_entry_indices,
             },
             retryable=False,
         )

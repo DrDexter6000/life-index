@@ -416,6 +416,51 @@ def test_import_validate_rejects_non_directory(tmp_path: Path) -> None:
     assert res["error"]["code"] == "IMPORT_SOURCE_ROOT_UNREADABLE"
 
 
+def test_source_root_identity_stable_across_content_changes(tmp_path: Path) -> None:
+    """A1: the photo source-root identity must NOT change when photos are added,
+    deleted, or modified inside the root. On POSIX a directory's ``ctime`` bumps
+    on every entry add/remove, so including it (the pre-fix behavior) churned the
+    identity and refused a legitimate run with IMPORT_SOURCE_ROOT_IDENTITY_MISMATCH.
+
+    Cross-platform: trivially stable on Windows (creation time), POSIX-faithful
+    under WSL (native dir ``ctime`` churns on add/delete). Also proves different
+    physical roots stay distinguishable, and that a confirmed run is not refused
+    after such a change (the run-time check compares stored vs live identity).
+    """
+    from tools.ingest.review import compute_source_root_identity
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "a.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["data"]["import_id"]
+    _confirm(data_dir, plan["data"], source_root=src)
+    stored = _ledger(data_dir)["jobs"][parent_id]["source_root_identity"]
+
+    base = compute_source_root_identity(src)
+    assert base == stored  # sanity: the recorded identity is the live one
+
+    # modify / add / delete photos inside the root -> identity unchanged
+    _make_jpeg(src / "a.jpg", color=(9, 9, 9))  # modify existing
+    _make_jpeg(  # add new (POSIX: directory entry added -> dir ctime bumps)
+        src / "b.jpg", color=(4, 5, 6), date_original="2024:08:01 09:00:00"
+    )
+    (src / "b.jpg").unlink()  # delete (POSIX: directory entry removed -> dir ctime bumps)
+    after = compute_source_root_identity(src)
+    assert after == base
+
+    # The run-time mismatch guard compares stored vs freshly-computed identity;
+    # equality here means the run is NOT refused with identity mismatch.
+    assert after == stored
+
+    # A different physical root remains distinguishable (device/inode differ).
+    other = tmp_path / "other-photos"
+    other.mkdir()
+    _make_jpeg(other / "a.jpg", color=(1, 2, 3))
+    assert compute_source_root_identity(other) != base
+
+
 def test_import_confirm_persists_review_plan_and_review_job(tmp_path: Path) -> None:
     data_dir = tmp_path / "Life-Index"
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -1604,6 +1649,52 @@ def test_r1b_rollback_outside_target_not_deleted(tmp_path: Path) -> None:
         assert victim.read_text() == "VICTIM-CONTENT"
     finally:
         pass
+
+
+def test_r1b_rollback_unsafe_envelope_leaks_no_hostile_locator(tmp_path: Path) -> None:
+    """B1: IMPORT_ROLLBACK_UNSAFE stays fail-closed (nothing deleted) but its
+    outward envelope returns only safe diagnostics — a reason, counts, and/or
+    entry indices — never the raw hostile absolute path. Pre-fix this RED-fails
+    on Windows too (the raw ``unsafe_paths`` list was returned verbatim)."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+    src = tmp_path / "photos"
+    _parent_id, child_id, _att_rel = _committed_child_batch(data_dir, src)
+
+    outside = tmp_path / "escape-envelope"
+    outside.mkdir()
+    victim = outside / "victim.txt"
+    victim.write_text("VICTIM-CONTENT")
+
+    manifest_path = data_dir / ".life-index" / "import-jobs" / child_id / "rollback-manifest.json"
+    manifest = json.loads(manifest_path.read_text("utf-8"))
+    manifest["created_files"].append(
+        {
+            "rel_path": str(victim),
+            "sha256_after": "sha256:deadbeef",
+            "size_bytes": len("VICTIM-CONTENT"),
+            "created_by_import": True,
+            "kind": "journal",
+        }
+    )
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    raw = _run_import(data_dir, "rollback", "--import-id", child_id, "--json")
+    payload = _assert_clean_failure(raw, outside)  # no hostile locator in stdout/stderr
+    assert payload["error"]["code"] == "IMPORT_ROLLBACK_UNSAFE"
+    # Fail-closed: the outside target was neither deleted nor truncated.
+    assert victim.exists()
+    assert victim.read_text() == "VICTIM-CONTENT"
+
+    details = payload["error"]["details"]
+    # Raw hostile locator lists are absent from the outward envelope...
+    assert "unsafe_paths" not in details
+    assert "invalid_ownership" not in details
+    # ...only safe diagnostics remain (reason + counts; indices are plain ints).
+    assert "reason" in details
+    assert isinstance(details.get("unsafe_path_count"), int) and details["unsafe_path_count"] >= 1
+    for key in ("unsafe_entry_indices", "invalid_ownership_entry_indices"):
+        assert all(isinstance(i, int) for i in details.get(key, []))
 
 
 def test_r1b_staging_subpath_junction_is_contained(tmp_path: Path) -> None:

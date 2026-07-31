@@ -1842,9 +1842,15 @@ def test_import_rollback_refuses_unsafe_manifest_path(
     assert (
         result["error"]["code"] == "IMPORT_ROLLBACK_UNSAFE"
     ), f"Expected IMPORT_ROLLBACK_UNSAFE but got {result['error']['code']}"
-    assert (
-        unsafe_rel in result["error"]["details"]["unsafe_paths"]
-    ), f"Unsafe path not listed in details: {result['error']['details']}"
+    # The outward envelope is locator-free: only reason + counts + entry indices.
+    # The raw hostile/traversal rel_path must never be echoed back.
+    details = result["error"]["details"]
+    expected_unsafe_index = len(manifest["created_files"]) - 1
+    assert details["reason"] == "unsafe_manifest_entries"
+    assert "unsafe_paths" not in details
+    assert details["unsafe_path_count"] >= 1
+    assert expected_unsafe_index in details["unsafe_entry_indices"]
+    assert unsafe_rel not in json.dumps(details)
 
     # The outside sentinel must survive
     assert sentinel.exists(), "OUTSIDE SENTINEL WAS DELETED — path confinement failed!"
