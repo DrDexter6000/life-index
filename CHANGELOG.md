@@ -6,6 +6,23 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-08-04
+
+### What users get
+
+- On Windows, a historical photo `import run` now succeeds on the first attempt
+  even when a transient share/access lock briefly holds the rollback-manifest
+  file during its atomic replace. Such momentary locks are absorbed internally
+  with a tiny bounded retry, so the user no longer has to hand-retry a failure
+  that would otherwise surface as a write error on the very first import run.
+- A genuine write failure is still zero-half-product, recoverable, and never
+  mutates the source photo: once the bounded retry is exhausted the existing
+  `IMPORT_WRITE_FAILURE` / compensation path runs unchanged.
+
+### Included in this release
+
+- fix(import): absorb Windows transient rollback-manifest `os.replace` locks.
+
 ## [1.6.1] - 2026-08-04
 
 ### What users get

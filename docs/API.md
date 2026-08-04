@@ -2147,6 +2147,14 @@ success shape 或 exit code 映射；`reason` 为开放描述，调用方不应�
   的 `message` 文本（形如 `"... staging_path_not_confined"`），**不**进入 `error.details.reason`
   （`details` 仍为 `child_id`/`parent_id`/计数）。它与上表中的 `details.reason` 是不同的 surfacing，
   这里明确区分，不混为一谈。
+- **Windows 瞬态 manifest replace 内部重试（1.6.2+，非错误码 surfacing）**：原子写在做
+  `os.replace` 时，若 Windows 抛出瞬态 share/access lock（`winerror` 5 access-denied / 32
+  sharing-violation），内部做有界重试（最多 3 次 `os.replace` 尝试，退避 0.01s / 0.05s，
+  仅两次 sleep）。该重试**不改变任何错误码、success shape 或 exit code**：仅 `os.name == "nt"`
+  且 `winerror in {5, 32}` 可重试；不符合该重试资格的错误、非 Windows（即便 `winerror` 32）、以及
+  mkdir / mkstemp / json write / fsync / containment / 路径错误一律不重试、首次即抛出。重试耗尽
+  仍原样抛出最后一个 `OSError`，走既有 `IMPORT_WRITE_FAILURE` / manifest-guarded 补偿；成功则
+  继续既有 directory fsync。这是首跑吸收瞬时锁的内部行为，不产生新的 operator-visible 错误。
 
 合法的 contained 路径（普通 data dir、嵌套 job 目录、data dir 自身含 symlink 组件——两侧都
 resolve）继续正常工作，不被误拒。

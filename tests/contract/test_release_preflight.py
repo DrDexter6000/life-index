@@ -79,21 +79,22 @@ def test_release_preflight_rejects_any_of_the_three_version_surfaces_drifting(
         preflight.validate_version_surfaces(root)
 
 
-def test_release_candidate_1_6_1_is_aligned_and_absent_from_known_used_history() -> None:
+def test_release_candidate_1_6_2_is_aligned_and_absent_from_known_used_history() -> None:
     preflight = _load_preflight_module()
 
-    assert preflight.validate_version_surfaces(REPO_ROOT) == "1.6.1"
+    assert preflight.validate_version_surfaces(REPO_ROOT) == "1.6.2"
     known_used = preflight.known_used_versions(REPO_ROOT)
     assert "1.5.0" in known_used
     assert "1.5.1" in known_used
     assert "1.5.2" in known_used
-    assert "1.6.1" not in known_used
+    assert "1.6.1" in known_used
+    assert "1.6.2" not in known_used
     assert (
         preflight.validate_release_candidate(
             REPO_ROOT,
             fetch_pypi_payload=lambda: {"releases": {}},
         )
-        == "1.6.1"
+        == "1.6.2"
     )
 
 
