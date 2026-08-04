@@ -6,6 +6,29 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-08-04
+
+### What users get
+
+- Historical photo imports are now a review-first lifecycle:
+  `life-index import plan` produces a dry-run plan, `confirm` persists chosen
+  journals and attachments into a review queue, `run` executes only confirmed
+  plans, `status` reports job progress, and `rollback` removes a child batch
+  while the parent job stays intact.
+- The confirmed review queue is resumable: staging, confirm, and edit decisions
+  are persisted with queue-revision tokens, so an interrupted session can be
+  picked up again, and stale edits fail closed with zero writes.
+- Imports are recorded in a durable, cross-process locked ledger with
+  hash/size-verified committed manifests. Rollback is deterministic: a
+  rolled-back journal no longer appears in subsequent searches.
+- Confirmed journals preserve normal topic and search behavior: only the
+  taxonomy-valid topic from the confirmed proposal is written, and imported
+  journals flow through the regular search path.
+
+### Included in this release
+
+- feat(import): add historical photo review queue (#187).
+
 ## [1.5.3] - 2026-07-21
 
 ### Changed
