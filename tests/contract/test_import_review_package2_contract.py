@@ -216,6 +216,19 @@ def _no_staging_leftovers(data_dir: Path) -> None:
     assert leftover == [], f"staging leftovers present: {[str(p) for p in leftover]}"
 
 
+def _no_temp_replace_leftovers(data_dir: Path) -> None:
+    # _atomic_write_json writes through a hidden ``.{target}.tmp-<rand>`` temp
+    # beside each target and unlinks it on every path. os.walk lists hidden
+    # files unconditionally (a leading-dot name is missed by ``*`` globs), so a
+    # survivor temp proves a real half-write rather than a glob blind spot.
+    leftovers: list[Path] = []
+    for root, _dirs, files in os.walk(data_dir):
+        for name in files:
+            if name.startswith(".") and ".tmp-" in name:
+                leftovers.append(Path(root) / name)
+    assert leftovers == [], f"atomic-write temp leftovers: {[str(p) for p in leftovers]}"
+
+
 # ===================================================================
 # Selection: partial / all / deselected; unselected never published
 # ===================================================================
@@ -624,6 +637,242 @@ def test_run_batch_compensation_failure_requires_recovery(
     snap2 = json.dumps(_ledger(data_dir)["jobs"][parent_id], sort_keys=True)
     assert snap1 == snap2
     assert _ledger(data_dir)["jobs"][parent_id]["recovery_required"] is True
+
+
+# ===================================================================
+# Windows transient manifest replace: first-run recovery, no half-products
+# ===================================================================
+
+
+def _transient_when_winerror_5_32(exc: BaseException) -> bool:
+    """Behavioral stand-in for the production Windows-transient classifier.
+
+    Confirms exactly an OSError carrying ``winerror`` 5/32 as the transient
+    decision the production helper would make under ``os.name == "nt"``. Contract
+    fault-injection tests patch this onto ``runner._is_windows_transient_replace_error``
+    so they never depend on the host being Windows and run deterministically on
+    Linux required CI; the real ``os.name`` + ``winerror`` semantics are proven by
+    the unit direct classifier tests.
+    """
+    return isinstance(exc, OSError) and getattr(exc, "winerror", None) in (5, 32)
+
+
+def test_review_run_windows_transient_manifest_replace_recovers_without_partial_outputs(
+    isolated_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A first Windows transient share/access lock on the child rollback-manifest
+    ``os.replace`` is absorbed internally: the SAME first ``run_batch`` succeeds
+    with complete Journal/Attachment outputs, readable manifest/ledger, no temp
+    or staging half-file, and the source photo untouched.
+
+    Fault injection (not a real file lock): the FIRST ``os.replace`` whose
+    destination is the child ``rollback-manifest.json`` raises a Windows
+    ``winerror=5`` OSError; every other replace (ledger, incremental manifest
+    writes, the retry) delegates to the real ``os.replace``. The bounded retry
+    inside ``runner._atomic_write_json`` absorbs exactly this one transient
+    failure, so the run commits on the first attempt — no outer retry.
+
+    The classifier is patched to treat only ``winerror`` 5/32 as transient, so
+    the test does not depend on the host being Windows and runs deterministically
+    on Linux required CI; the production ``os.name`` + ``winerror`` decision is
+    proven by the unit direct classifier tests.
+    """
+    import tools.ingest.runner as runner
+
+    data_dir = isolated_data_dir
+    src = tmp_path / "photos"
+    source = _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    source_bytes = source.read_bytes()
+    source_size = source.stat().st_size
+    source_sha = hashlib.sha256(source_bytes).hexdigest()
+    source_mtime = source.stat().st_mtime_ns
+
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    proposal = plan["proposals"][0]
+    journal_rel = proposal["journal"]["target_rel_path"]
+    att_rel = proposal["attachments"][0]["target_rel_path"]
+    review.confirm_review(
+        plan_path=str(_plan_file(tmp_path, plan, "p.json")),
+        data_dir=data_dir,
+        source_root=str(src),
+    )
+
+    # Inject exactly one transient winerror=5 on the child rollback-manifest
+    # target's first os.replace; everything else delegates to the real replace.
+    real_replace = os.replace
+    fault = {"fired": False}
+
+    def transient_first_manifest_replace(src_path: Any, dst_path: Any) -> Any:
+        if (
+            os.path.basename(str(dst_path)) == "rollback-manifest.json"
+            and "import-jobs" in str(dst_path)
+            and not fault["fired"]
+        ):
+            fault["fired"] = True
+            err = OSError("synthetic Windows transient sharing violation")
+            err.winerror = 5
+            raise err
+        return real_replace(src_path, dst_path)
+
+    monkeypatch.setattr(runner.os, "replace", transient_first_manifest_replace)
+    # Treat only the injected winerror 5/32 as transient (host-agnostic: the
+    # test no longer depends on os.name == "nt").
+    monkeypatch.setattr(
+        runner, "_is_windows_transient_replace_error", _transient_when_winerror_5_32
+    )
+
+    # The single first run_batch must succeed — the transient lock is absorbed
+    # internally, NOT by an outer second run_batch.
+    result = review.run_batch(parent_id, data_dir, source_root=str(src))
+
+    assert result["success"], result
+    assert result["data"]["state"] == "committed"
+    child_id = result["data"]["import_id"]
+    assert fault["fired"] is True  # the transient fault really fired exactly once
+
+    # Journal + Attachment are fully present; the attachment carries source bytes.
+    journal_abs = data_dir / journal_rel
+    att_abs = data_dir / att_rel
+    assert journal_abs.exists()
+    assert att_abs.exists()
+    assert att_abs.read_bytes() == source_bytes
+
+    # Manifest + ledger are readable and agree on a clean committed state.
+    manifest = _manifest(data_dir, child_id)
+    assert manifest["state"] == "committed"
+    ledger = _ledger(data_dir)
+    assert ledger["jobs"][child_id]["state"] == "committed"
+    assert ledger["jobs"][parent_id]["active_child_id"] is None
+
+    # No temp / staging half-file anywhere under the data dir.
+    _no_staging_leftovers(data_dir)
+    _no_temp_replace_leftovers(data_dir)
+
+    # Source photo is byte-for-byte untouched: bytes / hash / size / mtime_ns.
+    assert source.read_bytes() == source_bytes
+    assert hashlib.sha256(source.read_bytes()).hexdigest() == source_sha
+    assert source.stat().st_size == source_size
+    assert source.stat().st_mtime_ns == source_mtime
+
+
+def test_review_run_exhausted_windows_transient_manifest_replace_fully_compensates(
+    isolated_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Windows transient share/access lock that does NOT clear within the bounded
+    retry exhausts it cleanly: the SAME first ``run_batch`` returns the existing
+    ``IMPORT_WRITE_FAILURE`` envelope (``retryable=True``), never a bare exception,
+    and manifest-guarded compensation removes every half-product.
+
+    The failure is injected at the child rollback-manifest write whose temp JSON
+    already shows BOTH a published attachment and a published journal — that is the
+    journal's ``_record_published_publication`` write, which happens AFTER both the
+    attachment and the journal hard links already exist on disk. So compensation
+    must remove two real published products, not bail before any product exists.
+    Exactly three ``winerror=32`` faults are injected on that one ``os.replace``
+    (the bounded retry's full attempt budget), after which the real ``os.replace``
+    is restored so the compensation writes succeed. The classifier is patched to
+    treat only ``winerror`` 5/32 as transient (host-agnostic; the production
+    ``os.name`` decision is proven by the unit direct classifier tests).
+    """
+    import tools.ingest.runner as runner
+
+    data_dir = isolated_data_dir
+    src = tmp_path / "photos"
+    source = _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    source_bytes = source.read_bytes()
+    source_sha = hashlib.sha256(source_bytes).hexdigest()
+    source_size = source.stat().st_size
+    source_mtime = source.stat().st_mtime_ns
+
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    proposal = plan["proposals"][0]
+    pid = proposal["proposal_id"]
+    journal_rel = proposal["journal"]["target_rel_path"]
+    att_rel = proposal["attachments"][0]["target_rel_path"]
+    review.confirm_review(
+        plan_path=str(_plan_file(tmp_path, plan, "p.json")),
+        data_dir=data_dir,
+        source_root=str(src),
+    )
+
+    # Arm on the rollback-manifest write whose temp JSON already carries BOTH a
+    # published attachment and a published journal (the journal's post-publish
+    # manifest record). Once armed, inject exactly three winerror=32 faults on
+    # that one replace (the full bounded-retry budget), then delegate every
+    # later call (the compensation writes) to the real os.replace.
+    real_replace = os.replace
+    fault = {"armed": False, "attempts": 0}
+
+    def exhausted_manifest_replace(src_path: Any, dst_path: Any) -> Any:
+        if (
+            os.path.basename(str(dst_path)) == "rollback-manifest.json"
+            and not fault["armed"]
+        ):
+            try:
+                payload = json.loads(Path(src_path).read_text("utf-8"))
+            except (OSError, ValueError):
+                payload = {}
+            states: dict[str, Any] = {}
+            for entry in payload.get("created_files") or []:
+                if isinstance(entry, dict) and "kind" in entry:
+                    states[entry["kind"]] = entry.get("publication_state")
+            if states.get("attachment") == "published" and states.get("journal") == "published":
+                fault["armed"] = True
+        if fault["armed"] and fault["attempts"] < 3:
+            fault["attempts"] += 1
+            err = OSError("synthetic Windows transient sharing violation (exhausted)")
+            err.winerror = 32
+            raise err
+        return real_replace(src_path, dst_path)
+
+    monkeypatch.setattr(runner.os, "replace", exhausted_manifest_replace)
+    monkeypatch.setattr(
+        runner, "_is_windows_transient_replace_error", _transient_when_winerror_5_32
+    )
+
+    # The exhausted retry surfaces the existing failure envelope — NOT a bare
+    # exception — with retryable=True (full compensation succeeded).
+    result = review.run_batch(parent_id, data_dir, source_root=str(src))
+    assert not result["success"], result
+    assert result["error"]["code"] == "IMPORT_WRITE_FAILURE"
+    assert result["error"]["retryable"] is True
+    # exactly three transient fault attempts on the one manifest replace
+    assert fault["armed"] is True
+    assert fault["attempts"] == 3
+
+    # No half-product: both the already-published attachment and journal were
+    # compensated away to zero.
+    assert not (data_dir / att_rel).exists()
+    assert not (data_dir / journal_rel).exists()
+
+    # Parent is cleanly retryable: proposal back to confirmed, no active child,
+    # no recovery required.
+    parent = _ledger(data_dir)["jobs"][parent_id]
+    assert parent["proposal_states"][pid] == "confirmed"
+    assert parent["active_child_id"] is None
+    assert parent["recovery_required"] is False
+
+    # ONE durable recovery truth: the child job and its rollback manifest agree
+    # on rolled_back (no diverged partially_committed child behind a rolled_back
+    # manifest).
+    child_id = next(
+        jid for jid, j in _ledger(data_dir)["jobs"].items()
+        if j.get("parent_review_job_id") == parent_id
+    )
+    assert _ledger(data_dir)["jobs"][child_id]["state"] == "rolled_back"
+    assert _manifest(data_dir, child_id)["state"] == "rolled_back"
+
+    # No atomic-write temp or staging half-file anywhere under the data dir.
+    _no_staging_leftovers(data_dir)
+    _no_temp_replace_leftovers(data_dir)
+
+    # Source photo is byte-for-byte untouched: bytes / hash / size / mtime_ns.
+    assert source.read_bytes() == source_bytes
+    assert hashlib.sha256(source.read_bytes()).hexdigest() == source_sha
+    assert source.stat().st_size == source_size
+    assert source.stat().st_mtime_ns == source_mtime
 
 
 @pytest.mark.parametrize("artifact_kind", ["attachment", "journal"])

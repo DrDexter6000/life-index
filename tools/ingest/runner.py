@@ -14,6 +14,7 @@ import json
 import os
 import shutil
 import tempfile
+import time
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
@@ -1484,6 +1485,63 @@ def _write_manifest(path: Path, manifest: dict[str, Any]) -> None:
     _atomic_write_json(path, manifest)
 
 
+# Windows transient os.replace errors worth one bounded retry. WinError 5
+# (ERROR_ACCESS_DENIED) and 32 (ERROR_SHARING_VIOLATION) can race a
+# same-directory atomic replace on Windows and typically clear within
+# milliseconds, so a tiny bounded retry absorbs them internally instead of
+# surfacing a retryable write failure an operator would otherwise retry by
+# hand. Every other failure does not qualify for this bounded retry and
+# propagates unchanged.
+_WINDOWS_TRANSIENT_REPLACE_WINERRORS = (5, 32)
+_REPLACE_MAX_ATTEMPTS = 3
+# Backoff slept BETWEEN attempts, never after the final attempt. Two sleeps
+# span the three attempts: 0.01s after the first, 0.05s after the second.
+_REPLACE_RETRY_BACKOFFS = (0.01, 0.05)
+
+
+def _is_windows_transient_replace_error(exc: BaseException) -> bool:
+    """True only for the Windows transient share/access os.replace errors.
+
+    Requires BOTH ``os.name == "nt"`` AND ``winerror`` in ``{5, 32}``. Any
+    other OSError (any other winerror, or any error off-Windows — even
+    ``winerror`` 32) and any non-OSError is False, so those do not qualify for
+    this bounded retry and propagate after a single attempt.
+    """
+    return (
+        isinstance(exc, OSError)
+        and os.name == "nt"
+        and getattr(exc, "winerror", None) in _WINDOWS_TRANSIENT_REPLACE_WINERRORS
+    )
+
+
+def _atomic_replace(temp_path: Path, path: Path) -> None:
+    """``os.replace`` with a bounded retry for Windows transient share/access locks.
+
+    Only an ``os.replace`` OSError that is a Windows transient winerror 5/32 is
+    retried (up to :data:`_REPLACE_MAX_ATTEMPTS` attempts with the
+    :data:`_REPLACE_RETRY_BACKOFFS` backoffs). Every other failure — any
+    winerror outside ``{5, 32}``, any non-Windows failure, or anything raised
+    by mkdir / mkstemp / JSON write / file or directory fsync / containment /
+    path validation outside this call — does not qualify for this bounded
+    retry and propagates unchanged on the first attempt. On exhaustion the
+    last ``OSError`` is re-raised as-is so the caller's existing compensation
+    path runs against the unchanged failure semantics.
+    """
+    last_exc: OSError | None = None
+    for attempt in range(_REPLACE_MAX_ATTEMPTS):
+        try:
+            os.replace(temp_path, path)
+            return
+        except OSError as exc:
+            if not _is_windows_transient_replace_error(exc):
+                raise
+            last_exc = exc
+            if attempt + 1 < _REPLACE_MAX_ATTEMPTS:
+                time.sleep(_REPLACE_RETRY_BACKOFFS[attempt])
+    assert last_exc is not None  # loop ran >= 1 iteration; invariant for type checkers
+    raise last_exc
+
+
 def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     """Write JSON through a same-directory temp file, fsync, and atomic replace."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1494,7 +1552,7 @@ def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
             json.dump(payload, handle, ensure_ascii=False, indent=2)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temp_path, path)
+        _atomic_replace(temp_path, path)
         try:
             directory_fd = os.open(path.parent, os.O_RDONLY)
         except OSError:

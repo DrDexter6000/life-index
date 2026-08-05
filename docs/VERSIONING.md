@@ -222,6 +222,7 @@ Known PyPI-used versions:
 1.5.5
 1.6.0
 1.6.5
+1.6.1
 ```
 
 These versions are not available for future PyPI publication. In particular,

@@ -67,6 +67,12 @@ current `--source-root` and revalidate the same root identity.
   rollback reconcile crash windows idempotently. A plan/ledger mismatch is
   fail-closed: report `recovery_required` and `authority_status`, and do not
   blindly retry run.
+- On Windows, 1.6.2+ absorbs a transient share/access lock on the
+  rollback-manifest atomic replace internally (`winerror` 5/32, bounded retry),
+  so a historical photo `run` succeeds on the first attempt. Do not blindly
+  outer-retry a `run` that has **already returned** a failure — keep acting on
+  the envelope's `recovery_required` / `retryable`; a genuine failure stays
+  zero-half-product and never mutates the source photo.
 
 ## Child rollback and restart truth
 

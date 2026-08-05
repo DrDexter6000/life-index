@@ -106,6 +106,10 @@ triggers:
   内部 rollback origin marker 不进入 status/GUI、不形成第二 state/store，marker-only 更新不 bump。
 - `status/review` 不暴露 source/manifest/journal 路径；持久化 scan warning 只投影安全 allowlist。
   `recovery_required` 或 plan/ledger mismatch 要如实报告，不要盲目重试 run。
+- 1.6.2+ 在 Windows 上内部吸收 rollback-manifest 原子替换的瞬时 share/access lock
+  （`winerror` 5/32，有界重试），历史照片首跑即成功；因此不要对**已返回**的
+  `IMPORT_WRITE_FAILURE` 盲目外层重试——仍按 envelope 的 `recovery_required` / `retryable`
+  行事，真实失败保持零半成品、源照片不变。
 **安装 / 首次验证 / 故障恢复指针**：
 - 首次安装、upgrade、repair、fresh install 判断 → 读 `AGENT_ONBOARDING.md`，运行 `bootstrap --json`，按 `execution_policy` / `needs_human` / `safe_next_steps` 执行
 - `ModuleNotFoundError`、venv 损坏、`health` 异常、Windows 首次写入转义问题 → 先回到 `bootstrap --json` 输出，不自行扩写 repair 决策树
