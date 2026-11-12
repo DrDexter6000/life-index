@@ -117,8 +117,8 @@ User <-> Addon presentation
 
 | Candidate | Decision |
 |---|---|
-| Already covered by the closed C1-C7 Core authority | Consume the canonical Core capability; do not duplicate it in the Addon. |
-| Satisfies every already-ratified admission constraint and belongs within C1-C7, or receives new Human Owner substantive approval for the required authority expansion | Propose Core admission through the existing RFC/substantive-gate process; determinism and all non-waivable constraints still apply. |
+| Already covered by the closed C1-C8 Core authority | Consume the canonical Core capability; do not duplicate it in the Addon. |
+| Satisfies every already-ratified admission constraint and belongs within C1-C8, or receives new Human Owner substantive approval for the required authority expansion | Propose Core admission through the existing RFC/substantive-gate process; determinism and all non-waivable constraints still apply. |
 | Does not satisfy those conditions | Keep it Addon-local and non-canonical. |
 | Performs semantic understanding, orchestration, interpretation, or synthesis | It is not a deterministic helper; route it through the shared Host Agent Handoff and Host Agent + Skills. |
 
@@ -172,7 +172,7 @@ surface exists.
 | write | Core | C1, C2 |
 
 This table is the exhaustive current 31-route mapping under the Charter-owned
-C1–C7 and stable non-Core classification rules in `CHARTER.md §1.10`.
+C1–C8 and stable non-Core classification rules in `CHARTER.md §1.10`.
 It maps current routes only; it does not own or duplicate those stable rules.
 <!-- PLATFORM-SSOT:PUBLIC-COMMAND-CLASSIFICATION:END -->
 
@@ -240,6 +240,8 @@ review and adjudication.
 
 `generate_index` 生成的文件中，叙事区域留 placeholder。`generate_report` 是 Agent 编排任务，不是 Python CLI 工具。此划分对应 CHARTER §1.5 的「确定性 vs 智能」硬线。
 
+日、月、年整理稿是叙事层的权威载体：由 Host Agent 撰写并署名，Core 原样保存、核对结构、列出所覆盖的碎片并保留版本（CHARTER §1.10 C1 范围说明）。待实现。
+
 ### 1.3 渐进式元数据披露
 
 .life-index/index-b/INDEX.md < .life-index/index-b/Journals/YYYY/index.md < .life-index/index-b/Journals/YYYY/MM/index.md
@@ -261,7 +263,7 @@ frontmatter；`project`、`people`、`location` 与 `tag` 可用用户数据目�
 降级 no-op 并报告诊断。Index B manifest 记录规范化后的 alias-map hash，alias-map 变化会让
 相关 scope stale，以便重建后的导航文档与 runtime discover/navigate 保持一致。
 
-L2 仍不得调用 LLM，也不得实现或存储 ADR-026 所列 persona interpretation、emotion interpretation、relationship judgment、narrative synthesis、digital letters、creative emulation、cross-journal LLM reasoning 等解释性能力或结论。L3/L4 模块若消费 L2 输出做解释或创作，必须保留证据、限制与 provenance。
+L2 仍不得调用 LLM，也不得实现或存储 ADR-026 所列 persona interpretation、emotion interpretation、relationship judgment、narrative synthesis、digital letters、creative emulation、cross-journal LLM reasoning 等解释性能力或结论。L3/L4 模块若消费 L2 输出做解释或创作，必须保留证据、限制与 provenance。本条禁止的是 Core 自己形成解读，或把解读当作自己的结论保存。原样保存 Host Agent 提交并署名的整理稿（CHARTER §1.10 C1 范围说明）不在此列；整理稿在任何消费面上都不得被当作用户本人的原文。
 
 ### 1.5 模块-基础层契约边界（CHARTER §1.10 实现镜像）
 
@@ -456,12 +458,14 @@ contributors no relicensing authority.
 ~/Documents/Life-Index/           # 用户数据目录
 ├── .life-index/index-b/          # canonical deterministic navigation docs
 ├── INDEX.md                      # legacy generated root index
+├── alfred.md                     # 档案馆管理员 Alfred 的档案（C8，待实现）
 ├── Journals/                     # 日志文件存储
 │   └── YYYY/                     # 按年分层
 │       ├── index_YYYY.md         # 年度索引
 │       └── MM/                   # 按月分层
 │           ├── index_YYYY-MM.md  # 月度索引
-│           └── life-index_*.md   # 日志原文
+│           ├── life-index_*.md   # 日志原文
+│           └── digest_*.md       # 日/月/年整理稿（待实现；命名以实现为准）
 ├── by-topic/                     # legacy compatibility indexes
 │   ├── 主题_work.md
 │   ├── 项目_Life-Index.md
@@ -472,6 +476,16 @@ contributors no relicensing authority.
 ```
 
 > 数据隔离（用户数据 vs 项目代码物理隔离）已提升为宪章 §1.1 不变量，见 CHARTER.md。
+
+### 4.1 C8 文档清单（用户拥有的常设文档）
+
+CHARTER §1.10 C8 管辖的文档逐份列在这里；新增一份须经 §5.2 实质门槛。
+
+| 文件 | 内容 | 状态 |
+|---|---|---|
+| `alfred.md`（用户数据目录根） | 档案馆管理员 Alfred 的档案：人格设定、长期吩咐、待办；每条引用用户原话并指回所在碎片 | 待实现 |
+
+Alfred 是档案馆管理员这个角色的名字。用户可以为它另设人格与称呼，文件名不变。
 
 ---
 

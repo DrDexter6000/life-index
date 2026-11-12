@@ -1,12 +1,12 @@
 # Life Index Charter | 生命索引宪章
 
-> **版本**：v1.12.0
-> **批准日期**：2026-07-21
+> **版本**：v1.13.0
+> **批准日期**：2026-11-12
 > **批准人**：Life Index Developer
 > **下次评审**：2026-07-23（每季度一次）
-> **修订次数**：12
-> **最近修订**：2026-07-21 — Owner substantively approved the Structured Input Authority invariant
-> **此前修订**：2026-07-11 — Owner substantively approved the future advanced Addon dual-channel boundary（D0 amendment）；2026-06-19 — 新增 APEX 第 6 点「评估即咨询，非闸门（Evaluation is Advisory, not a Gate）」，收紧 APEX §1/§5（RFC-2026-06-19-evaluation-advisory-not-gate；owner 亲签）；2026-06-18 — 新增「北极星（Agent-Native 最高不变量 · APEX）」最高实质原则，收编旧 §1.9 中"Life Index 自建 L3 智能模块"措辞（RFC-2026-06-18-agent-native-north-star-apex；owner 亲签）；2026-06-14 — 新增 §1.12 运行时/平台可移植性（Runtime & Platform Portability）+ §4.1 镜像反模式（RFC-2026-06-14-runtime-platform-portability）；2026-05-23 — 新增 §1.11 Recall-First Retrieval Truthfulness Model + §3.2 amendment note（RFC-2026-05-23-l2-recall-first-truthfulness-model；§1.11 加入 §5.3 不可弱化清单；起源于 v1.2.0 cycle2 absorption 暴露的 semantic noise / truncation 两个 loophole）；2026-05-20 — §5 修订流程改为 substantive gate（废除 24h cooldown 与三方评审覆盖机制；过程记录已归档到本地私有治理层）
+> **修订次数**：13
+> **最近修订**：2026-11-12 — Owner substantively approved journal kinds (fragment / digest), user-owned standing documents, and Core admission domain C8
+> **此前修订**：2026-07-21 — Owner substantively approved the Structured Input Authority invariant；2026-07-11 — Owner substantively approved the future advanced Addon dual-channel boundary（D0 amendment）；2026-06-19 — 新增 APEX 第 6 点「评估即咨询，非闸门（Evaluation is Advisory, not a Gate）」，收紧 APEX §1/§5（RFC-2026-06-19-evaluation-advisory-not-gate；owner 亲签）；2026-06-18 — 新增「北极星（Agent-Native 最高不变量 · APEX）」最高实质原则，收编旧 §1.9 中"Life Index 自建 L3 智能模块"措辞（RFC-2026-06-18-agent-native-north-star-apex；owner 亲签）；2026-06-14 — 新增 §1.12 运行时/平台可移植性（Runtime & Platform Portability）+ §4.1 镜像反模式（RFC-2026-06-14-runtime-platform-portability）；2026-05-23 — 新增 §1.11 Recall-First Retrieval Truthfulness Model + §3.2 amendment note（RFC-2026-05-23-l2-recall-first-truthfulness-model；§1.11 加入 §5.3 不可弱化清单；起源于 v1.2.0 cycle2 absorption 暴露的 semantic noise / truncation 两个 loophole）；2026-05-20 — §5 修订流程改为 substantive gate（废除 24h cooldown 与三方评审覆盖机制；过程记录已归档到本地私有治理层）
 
 ---
 
@@ -79,7 +79,8 @@ Life Index 不是一个 side project。它承载着**一位父亲写给女儿的
 
 用户数据的**每一字节**必须以**人类可读、工具无关**的格式存储：
 
-- **日志正文**：Markdown
+- **日志正文**：Markdown。日志有两个种类，在文件内以 `kind` 标明：碎片（用户本人的原文；既有日志均为碎片）与整理稿（由 Host Agent 撰写并署名的日/月/年叙事）
+- **用户拥有的常设文档**（例如档案馆管理员 Alfred 的档案：人格设定、长期吩咐与待办）：Markdown
 - **结构化元数据**：YAML Frontmatter
 - **附件**：原始二进制格式（图片/音频/视频），不得转码到私有格式
 - **索引文件**（`INDEX.md`、`index_YYYY-MM.md`、`by-topic/*.md`）：Markdown
@@ -142,7 +143,9 @@ Life Index 对"何时用确定性代码、何时用 LLM"有**明确不可混淆�
 | 关键词搜索（FTS5） | ✅ | ❌ |
 | Entity Graph 解析与关键词排序 | ✅ | ❌ |
 | Schema 迁移（字段补齐） | ✅ | 补齐值允许 |
-| 年度/月度回顾叙事 | ❌ | ✅ |
+| 日/月/年整理稿与回顾叙事的撰写 | ❌ | ✅（由 Host Agent 完成） |
+| 整理稿的保存、覆盖清单、版本 | ✅ | ❌ |
+| 用户拥有的常设文档的读写与引用核对 | ✅ | ❌ |
 | Query 改写、意图拆解 | ❌ | ✅ |
 | 搜索结果二次筛选与摘要 | ❌ | ✅ |
 | 实体关系推理 | 基础推理必须确定 | 复杂语义允许 |
@@ -248,8 +251,9 @@ Life Index CLI 的职责是为 Agent 生态提供**确定性、稳定、可组�
 1. **模块消费稳定契约**：模块默认通过稳定 CLI 契约消费基础能力。稳定面 = **JSON shape + 字段语义 + 错误码 + 关键性能 SLO**，四者构成模块可信赖的契约。
 2. **模块状态归属分离**：
    - **数据状态**（journal、frontmatter、entity_graph、metrics）仍归 L1/L2，§2.2 不变；
+   - **用户拥有的常设文档**：由用户写下并拥有、需要跨 runtime 与模块更替而存续的模块设定与长期记忆（例如档案馆管理员 Alfred 的人格设定、长期吩咐与待办）属于用户数据，归 L1/L2。它必须是纯文本、用户可读可改，且只经 Core CLI 读写。它不是过程状态；
    - **过程状态**（run_id 索引的中间产物：cursor、checkpoint、迭代中间结论、模块本地缓存）允许存放在模块自己的物理目录中，仍受 §1.1 数据主权与 §1.9 Agent-Native 模块原则约束（不外发、可清除、不进入 L1 真相源）。
-3. **模块本地目录**：模块-local 状态应存放在模块自己的安装目录下（例如 `.openclaw/workspace/skills/life-index/models/{module_name}/`，或等价 module-owned 子目录），**不得**写入 `~/Documents/Life-Index` 用户数据目录。
+3. **模块本地目录**：模块-local **过程**状态应存放在模块自己的安装目录下（例如 `.openclaw/workspace/skills/life-index/models/{module_name}/`，或等价 module-owned 子目录），**不得**写入 `~/Documents/Life-Index` 用户数据目录。用户拥有的常设文档按第 2 款由 Core 写入 L1；模块仍不得自行在用户数据目录下开辟可写路径。
 4. **热插拔是契约解耦，不是动态加载**：「热插拔」指模块通过 CLI JSON-in/JSON-out 或 Python import (`tools.*` 公开 API) 调用基础层，物理上可以是独立仓库、独立目录、独立 Python 包；**不引入** plugin loader / dynamic discovery / entry-point 注册机制。
 5. **基元升格回流流程**：当**多个模块**在生产路径上重复需要同一项**确定性、跨模块复用、低 LLM 含量、对 50 年数据语义有跨时间稳定性**的基元时，或当开发者/用户**明确判定**某项基元具备跨模块长期价值时，必须通过 RFC 流程将其升格为 L2 CLI 原语。不满足「确定性 ∧ 低 LLM ∧ 长期语义稳定」且未获明确 developer/user determination → 留在模块本地。CLI 的扩张必须以 RFC 与 substantive gate 为代价；模块的扩张以模块自己为代价。
 
@@ -265,6 +269,7 @@ Life Index CLI 的职责是为 Agent 生态提供**确定性、稳定、可组�
 - ✅ 模块围绕 CLI 输出做编排、叙事、人格化、创作（保留证据、限制与 provenance）
 - ✅ 模块通过稳定 CLI JSON 契约消费 L2 基元
 - ✅ 多个模块共同需要的确定性基元通过 RFC 升格为 CLI L2 工具
+- ✅ 模块通过 Core CLI 读写用户拥有的常设文档
 
 **与 §2.2 的关系**：
 §2.2 的「L3 必须是无状态的编排层」经本条解释为「L3 不得持有长期用户数据真相源」；模块-local 过程状态（非用户数据）允许存在，但不得替代 L1/L2 的数据职责。
@@ -272,7 +277,7 @@ Life Index CLI 的职责是为 Agent 生态提供**确定性、稳定、可组�
 **与 §1.9 的关系**：
 §1.9 管「Core 不持 LLM，provider 与智能归 Host Agent + Skill」，§1.10 管「模块默认不修改基础层」；二者构成 agent-native 模块的两条不变量。
 
-Future advanced Addons are dual-channel consumers: deterministic data, view, and atomic operations use the canonical Core Capability Contract, while semantic understanding, multi-step retrieval or orchestration, interpretation, and synthesis use the shared Host Agent Handoff and Host Agent + Life Index Skill/Domain Skill. An Addon is presentation + Domain Skill + an optional deterministic helper; it cannot own an LLM/provider/runtime or bypass Core to read or write L1. An optional deterministic helper enters Core only under the already-ratified closed C1-C7 admission model or new Human Owner substantive approval; otherwise it remains Addon-local.
+Future advanced Addons are dual-channel consumers: deterministic data, view, and atomic operations use the canonical Core Capability Contract, while semantic understanding, multi-step retrieval or orchestration, interpretation, and synthesis use the shared Host Agent Handoff and Host Agent + Life Index Skill/Domain Skill. An Addon is presentation + Domain Skill + an optional deterministic helper; it cannot own an LLM/provider/runtime or bypass Core to read or write L1. An optional deterministic helper enters Core only under the already-ratified closed C1-C8 admission model or new Human Owner substantive approval; otherwise it remains Addon-local.
 
 <!-- PLATFORM-SSOT:CORE-ADMISSION-DOMAINS:START -->
 #### Active §1.10 closed Core admission domains
@@ -297,12 +302,30 @@ remaining #163 work are pending; A3/A4 does not claim A5, #163, or D1 complete.
 | C5 | Entity graph |
 | C6 | Integrity, health, backup, restore, and recovery |
 | C7 | Deterministic contract and eval verification |
+| C8 | User-owned standing documents |
 
-The C1–C7 identifiers are additive labels; they do not rename or weaken the
-exact approved domain names. These seven domains are active Charter authority.
+The C1–C8 identifiers are additive labels; they do not rename or weaken the
+exact approved domain names. These eight domains are active Charter authority.
 CHARTER.md §1.10 is the sole list authority; lower-level documents must reference
-C1–C7 and must not duplicate domain descriptions. The enumeration is closed.
+C1–C8 and must not duplicate domain descriptions. The enumeration is closed.
 Every added Core domain requires new Human Owner substantive approval.
+
+**Scope notes**:
+
+- C1 journals have two in-file kinds, marked by `kind`. A *fragment* is the
+  user's own received words together with recorded facts; every pre-existing
+  journal is a fragment. A *digest* is a Host-Agent-authored, attributed
+  day/month/year narrative. Core stores a digest verbatim, validates its
+  structure, lists the fragments it covers, and keeps its versions. Core never
+  forms, edits, or owns the interpretation a digest contains, and a digest is
+  never treated as the user's own words.
+- C8 covers plain-text documents that the user owns and that must outlive any
+  runtime or module. Core reads and writes them, verifies that quoted user words
+  exist in the cited fragment, and keeps their versions; it performs no
+  interpretation. The documents under C8 are enumerated in
+  `docs/ARCHITECTURE.md`; adding one requires the §5.2 substantive gate.
+- These notes assign ownership. They do not claim that fragments, digests, or
+  any C8 document are implemented.
 
 Human Owner approval may replace only second-production-consumer evidence. It
 cannot waive determinism, low/zero LLM content, cross-time semantic stability,
@@ -333,7 +356,7 @@ RFC/substantive-gate evidence, or any other current Charter admission constraint
   grandfathering, Non-Core status, compatibility exception, or Core-admission
   precedent.
 
-`CHARTER.md §1.10` is the sole authority for the stable C1–C7 and non-Core
+`CHARTER.md §1.10` is the sole authority for the stable C1–C8 and non-Core
 classification rules and the sole named compatibility exception.
 `docs/ARCHITECTURE.md` owns only the exhaustive current 31-route mapping under
 those rules; it does not own or duplicate them.
@@ -361,6 +384,44 @@ those rules; it does not own or duplicate them.
 
 This ratification lands D0 Charter authority only. It does not implement #163,
 #162, #165, or #164 and does not change current runtime or data contracts.
+
+**Substantive-gate ratification record (C8 and journal kinds)**:
+
+- **Current rule**: the closed admission list held exactly C1–C7; module state
+  was either L1/L2 data state or module-local process state; journals had one
+  kind.
+- **Target rule**: C8 "User-owned standing documents" is added; user-owned
+  standing documents are L1/L2 user data written only through Core; C1 journals
+  have two kinds, fragment and digest, and a digest is Host-Agent-authored,
+  attributed, stored verbatim by Core, and never the user's own words.
+- **Triggering real scenario and evidence**: a user speaks short remarks to a
+  host agent and each must be saved without the full-journal ceremony that
+  `SKILL.md` requires for every record; an archive steward's persona and the
+  user's standing instructions to it must survive a change of harness or model.
+  Before this amendment §1.10 forbade module state in the user data directory
+  and the closed list had no domain for a user-owned standing document.
+- **Executed deterministic verification**: `tests/contract` in full and
+  `tests/sanity/test_round17_baselines.py` passed on the amended documents; the
+  amended expectations in `tests/contract/test_platform_ssot_absorption.py` and
+  `tests/contract/test_core_command_classification.py` were first confirmed to
+  fail against the unamended documents.
+- **Rationale**: record the unit users actually produce, give the narrative
+  layer an owner, and keep user-owned module settings with the user's data
+  across runtime changes without letting modules write into the data directory.
+- **Opposition addressed**: (1) a closed list that grows may lose meaning, so
+  the addition keeps every non-waivable admission constraint and C8 documents
+  are enumerated one by one; (2) storing agent-written narrative could read as
+  Core storing interpretation, so a digest is a distinct attributed kind that
+  Core only stores, validates, and versions.
+- **Impact**: §1.2, §1.5, §1.10, a clarifying note in §4.2, and the
+  architecture/CI pointers. No runtime, data-contract, or public-route change;
+  the 31-route mapping is unchanged.
+- **Rollback**: reversal or weakening requires a new §5.2 substantive amendment.
+- **Human Owner ack**: COMPLETE — 2026-11-12; the Human Owner approved
+  amendments A, B, and C, the names, and the §4.2 clarifying note in writing
+  during the drafting session, and instructed the drafting agent to enter this
+  ack on the Owner's behalf. The decision is the Owner's own; only the
+  transcription was done by the agent.
 <!-- PLATFORM-SSOT:CORE-ADMISSION-DOMAINS:END -->
 
 ### §1.11 召回优先检索真实模型（Recall-First Retrieval Truthfulness Model）
@@ -632,7 +693,7 @@ Presentation（呈现层）：按调用方需求截断、格式化
 
 - ❌ 用户日志内容以非 Markdown 格式存储
 - ❌ Frontmatter 核心字段（`title`、`date`、`content`）语义变更
-- ❌ `~/Documents/Life-Index/` 目录顶层结构变更
+- ❌ `~/Documents/Life-Index/` 目录顶层结构变更（经 §5.2 实质门槛列入 §1.10 C8 清单的常设文档属于增补，不改变既有结构，不在此列）
 - ❌ 引入"无法从源文件重建"的机器索引
 - ❌ 在用户数据目录外创建第二个持久化写入点
 
@@ -789,4 +850,5 @@ CHARTER.md（本文件，最高权威）
 *修订 10：2026-07-10 — Owner 批准 C1–C7 闭合 Core 准入域，取代 §1.9 Core provider fallback，并完成 §5.2 D0 ratification record*
 *修订 11：2026-07-11 — Owner 批准未来 advanced Addon 双通道边界；本修订仅落宪法级架构指导，不授权 Addon 实现*
 *修订 12：2026-07-21 — Owner 批准 Structured Input Authority；结构化地点/天气为权威，正文 marker 行保持普通原文*
+*修订 13：2026-11-12 — Owner 批准日志分碎片与整理稿两个种类、用户拥有的常设文档属于用户数据、Core 准入域新增 C8；本修订仅落条文，不授权任何实现*
 *下一次强制性评审：2026-07-23*
