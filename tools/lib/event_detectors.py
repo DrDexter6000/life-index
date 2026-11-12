@@ -6,10 +6,11 @@ import os
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import cast
 
 from tools.lib.events import Event, EventSeverity, register_detector
 from tools.lib.frontmatter import parse_frontmatter
-from tools.lib.journal_files import has_journal_files, iter_journal_files
+from tools.lib.journal_files import JournalFileStat, scan_journal_files
 
 logger = __import__("logging").getLogger(__name__)
 
@@ -22,6 +23,32 @@ DERIVED_ENTITY_PROFILES_NOTE = (
 DERIVED_INDEX_NOTE = "Writes derived index artifacts only; source journals are not modified."
 ENTITY_AUDIT_READ_NOTE = "Read-only entity audit/review/check command."
 
+_JOURNAL_FILE_STAT_SCAN_KEY = "_journal_file_stat_scan"
+
+
+def _fragment_stats(context: dict) -> list[JournalFileStat]:
+    """Return this call's fragment stat scan, computing it on first use.
+
+    ``EventRegistry.detect_all`` hands every detector the same per-call context
+    copy, so the Journals tree is walked at most once per detection call and
+    the memoized scan dies with the call.
+    """
+    cached = context.get(_JOURNAL_FILE_STAT_SCAN_KEY)
+    if cached is not None:
+        return cast(list[JournalFileStat], cached)
+    journals_dir = context.get("journals_dir")
+    stats = scan_journal_files(Path(journals_dir)) if journals_dir else []
+    context[_JOURNAL_FILE_STAT_SCAN_KEY] = stats
+    return stats
+
+
+def _has_fragment_under(context: dict, directory: Path) -> bool:
+    """Whether this call's scan holds a fragment at or below directory."""
+    prefix = os.path.normcase(str(directory)) + os.sep
+    return any(
+        os.path.normcase(str(item.path)).startswith(prefix) for item in _fragment_stats(context)
+    )
+
 
 def check_no_journal_streak(context: dict) -> list[Event]:
     """Detect consecutive days without a journal entry."""
@@ -33,14 +60,7 @@ def check_no_journal_streak(context: dict) -> list[Event]:
         return []
 
     # Find the most recent fragment journal by mtime
-    newest_mtime = 0.0
-    for md_file in iter_journal_files(journals_dir):
-        try:
-            mtime = os.path.getmtime(md_file)
-            if mtime > newest_mtime:
-                newest_mtime = mtime
-        except OSError:
-            continue
+    newest_mtime = max((item.mtime for item in _fragment_stats(context)), default=0.0)
 
     if newest_mtime == 0.0:
         return []
@@ -86,7 +106,7 @@ def check_monthly_review_due(context: dict) -> list[Event]:
             continue
 
         # Check if there are any journal (fragment) files in this month
-        if not has_journal_files(month_dir):
+        if not _has_fragment_under(context, month_dir):
             continue
 
         month_str = f"{year}-{month:02d}"
@@ -204,7 +224,8 @@ def check_entity_profiles_stale(context: dict) -> list[Event]:
 def check_schema_migration_available(context: dict) -> list[Event]:
     """Detect journals with old schema version (lightweight check).
 
-    Only checks the first few files in recent month dirs — avoids full scan.
+    Checks only the newest ten fragment files from this call's shared scan —
+    avoids reading the whole archive.
     """
     journals_dir = context.get("journals_dir")
     if not journals_dir:
@@ -215,13 +236,10 @@ def check_schema_migration_available(context: dict) -> list[Event]:
 
     from tools.lib.schema import SCHEMA_VERSION
 
-    # Lightweight: check first 5 files in up to 3 most recent month dirs
+    # Lightweight: check the newest ten fragment files from the shared scan
     count = 0
-    checked = 0
-    for md_file in reversed(list(iter_journal_files(journals_dir))):
-        if checked >= 10:
-            break
-        checked += 1
+    for journal_stat in reversed(_fragment_stats(context)[-10:]):
+        md_file = journal_stat.path
         try:
             content = md_file.read_text(encoding="utf-8")
             # Quick frontmatter scan — avoid full YAML parse
@@ -281,13 +299,7 @@ def check_index_stale(context: dict) -> list[Event]:
 
     newest_journal_mtime = 0.0
     if journals_dir.exists():
-        for md_file in iter_journal_files(journals_dir):
-            try:
-                mtime = os.path.getmtime(md_file)
-                if mtime > newest_journal_mtime:
-                    newest_journal_mtime = mtime
-            except OSError:
-                continue
+        newest_journal_mtime = max((item.mtime for item in _fragment_stats(context)), default=0.0)
 
     if newest_journal_mtime > index_mtime:
         return [

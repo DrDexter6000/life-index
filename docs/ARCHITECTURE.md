@@ -264,6 +264,9 @@ frontmatter；`project`、`people`、`location` 与 `tag` 可用用户数据目�
 不做语义推断、不调用 LLM、不猜测未登记同义词；歧义 label fail-closed，图谱加载失败则
 降级 no-op 并报告诊断。Index B manifest 记录规范化后的 alias-map hash，alias-map 变化会让
 相关 scope stale，以便重建后的导航文档与 runtime discover/navigate 保持一致。
+同一进程内 `load_entity_graph(path)` 以 resolved path + 文件 `(mtime_ns, size)` 记忆已验证的
+解析结果；文件变化或消失即重新解析，返回给调用方的是独立深拷贝，调用方原地修改不会污染
+memo。`save_entity_graph` 写入后同步更新该 memo。
 
 L2 仍不得调用 LLM，也不得实现或存储 ADR-026 所列 persona interpretation、emotion interpretation、relationship judgment、narrative synthesis、digital letters、creative emulation、cross-journal LLM reasoning 等解释性能力或结论。L3/L4 模块若消费 L2 输出做解释或创作，必须保留证据、限制与 provenance。本条禁止的是 Core 自己形成解读，或把解读当作自己的结论保存。原样保存 Host Agent 提交并署名的整理稿（CHARTER §1.10 C1 范围说明）不在此列；整理稿在任何消费面上都不得被当作用户本人的原文。
 
@@ -526,6 +529,10 @@ Alfred 是档案馆管理员这个角色的名字。用户可以为它另设人�
 - 在 CLI 响应中增加 `events` 字段（零 cron、零进程、零外部依赖）
 - 5 个内置事件：`no_journal_streak`、`monthly_review_due`、`entity_audit_due`、`schema_migration_available`、`index_stale`
 - 检测总耗时 < 50ms（只做文件 stat，不读内容）
+- 一次 `detect_events` 调用内，Journals 树最多遍历一次：首个需要 fragment stat 的
+  detector 通过 `tools/lib/journal_files.py` 的 `scan_journal_files()` 取得扫描结果，
+  按调用 context 共享给后续 detector；扫描不进入模块级缓存，调用结束即丢弃。
+  `schema_migration_available` 从同一次扫描取最新十个 fragment。
 
 ### 5.3 Entity 质量审计（Round 6）
 
@@ -584,9 +591,11 @@ Metadata cache 的新鲜度不再依赖全库内容哈希：
   `entity_graph.yaml` 变化（sidecar 的 `source_hash` 现在只是该文件的哈希；write 时的
   entity 候选晋升会改写 graph，因此这类 write 后的首次搜索会做一次全量重建）。
 - **Reconcile**（`ensure_cache_version_current()` → `reconcile_cache_with_files()`）：
-  非重建情况下，搜索路径以 `tools/lib/journal_files.py` 枚举 fragment 文件（stat-only），
-  逐行比较 `(mtime, size)`——与 `is_cache_valid` 同一判据——只解析新增/变更文件
-  （复用 `parse_and_cache_journal`），并删除文件已消失的行。未变更日志的内容永不被读取。
+  非重建情况下，搜索路径以 `tools/lib/journal_files.py` 的 `scan_journal_files()` 对 fragment
+  文件做**单次**目录扫描（stat 事实来自 `os.scandir` 的 `DirEntry.stat()`，在 Windows 上
+  不产生额外系统调用），逐行比较 `(mtime, size)`——与 `is_cache_valid` 同一判据——只解析
+  新增/变更文件（复用 `parse_and_cache_journal`），并删除文件已消失的行。未变更日志的内容
+  永不被读取；`_scan_row_file_freshness` 的 dry-run 使用同一次扫描实现。
 - **`health --cache-audit` / `run_cache_audit()`**：以同一行级对比的 dry-run 形式输出
   `valid / stale / incompatible / missing` 与行级计数，不写任何文件。
 - **已知边界（接受）**：工具外修改若 mtime 与大小均不变，则要到

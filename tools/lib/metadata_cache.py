@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from .paths import get_cache_dir, get_metadata_db_path, get_journals_dir, get_user_data_dir
 from .frontmatter import parse_journal_file
-from .journal_files import iter_journal_files, iter_month_journal_files
+from .journal_files import iter_month_journal_files, scan_journal_files
 from .path_contract import build_journal_path_fields
 from .chinese_tokenizer import count_cjk_words
 
@@ -819,11 +819,36 @@ def _row_signature_map(conn: sqlite3.Connection) -> Dict[str, Tuple[float, int]]
 
 
 def _walk_fragment_signatures() -> Dict[Path, Optional[Tuple[float, int]]]:
-    """Stat-only walk of live fragment files (never reads file content)."""
-    signatures: Dict[Path, Optional[Tuple[float, int]]] = {}
-    for journal_file in iter_journal_files(get_journals_dir()):
-        signatures[journal_file] = get_file_signature(journal_file)
-    return signatures
+    """Stat-only walk of live fragment files (never reads file content).
+
+    One shared pass over the Journals tree; the mtime/size facts come from the
+    directory scan instead of a ``Path.stat()`` per file.
+    """
+    return {
+        journal.path: (journal.mtime, journal.size)
+        for journal in scan_journal_files(get_journals_dir())
+    }
+
+
+def _row_is_current(
+    journal_file: Path,
+    scanned_signature: Optional[Tuple[float, int]],
+    cached_signature: Optional[Tuple[float, int]],
+) -> bool:
+    """Whether the cached row still describes the file.
+
+    Rows are written with ``get_file_signature`` (the file's own stat); the
+    scan's facts come from the directory listing. A listing can lag behind or
+    round differently from the file's own stat (a file still open for writing
+    on Windows, some non-native filesystems), so a mismatch is confirmed with
+    one real stat before the row is treated as stale. Without this, such a file
+    would be parsed again on every search.
+    """
+    if cached_signature is None:
+        return False
+    if scanned_signature == cached_signature:
+        return True
+    return get_file_signature(journal_file) == cached_signature
 
 
 def reconcile_cache_with_files(
@@ -851,9 +876,7 @@ def reconcile_cache_with_files(
             keys = _candidate_cache_keys(journal_file)
             walked_keys.update(keys)
             cached_signature = next((rows.get(key) for key in keys if key in rows), None)
-            # Same comparison as is_cache_valid(file, cached_mtime, cached_size),
-            # reusing the signature already obtained by the stat-only walk.
-            if cached_signature is not None and signature == cached_signature:
+            if _row_is_current(journal_file, signature, cached_signature):
                 skipped += 1
                 continue
 
@@ -904,7 +927,7 @@ def _scan_row_file_freshness() -> Dict[str, int]:
             cached_signature = next((rows.get(key) for key in keys if key in rows), None)
             if cached_signature is None:
                 untracked += 1
-            elif signature == cached_signature:
+            elif _row_is_current(journal_file, signature, cached_signature):
                 up_to_date += 1
             else:
                 stale_rows += 1
