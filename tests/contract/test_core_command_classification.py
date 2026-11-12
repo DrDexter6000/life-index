@@ -67,8 +67,9 @@ EXPECTED_HOST_OPERATIONS = frozenset({"bootstrap", "sync-skill", "upgrade", "ver
 EXPECTED_LEGACY_ADAPTERS = frozenset({"weather"})
 
 CHARTER_CLASSIFICATION_RULES_POINTER = (
-    "This table is the exhaustive current 31-route mapping under the Charter-owned\n"
-    "C1–C8 and stable non-Core classification rules in `CHARTER.md §1.10`.\n"
+    "This table is the exhaustive current route mapping under the Charter-owned\n"
+    "closed Core admission domains and stable non-Core classification rules in\n"
+    "`CHARTER.md §1.10`.\n"
     "It maps current routes only; it does not own or duplicate those stable rules."
 )
 OWNERSHIP_MAPPING_HEADING = "### Public command constitutional ownership/admission mapping"
@@ -326,8 +327,8 @@ def _validate_public_command_classification(source: str, architecture: str) -> N
 
     duplicated_domains = [name for name in CORE_DOMAIN_NAMES if name in architecture]
     assert not duplicated_domains, (
-        "docs/ARCHITECTURE.md must reference C1–C7 without duplicating Charter domain "
-        f"descriptions: {duplicated_domains}"
+        "docs/ARCHITECTURE.md must reference the Charter's closed Core admission domains "
+        f"without duplicating Charter domain descriptions: {duplicated_domains}"
     )
     assert CHARTER_CLASSIFICATION_RULES_POINTER in block
     assert not re.search(
@@ -377,13 +378,12 @@ def _replace_row(
     return [replacement if row[0] == command else row for row in rows]
 
 
-def test_ast_public_route_inventory_is_exactly_31_capabilities() -> None:
+def test_ast_public_route_inventory_matches_expected_memberships() -> None:
     source = CLI_ENTRYPOINT.read_text(encoding="utf-8")
     routes = _public_routes(source)
     direct_routes = routes - _literal_cmd_map_keys(source)
     assert direct_routes == {"health", "version"}
     assert routes == set(EXPECTED_CORE_REFS) | EXPECTED_HOST_OPERATIONS | EXPECTED_LEGACY_ADAPTERS
-    assert len(routes) == 31
     assert {"--version", "-V"}.isdisjoint(routes)
 
 

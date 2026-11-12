@@ -40,8 +40,8 @@ eval and broad/noise/quality metrics remain advisory and cannot satisfy this
 count or defend result deletion.
 <!-- PLATFORM-SSOT:PUBLIC-BLOCKER-EXECUTION:END -->
 
-Platform-boundary checks follow the active C1–C8 authority in
-`CHARTER.md §1.10` and the exact 31-route mapping in the
+Platform-boundary checks follow the Charter's closed Core admission domains in
+`CHARTER.md §1.10` and the exact route mapping in the
 `PLATFORM-SSOT:PUBLIC-COMMAND-CLASSIFICATION` block of
 `docs/ARCHITECTURE.md`; this CI inventory does not duplicate either SSOT.
 Distribution/Host Operations remain non-Core when co-packaged, and `weather`

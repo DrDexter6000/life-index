@@ -33,9 +33,10 @@
 Current runtime: direct CLI/Core contracts are the implemented canonical public
 route. The accepted `--synthesize` flag follows the deterministic no-LLM/no-answer
 contract named below, and the current bridge is non-Core and GUI-owned. The
-design memo is not an authority or SSOT. The exact closed C1–C7 domains are
-active Charter authority, and the former §1.9 direct provider-fallback direction
-is superseded: Host Agent + Skill own provider selection and intelligence.
+design memo is not an authority or SSOT. The exact closed Core admission domains
+in `CHARTER.md §1.10` are active Charter authority, and the former §1.9 direct
+provider-fallback direction is superseded: Host Agent + Skill own provider
+selection and intelligence.
 
 The D4 runtime is accepted: it includes direct CLI/Core plus an optional,
 exact-pinned and lazily loaded, generic MCP projection with exactly `health`,
@@ -67,8 +68,8 @@ The table above is the sole normative role-assignment surface in this block.
 The optional Core Capability Gateway is only a contract-equivalent transport of
 Core operations. It cannot create a parallel semantic contract, and direct Core
 use does not depend on it. The active closed admission-domain catalog belongs
-only to `CHARTER.md §1.10`; this document references C1–C7 without duplicating
-their domain descriptions.
+only to `CHARTER.md §1.10`; this document references the Charter's closed Core
+admission domains without duplicating their domain descriptions.
 <!-- PLATFORM-SSOT:PLATFORM-ROLE-BOUNDARY:END -->
 
 Structured write-input projection: `CHARTER.md §2.3` is the sole authority.
@@ -117,8 +118,8 @@ User <-> Addon presentation
 
 | Candidate | Decision |
 |---|---|
-| Already covered by the closed C1-C8 Core authority | Consume the canonical Core capability; do not duplicate it in the Addon. |
-| Satisfies every already-ratified admission constraint and belongs within C1-C8, or receives new Human Owner substantive approval for the required authority expansion | Propose Core admission through the existing RFC/substantive-gate process; determinism and all non-waivable constraints still apply. |
+| Already covered by the Charter's closed Core admission domains (`CHARTER.md §1.10`) | Consume the canonical Core capability; do not duplicate it in the Addon. |
+| Satisfies every already-ratified admission constraint and belongs within the closed Core admission domains, or receives new Human Owner substantive approval for the required authority expansion | Propose Core admission through the existing RFC/substantive-gate process; determinism and all non-waivable constraints still apply. |
 | Does not satisfy those conditions | Keep it Addon-local and non-canonical. |
 | Performs semantic understanding, orchestration, interpretation, or synthesis | It is not a deterministic helper; route it through the shared Host Agent Handoff and Host Agent + Skills. |
 
@@ -171,8 +172,9 @@ surface exists.
 | weather | Legacy External Adapter | #166 |
 | write | Core | C1, C2 |
 
-This table is the exhaustive current 31-route mapping under the Charter-owned
-C1–C8 and stable non-Core classification rules in `CHARTER.md §1.10`.
+This table is the exhaustive current route mapping under the Charter-owned
+closed Core admission domains and stable non-Core classification rules in
+`CHARTER.md §1.10`.
 It maps current routes only; it does not own or duplicate those stable rules.
 <!-- PLATFORM-SSOT:PUBLIC-COMMAND-CLASSIFICATION:END -->
 
@@ -840,4 +842,4 @@ abstract: "100字内摘要"
 
 > **校对日期**: 2026-07-11
 > **校对人**: Life Index Developer
-> **对应状态**: C1–C7 为 CHARTER v1.11.0 活跃权威；本文件拥有 31-route classification SSOT。搜索架构保持 keyword + Entity Graph；`--semantic*` 为兼容 no-op；official eval gate 保持 keyword/default，search_constants.py **50** 常量。
+> **对应状态**: 闭合 Core 准入域为 `CHARTER.md §1.10` 活跃权威；本文件拥有 route classification SSOT。搜索架构保持 keyword + Entity Graph；`--semantic*` 为兼容 no-op；official eval gate 保持 keyword/default，search_constants.py **50** 常量。

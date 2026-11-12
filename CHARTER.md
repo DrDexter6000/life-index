@@ -1,12 +1,12 @@
 # Life Index Charter | 生命索引宪章
 
-> **版本**：v1.13.0
+> **版本**：v1.14.0
 > **批准日期**：2026-11-12
 > **批准人**：Life Index Developer
 > **下次评审**：2026-07-23（每季度一次）
-> **修订次数**：13
-> **最近修订**：2026-11-12 — Owner substantively approved journal kinds (fragment / digest), user-owned standing documents, and Core admission domain C8
-> **此前修订**：2026-07-21 — Owner substantively approved the Structured Input Authority invariant；2026-07-11 — Owner substantively approved the future advanced Addon dual-channel boundary（D0 amendment）；2026-06-19 — 新增 APEX 第 6 点「评估即咨询，非闸门（Evaluation is Advisory, not a Gate）」，收紧 APEX §1/§5（RFC-2026-06-19-evaluation-advisory-not-gate；owner 亲签）；2026-06-18 — 新增「北极星（Agent-Native 最高不变量 · APEX）」最高实质原则，收编旧 §1.9 中"Life Index 自建 L3 智能模块"措辞（RFC-2026-06-18-agent-native-north-star-apex；owner 亲签）；2026-06-14 — 新增 §1.12 运行时/平台可移植性（Runtime & Platform Portability）+ §4.1 镜像反模式（RFC-2026-06-14-runtime-platform-portability）；2026-05-23 — 新增 §1.11 Recall-First Retrieval Truthfulness Model + §3.2 amendment note（RFC-2026-05-23-l2-recall-first-truthfulness-model；§1.11 加入 §5.3 不可弱化清单；起源于 v1.2.0 cycle2 absorption 暴露的 semantic noise / truncation 两个 loophole）；2026-05-20 — §5 修订流程改为 substantive gate（废除 24h cooldown 与三方评审覆盖机制；过程记录已归档到本地私有治理层）
+> **修订次数**：14
+> **最近修订**：2026-11-12 — Owner directed single-source pointers: the public-route count and the admission-domain range are stated only in their owning documents
+> **此前修订**：2026-11-12 — Owner substantively approved journal kinds (fragment / digest), user-owned standing documents, and Core admission domain C8；2026-07-21 — Owner substantively approved the Structured Input Authority invariant；2026-07-11 — Owner substantively approved the future advanced Addon dual-channel boundary（D0 amendment）；2026-06-19 — 新增 APEX 第 6 点「评估即咨询，非闸门（Evaluation is Advisory, not a Gate）」，收紧 APEX §1/§5（RFC-2026-06-19-evaluation-advisory-not-gate；owner 亲签）；2026-06-18 — 新增「北极星（Agent-Native 最高不变量 · APEX）」最高实质原则，收编旧 §1.9 中"Life Index 自建 L3 智能模块"措辞（RFC-2026-06-18-agent-native-north-star-apex；owner 亲签）；2026-06-14 — 新增 §1.12 运行时/平台可移植性（Runtime & Platform Portability）+ §4.1 镜像反模式（RFC-2026-06-14-runtime-platform-portability）；2026-05-23 — 新增 §1.11 Recall-First Retrieval Truthfulness Model + §3.2 amendment note（RFC-2026-05-23-l2-recall-first-truthfulness-model；§1.11 加入 §5.3 不可弱化清单；起源于 v1.2.0 cycle2 absorption 暴露的 semantic noise / truncation 两个 loophole）；2026-05-20 — §5 修订流程改为 substantive gate（废除 24h cooldown 与三方评审覆盖机制；过程记录已归档到本地私有治理层）
 
 ---
 
@@ -358,7 +358,7 @@ RFC/substantive-gate evidence, or any other current Charter admission constraint
 
 `CHARTER.md §1.10` is the sole authority for the stable C1–C8 and non-Core
 classification rules and the sole named compatibility exception.
-`docs/ARCHITECTURE.md` owns only the exhaustive current 31-route mapping under
+`docs/ARCHITECTURE.md` owns only the exhaustive current route mapping under
 those rules; it does not own or duplicate them.
 
 **Substantive-gate ratification record**:
@@ -422,6 +422,30 @@ This ratification lands D0 Charter authority only. It does not implement #163,
   during the drafting session, and instructed the drafting agent to enter this
   ack on the Owner's behalf. The decision is the Owner's own; only the
   transcription was done by the agent.
+
+**Substantive-gate ratification record (single-source pointers)**:
+
+- **Rationale**: The number of public routes is a fact owned by the mapping in
+  `docs/ARCHITECTURE.md`. Restating it here and in other documents meant that
+  adding one command required a Charter edit, and copies went stale: after
+  amendment 13 several documents still named the old admission-domain range.
+  Each fact is now stated once, in its owning document; other documents point
+  to it.
+- **Opposition addressed**: (1) "A pinned count protects against silent command
+  creep." The protection is the exhaustive mapping and its contract test, which
+  compares the dispatcher with the mapping route by route; a bare number adds
+  no check that comparison lacks. (2) "Removing the number weakens the
+  Charter." No rule changes: §1.10 still solely owns the admission domains and
+  classification rules, and `docs/ARCHITECTURE.md` still owns only the mapping.
+- **Impact**: one sentence in §1.10; pointer wording in `docs/ARCHITECTURE.md`,
+  `docs/API.md`, `docs/CI_HARD_CHECKS.md`, and `SKILL.md`; the contract tests
+  that pin those sentences. No runtime, data-contract, route, or classification
+  change.
+- **Rollback**: restore the previous sentence and pointer wording.
+- **Human Owner ack**: COMPLETE — 2026-11-12; the Human Owner directed in
+  writing that no fact be stated in more than one document and that a pointer
+  be used wherever a reference is needed. The decision is the Owner's own; only
+  the transcription was done by the agent.
 <!-- PLATFORM-SSOT:CORE-ADMISSION-DOMAINS:END -->
 
 ### §1.11 召回优先检索真实模型（Recall-First Retrieval Truthfulness Model）
@@ -851,4 +875,5 @@ CHARTER.md（本文件，最高权威）
 *修订 11：2026-07-11 — Owner 批准未来 advanced Addon 双通道边界；本修订仅落宪法级架构指导，不授权 Addon 实现*
 *修订 12：2026-07-21 — Owner 批准 Structured Input Authority；结构化地点/天气为权威，正文 marker 行保持普通原文*
 *修订 13：2026-11-12 — Owner 批准日志分碎片与整理稿两个种类、用户拥有的常设文档属于用户数据、Core 准入域新增 C8；本修订仅落条文，不授权任何实现*
+*修订 14：2026-11-12 — 路由数量与准入域范围只在其归属文档中陈述，其余文档改用指针；不改变任何规则、路由或分类*
 *下一次强制性评审：2026-07-23*

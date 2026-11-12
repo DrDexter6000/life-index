@@ -30,9 +30,9 @@ RATIFIED_CORE_DOMAINS = (
     ("C8", "User-owned standing documents"),
 )
 EXPECTED_CHARTER_METADATA = {
-    "版本": "v1.13.0",
+    "版本": "v1.14.0",
     "批准日期": "2026-11-12",
-    "修订次数": "13",
+    "修订次数": "14",
 }
 STRUCTURED_INPUT_AUTHORITY_RULE = "\n".join(
     (
@@ -104,7 +104,7 @@ CHARTER_ARCHITECTURE_AUTHORITY_SPLIT = "\n".join(
     (
         "`CHARTER.md §1.10` is the sole authority for the stable C1–C8 and non-Core",
         "classification rules and the sole named compatibility exception.",
-        "`docs/ARCHITECTURE.md` owns only the exhaustive current 31-route mapping under",
+        "`docs/ARCHITECTURE.md` owns only the exhaustive current route mapping under",
         "those rules; it does not own or duplicate them.",
     )
 )
@@ -123,8 +123,9 @@ EXPECTED_STABLE_NON_CORE_CLASSIFICATION_RULES = "\n".join(
 )
 ARCHITECTURE_CLASSIFICATION_POINTER = "\n".join(
     (
-        "This table is the exhaustive current 31-route mapping under the Charter-owned",
-        "C1–C8 and stable non-Core classification rules in `CHARTER.md §1.10`.",
+        "This table is the exhaustive current route mapping under the Charter-owned",
+        "closed Core admission domains and stable non-Core classification rules in",
+        "`CHARTER.md §1.10`.",
         "It maps current routes only; it does not own or duplicate those stable rules.",
     )
 )
@@ -179,9 +180,10 @@ EXPECTED_CURRENT_TARGET_STATUS = """
 Current runtime: direct CLI/Core contracts are the implemented canonical public
 route. The accepted `--synthesize` flag follows the deterministic no-LLM/no-answer
 contract named below, and the current bridge is non-Core and GUI-owned. The
-design memo is not an authority or SSOT. The exact closed C1–C7 domains are
-active Charter authority, and the former §1.9 direct provider-fallback direction
-is superseded: Host Agent + Skill own provider selection and intelligence.
+design memo is not an authority or SSOT. The exact closed Core admission domains
+in `CHARTER.md §1.10` are active Charter authority, and the former §1.9 direct
+provider-fallback direction is superseded: Host Agent + Skill own provider
+selection and intelligence.
 
 The D4 runtime is accepted: it includes direct CLI/Core plus an optional,
 exact-pinned and lazily loaded, generic MCP projection with exactly `health`,
@@ -327,6 +329,30 @@ EXPECTED_CORE_ADMISSION_DOMAINS = "\n".join(
         "  during the drafting session, and instructed the drafting agent to enter this",
         "  ack on the Owner's behalf. The decision is the Owner's own; only the",
         "  transcription was done by the agent.",
+        "",
+        "**Substantive-gate ratification record (single-source pointers)**:",
+        "",
+        "- **Rationale**: The number of public routes is a fact owned by the mapping in",
+        "  `docs/ARCHITECTURE.md`. Restating it here and in other documents meant that",
+        "  adding one command required a Charter edit, and copies went stale: after",
+        "  amendment 13 several documents still named the old admission-domain range.",
+        "  Each fact is now stated once, in its owning document; other documents point",
+        "  to it.",
+        '- **Opposition addressed**: (1) "A pinned count protects against silent command',
+        '  creep." The protection is the exhaustive mapping and its contract test, which',
+        "  compares the dispatcher with the mapping route by route; a bare number adds",
+        '  no check that comparison lacks. (2) "Removing the number weakens the',
+        '  Charter." No rule changes: §1.10 still solely owns the admission domains and',
+        "  classification rules, and `docs/ARCHITECTURE.md` still owns only the mapping.",
+        "- **Impact**: one sentence in §1.10; pointer wording in `docs/ARCHITECTURE.md`,",
+        "  `docs/API.md`, `docs/CI_HARD_CHECKS.md`, and `SKILL.md`; the contract tests",
+        "  that pin those sentences. No runtime, data-contract, route, or classification",
+        "  change.",
+        "- **Rollback**: restore the previous sentence and pointer wording.",
+        "- **Human Owner ack**: COMPLETE — 2026-11-12; the Human Owner directed in",
+        "  writing that no fact be stated in more than one document and that a pointer",
+        "  be used wherever a reference is needed. The decision is the Owner's own; only",
+        "  the transcription was done by the agent.",
     )
 )
 
@@ -346,8 +372,8 @@ EXPECTED_PLATFORM_ROLE_BOUNDARY = "\n".join(
         "The optional Core Capability Gateway is only a contract-equivalent transport of",
         "Core operations. It cannot create a parallel semantic contract, and direct Core",
         "use does not depend on it. The active closed admission-domain catalog belongs",
-        "only to `CHARTER.md §1.10`; this document references C1–C7 without duplicating",
-        "their domain descriptions.",
+        "only to `CHARTER.md §1.10`; this document references the Charter's closed Core",
+        "admission domains without duplicating their domain descriptions.",
     )
 )
 
@@ -404,8 +430,8 @@ EXPECTED_ADVANCED_ADDON_DUAL_CHANNEL = "\n".join(
         "",
         "| Candidate | Decision |",
         "|---|---|",
-        "| Already covered by the closed C1-C8 Core authority | Consume the canonical Core capability; do not duplicate it in the Addon. |",  # noqa: E501
-        "| Satisfies every already-ratified admission constraint and belongs within C1-C8, or receives new Human Owner substantive approval for the required authority expansion | Propose Core admission through the existing RFC/substantive-gate process; determinism and all non-waivable constraints still apply. |",  # noqa: E501
+        "| Already covered by the Charter's closed Core admission domains (`CHARTER.md §1.10`) | Consume the canonical Core capability; do not duplicate it in the Addon. |",  # noqa: E501
+        "| Satisfies every already-ratified admission constraint and belongs within the closed Core admission domains, or receives new Human Owner substantive approval for the required authority expansion | Propose Core admission through the existing RFC/substantive-gate process; determinism and all non-waivable constraints still apply. |",  # noqa: E501
         "| Does not satisfy those conditions | Keep it Addon-local and non-canonical. |",
         "| Performs semantic understanding, orchestration, interpretation, or synthesis | It is not a deterministic helper; route it through the shared Host Agent Handoff and Host Agent + Skills. |",  # noqa: E501
         "",
@@ -587,7 +613,7 @@ def test_charter_header_records_latest_owner_ratification() -> None:
 
     latest_revision = _charter_metadata_value(charter, "最近修订")
     assert latest_revision.startswith("2026-11-12")
-    assert "C8" in latest_revision
+    assert "single-source pointers" in latest_revision
     assert "owner" in latest_revision.casefold()
 
 
@@ -614,6 +640,7 @@ def test_charter_records_structured_input_authority_and_substantive_gate() -> No
         assert gate_record in section
     assert "*修订 12：2026-07-21" in charter
     assert "*修订 13：2026-11-12" in charter
+    assert "*修订 14：2026-11-12" in charter
 
 
 def test_admission_block_records_c8_and_journal_kinds_gate_record() -> None:
@@ -630,6 +657,25 @@ def test_admission_block_records_c8_and_journal_kinds_gate_record() -> None:
         "**Target rule**:",
         "**Triggering real scenario and evidence**:",
         "**Executed deterministic verification**:",
+        "**Rationale**:",
+        "**Opposition addressed**:",
+        "**Impact**:",
+        "**Rollback**:",
+        "**Human Owner ack**: COMPLETE — 2026-11-12",
+    ):
+        assert gate_record in record
+
+
+def test_admission_block_records_single_source_pointers_gate_record() -> None:
+    charter = AUTHORITY_PATHS["charter"].read_text(encoding="utf-8")
+    start_marker = "<!-- PLATFORM-SSOT:CORE-ADMISSION-DOMAINS:START -->"
+    end_marker = "<!-- PLATFORM-SSOT:CORE-ADMISSION-DOMAINS:END -->"
+    assert charter.count(start_marker) == charter.count(end_marker) == 1
+    block = charter[charter.index(start_marker) + len(start_marker) : charter.index(end_marker)]
+    record_heading = "**Substantive-gate ratification record (single-source pointers)**:"
+    assert block.count(record_heading) == 1
+    record = block[block.index(record_heading) + len(record_heading) :]
+    for gate_record in (
         "**Rationale**:",
         "**Opposition addressed**:",
         "**Impact**:",
@@ -1038,7 +1084,7 @@ def test_advanced_addon_dual_channel_boundary_has_one_constitutional_owner() -> 
         "docs/ARCHITECTURE.md",
     )
 
-    assert "closed C1-C8 Core authority" in block
+    assert "Charter's closed Core admission domains" in block
     assert "| C1 |" not in block
     for _, domain_name in RATIFIED_CORE_DOMAINS:
         assert domain_name not in block
@@ -1195,3 +1241,49 @@ def test_ci_hard_check_inventory_cannot_call_all_skipped_private_assertions_gree
             EXPECTED_PUBLIC_BLOCKER_EXECUTION,
             "docs/CI_HARD_CHECKS.md",
         )
+
+
+GUARDED_PUBLIC_DOC_EXCLUSIONS = frozenset({"CHANGELOG.md"})
+RESTATED_PUBLIC_FACT_PATTERNS = (
+    # Route-count restatements; the count is owned by the mapping table itself.
+    re.compile(r"\b\d+[- ]route\b"),
+    re.compile(r"\d+ 条 public route"),
+    # Admission-domain range restatements; the range is owned by CHARTER.md §1.10.
+    re.compile(r"C1[–-]C\d"),
+)
+
+
+def _public_doc_guard_paths() -> list[Path]:
+    candidates = [
+        REPO_ROOT / "SKILL.md",
+        REPO_ROOT / "tools" / "_skill_artifacts" / "SKILL.md",
+        REPO_ROOT / "AGENTS.md",
+        REPO_ROOT / "AGENT_ONBOARDING.md",
+        *REPO_ROOT.glob("README*.md"),
+        *(REPO_ROOT / "docs").glob("*.md"),
+        *(REPO_ROOT / "references").rglob("*.md"),
+    ]
+    guarded = {
+        path
+        for path in candidates
+        if path.is_file()
+        and path.relative_to(REPO_ROOT).as_posix() not in GUARDED_PUBLIC_DOC_EXCLUSIONS
+    }
+    return sorted(guarded)
+
+
+def test_public_docs_do_not_restate_route_count_or_admission_domain_range() -> None:
+    offenders: list[str] = []
+    for path in _public_doc_guard_paths():
+        text = path.read_text(encoding="utf-8")
+        for pattern in RESTATED_PUBLIC_FACT_PATTERNS:
+            for match in pattern.finditer(text):
+                line = text.count("\n", 0, match.start()) + 1
+                offenders.append(
+                    f"{path.relative_to(REPO_ROOT).as_posix()}:{line}: {match.group()}"
+                )
+    assert not offenders, (
+        "Public docs must point to, not restate, the route count owned by the "
+        "docs/ARCHITECTURE.md mapping and the admission-domain range owned by "
+        "CHARTER.md §1.10:\n" + "\n".join(offenders)
+    )
