@@ -7,6 +7,7 @@ import pytest
 from unittest.mock import patch
 
 from tools.lib.metadata_cache import (
+    CACHE_VERSION_SCHEMA_VERSION,
     init_metadata_cache,
     get_file_signature,
     is_cache_valid,
@@ -200,7 +201,7 @@ class TestMetadataCache:
         assert rows[0]["word_count"] == 13
         version = read_cache_version()
         assert version is not None
-        assert version["schema_version"] == "v1.1.2"
+        assert version["schema_version"] == CACHE_VERSION_SCHEMA_VERSION
         assert version["invalidation_history"][-1]["reason"] == "no_existing_version"
 
     def test_get_cached_metadata(self, tmp_path):

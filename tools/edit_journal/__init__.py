@@ -26,7 +26,11 @@ from ..lib.frontmatter import (
 from ..lib.file_lock import FileLock, LockTimeoutError, get_journals_lock_path
 from ..lib.errors import ErrorCode, create_error_response
 from ..lib.logger import get_logger
-from ..lib.metadata_cache import init_metadata_cache, replace_entry_relations
+from ..lib.metadata_cache import (
+    init_metadata_cache,
+    replace_entry_relations,
+    upsert_journal_cache_row,
+)
 from ..lib.revisions import save_revision
 from ..lib.pending_writes import mark_pending
 from ..write_journal.attachments import process_attachments
@@ -584,6 +588,24 @@ def edit_journal(
                     result["pending_marked"] = True
                 except Exception as e:
                     logger.warning(f"标记 pending 失败（不影响编辑）：{e}")
+
+                # 编辑提交后即时更新该日志的元数据缓存行（非阻塞；失败时
+                # 由下次搜索的 reconcile 或 index --rebuild 恢复）。仅对
+                # Journals/ 树内的日志生效——缓存只覆盖该树。
+                try:
+                    journal_path.relative_to(get_journals_dir())
+                    journal_in_journals_tree = True
+                except ValueError:
+                    journal_in_journals_tree = False
+                if journal_in_journals_tree:
+                    try:
+                        upserted_row = upsert_journal_cache_row(journal_path)
+                        if upserted_row is None:
+                            raise RuntimeError("metadata cache row upsert produced no row")
+                        result["metadata_cache_updated"] = True
+                    except Exception as e:
+                        result["metadata_cache_updated"] = False
+                        logger.warning(f"元数据缓存行更新失败（不影响编辑）：{e}")
 
                 index_b_result = refresh_index_b(False)
                 result["index_b_updated"] = index_b_result

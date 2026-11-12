@@ -22,7 +22,11 @@ from .journal_files import iter_journal_files, iter_month_journal_files
 from .path_contract import build_journal_path_fields
 from .chinese_tokenizer import count_cjk_words
 
-CACHE_VERSION_SCHEMA_VERSION = "v1.1.2"
+# v2.0.0: freshness is decided per row from (mtime, size) against a stat-only
+# walk (reconcile) instead of a whole-archive content hash; the sidecar
+# ``source_hash`` now covers entity_graph.yaml only. Existing installations
+# rebuild once on the version bump.
+CACHE_VERSION_SCHEMA_VERSION = "v2.0.0"
 
 # 缓存存储目录 (deprecated: use getters)
 CACHE_DIR = get_cache_dir()  # deprecated: use get_cache_dir()
@@ -328,6 +332,19 @@ def get_or_update_metadata(
             conn.close()
 
 
+def upsert_journal_cache_row(file_path: Path) -> Optional[Dict[str, Any]]:
+    """Upsert exactly one journal's cache row (write/edit post-commit step).
+
+    A failure never loses or blocks the journal; recovery is
+    ``life-index index --rebuild`` (or the next search's reconcile pass).
+    """
+    conn = init_metadata_cache()
+    try:
+        return parse_and_cache_journal(conn, file_path)
+    finally:
+        conn.close()
+
+
 def get_all_cached_metadata(
     conn: Optional[sqlite3.Connection] = None,
 ) -> List[Dict[str, Any]]:
@@ -396,10 +413,19 @@ def get_all_cached_metadata(
 
 
 def ensure_cache_version_current() -> Dict[str, Any]:
-    """Ensure metadata cache rows match the current derived-field schema."""
+    """Ensure metadata cache rows are current without re-reading the archive.
+
+    Full rebuild only when ``evaluate_cache_state`` demands it (no sidecar,
+    schema/tool version mismatch, or entity graph change). Otherwise reconcile
+    rows against the files with a stat-only walk.
+    """
     state = evaluate_cache_state()
     if not state["would_rebuild"]:
-        return {"rebuilt": False, "cache_version": state, "rebuild": None}
+        return {
+            "rebuilt": False,
+            "cache_version": state,
+            "reconcile": reconcile_cache_with_files(),
+        }
 
     invalidate_cache()
     rebuild = update_cache_for_all_journals()
@@ -566,21 +592,20 @@ def get_cache_version_path() -> Path:
     return get_cache_version_dir() / "_version.json"
 
 
-def _compute_source_hash() -> str:
-    journals_dir = get_journals_dir()
+def _entity_graph_hash_for(data_dir: Path) -> str:
+    """Hash entity_graph.yaml under data_dir (the cache's graph dependency)."""
     sha = hashlib.sha256()
-    if journals_dir.exists():
-        for journal_file in iter_journal_files(journals_dir):
-            try:
-                sha.update(journal_file.read_bytes())
-            except (IOError, OSError):
-                continue
-    for meta_file in sorted(get_user_data_dir().glob("entity_graph.yaml")):
+    for meta_file in sorted(data_dir.glob("entity_graph.yaml")):
         try:
             sha.update(meta_file.read_bytes())
         except (IOError, OSError):
             continue
     return f"sha256:{sha.hexdigest()}"
+
+
+def _compute_entity_graph_hash() -> str:
+    """Hash the entity_graph.yaml dependency recorded in the version sidecar."""
+    return _entity_graph_hash_for(get_user_data_dir())
 
 
 def write_cache_version(
@@ -593,7 +618,7 @@ def write_cache_version(
 
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     if not source_hash:
-        source_hash = _compute_source_hash()
+        source_hash = _compute_entity_graph_hash()
 
     existing = read_cache_version()
     invalidation_history: list = []
@@ -637,7 +662,13 @@ def read_cache_version() -> Optional[Dict[str, Any]]:
 def evaluate_cache_state(
     data_dir: Optional[Path] = None,
 ) -> Dict[str, Any]:
-    current_hash = _compute_source_hash() if data_dir is None else "unknown"
+    """Decide whether the cache needs a full rebuild (never reads journals).
+
+    A full rebuild is needed only when (a) there is no version sidecar, (b) the
+    schema or tool version recorded in it does not match, or (c)
+    entity_graph.yaml changed. File-level additions/edits/deletions are handled
+    by the per-row reconcile pass, not by this evaluation.
+    """
     stored = read_cache_version() if data_dir is None else None
 
     if data_dir is not None:
@@ -648,32 +679,39 @@ def evaluate_cache_state(
             except (json.JSONDecodeError, OSError):
                 stored = None
 
+    graph_dir = data_dir if data_dir is not None else get_user_data_dir()
+    current_hash = _entity_graph_hash_for(graph_dir)
+
     exists = stored is not None
-    version_match = False
+    schema_match = False
+    tool_match = False
     hash_match = False
     would_rebuild = not exists
 
     if exists and stored:
-        version_match = stored.get("schema_version") == CACHE_VERSION_SCHEMA_VERSION
+        schema_match = stored.get("schema_version") == CACHE_VERSION_SCHEMA_VERSION
+        tool_match = stored.get("tool_version") == _get_tool_version()
         stored_hash = stored.get("source_hash", "")
         hash_match = stored_hash == current_hash
-        if not version_match or not hash_match:
+        if not schema_match or not tool_match or not hash_match:
             would_rebuild = True
 
     reasons: List[str] = []
     if not exists:
         reasons.append("no_existing_version")
-    elif not version_match:
+    elif not schema_match:
         reasons.append("schema_version_mismatch")
+    elif not tool_match:
+        reasons.append("tool_version_mismatch")
     elif not hash_match:
-        reasons.append("source_hash_mismatch")
+        reasons.append("entity_graph_changed")
 
     return {
         "exists": exists,
         "stored_schema_version": stored.get("schema_version") if stored else None,
         "stored_source_hash": stored.get("source_hash") if stored else None,
         "current_schema_version": CACHE_VERSION_SCHEMA_VERSION,
-        "version_match": version_match,
+        "version_match": schema_match and tool_match,
         "hash_match": hash_match,
         "would_rebuild": would_rebuild,
         "reasons": reasons,
@@ -681,22 +719,32 @@ def evaluate_cache_state(
 
 
 def run_cache_audit() -> Dict[str, Any]:
+    """Read-only cache audit from the same comparison the search path uses.
+
+    Reports ``valid`` / ``stale`` / ``incompatible`` / ``missing``. ``stale``
+    comes from the per-row (mtime, size) versus file comparison (dry-run, no
+    writes, no journal parsing) or from an entity-graph change; ``incompatible``
+    from a schema/tool version mismatch. Row comparison counts are additive
+    detail fields.
+    """
     stored = read_cache_version()
     version_exists = stored is not None
     status = "missing"
+    detail: Dict[str, int] = {}
 
     if stored:
-        current_hash = _compute_source_hash()
-        version_match = stored.get("schema_version") == CACHE_VERSION_SCHEMA_VERSION
-        hash_match = stored.get("source_hash") == current_hash
-        if version_match and hash_match:
-            status = "valid"
-        elif version_match and not hash_match:
+        state = evaluate_cache_state()
+        if not state["version_match"]:
+            status = "incompatible"
+        elif not state["hash_match"]:
             status = "stale"
         else:
-            status = "incompatible"
+            detail = _scan_row_file_freshness()
+            status = (
+                "valid" if detail["stale_rows"] == 0 and detail["untracked_files"] == 0 else "stale"
+            )
 
-    return {
+    audit: Dict[str, Any] = {
         "success": True,
         "cache_audit": {
             "version_exists": version_exists,
@@ -704,6 +752,9 @@ def run_cache_audit() -> Dict[str, Any]:
             "json": True,
         },
     }
+    if detail:
+        audit["cache_audit"].update(detail)
+    return audit
 
 
 def update_cache_for_all_journals(
@@ -751,6 +802,119 @@ def update_cache_for_all_journals(
             "updated": updated,
             "skipped": skipped,
             "errors": errors,
+        }
+    finally:
+        conn.close()
+
+
+# ============================================================
+# Reconcile freshness (per-row stat comparison, no archive hashing)
+# ============================================================
+
+
+def _row_signature_map(conn: sqlite3.Connection) -> Dict[str, Tuple[float, int]]:
+    """Map every cached row key to its recorded (mtime, size) signature."""
+    cursor = conn.execute("SELECT file_path, file_mtime, file_size FROM metadata_cache")
+    return {row[0]: (row[1], row[2]) for row in cursor.fetchall()}
+
+
+def _walk_fragment_signatures() -> Dict[Path, Optional[Tuple[float, int]]]:
+    """Stat-only walk of live fragment files (never reads file content)."""
+    signatures: Dict[Path, Optional[Tuple[float, int]]] = {}
+    for journal_file in iter_journal_files(get_journals_dir()):
+        signatures[journal_file] = get_file_signature(journal_file)
+    return signatures
+
+
+def reconcile_cache_with_files(
+    progress_callback: Optional[Callable[[int, int, int], None]] = None,
+) -> Dict[str, int]:
+    """Reconcile cache rows with fragment files using a stat-only walk.
+
+    Parses only files that are new or changed (their row is missing or its
+    (mtime, size) differs) and deletes rows whose file is no longer a live
+    fragment under Journals/. Never reads the content of an unchanged journal.
+    Non-fragment files are never cached; a file changed outside the tool with
+    identical mtime AND size is not detected until ``index --rebuild``.
+    """
+    conn = init_metadata_cache()
+    try:
+        rows = _row_signature_map(conn)
+        cursor = conn.cursor()
+        updated = 0
+        skipped = 0
+        removed = 0
+        errors = 0
+
+        walked_keys: set = set()
+        for journal_file, signature in _walk_fragment_signatures().items():
+            keys = _candidate_cache_keys(journal_file)
+            walked_keys.update(keys)
+            cached_signature = next((rows.get(key) for key in keys if key in rows), None)
+            # Same comparison as is_cache_valid(file, cached_mtime, cached_size),
+            # reusing the signature already obtained by the stat-only walk.
+            if cached_signature is not None and signature == cached_signature:
+                skipped += 1
+                continue
+
+            try:
+                result = parse_and_cache_journal(conn, journal_file)
+            except (IOError, OSError, ValueError, sqlite3.Error):
+                errors += 1
+            else:
+                if result:
+                    updated += 1
+                else:
+                    errors += 1
+
+            if progress_callback:
+                progress_callback(updated, skipped, errors)
+
+        for row_key in rows:
+            if row_key in walked_keys:
+                continue
+            cursor.execute("DELETE FROM metadata_cache WHERE file_path = ?", (row_key,))
+            removed += 1
+
+        if removed:
+            conn.commit()
+        return {
+            "updated": updated,
+            "skipped": skipped,
+            "removed": removed,
+            "errors": errors,
+        }
+    finally:
+        conn.close()
+
+
+def _scan_row_file_freshness() -> Dict[str, int]:
+    """Dry-run row-versus-file comparison: counts only, no writes, no parsing."""
+    conn = init_metadata_cache()
+    try:
+        rows = _row_signature_map(conn)
+        up_to_date = 0
+        stale_rows = 0
+        untracked = 0
+
+        walked_keys: set = set()
+        for journal_file, signature in _walk_fragment_signatures().items():
+            keys = _candidate_cache_keys(journal_file)
+            walked_keys.update(keys)
+            cached_signature = next((rows.get(key) for key in keys if key in rows), None)
+            if cached_signature is None:
+                untracked += 1
+            elif signature == cached_signature:
+                up_to_date += 1
+            else:
+                stale_rows += 1
+
+        orphan_rows = sum(1 for row_key in rows if row_key not in walked_keys)
+        return {
+            "total_rows": len(rows),
+            "up_to_date_rows": up_to_date,
+            "stale_rows": stale_rows + orphan_rows,
+            "untracked_files": untracked,
         }
     finally:
         conn.close()
