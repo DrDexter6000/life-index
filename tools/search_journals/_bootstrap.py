@@ -3,11 +3,14 @@ Bootstrap module for search_journals CLI.
 
 Handles stdout/stderr encoding protection on Windows (R10 fix):
 - Reconfigures sys.stdout/stderr to UTF-8 with error replacement
-- Suppresses transformers/torch progress bar noise
-- Redirects torch stderr on Windows non-TTY to prevent GBK byte leaks
+- Suppresses transformers/torch progress bar noise, but ONLY when an
+  embedding host imported those libraries first
 
-This module must be imported and ensure_utf8_io() called BEFORE
-any other imports that might trigger torch/transformers output.
+This module must never import transformers/torch/sentence_transformers
+itself: they are not project dependencies, and on machines where they
+happen to be installed, importing them costs seconds of startup and
+hundreds of MB of RSS per CLI invocation. Guards below follow the
+"only if already in sys.modules" pattern of _suppress_st_stdout.
 """
 
 from __future__ import annotations
@@ -28,21 +31,28 @@ def ensure_utf8_io() -> None:
     Protect CLI stdout/stderr from encoding issues on Windows.
 
     Call this at the very start of __main__.py, before any other
-    imports that might trigger torch/transformers output.
+    imports that might emit subprocess-visible output.
 
     Three protections:
     1. sys.stdout/stderr.reconfigure(encoding='utf-8', errors='replace')
        — ensures all output uses UTF-8, replacing undecodable bytes
     2. transformers.logging.set_verbosity_error()
-       — prevents progress bars and info messages from polluting stderr
+       — prevents progress bars and info messages from polluting stderr;
+         only applied when an embedding host already imported transformers
     3. Windows non-TTY: torch stderr redirect to temp file
-       — prevents GBK-encoded bytes from reaching the subprocess parent
+       — prevents GBK-encoded bytes from reaching the subprocess parent;
+         only applied when an embedding host already imported torch
+
+    Protections 2/2b/3 never import the guarded library themselves —
+    importing transformers/torch here is what this function used to do,
+    and it cost ~4s of startup on machines where they are installed.
     """
     # Protection 1: Reconfigure stdout/stderr to UTF-8
     _maybe_reconfigure(sys.stdout)
     _maybe_reconfigure(sys.stderr)
 
-    # Protection 2: Suppress transformers logging noise
+    # Protection 2: Suppress transformers logging noise (only if an
+    # embedding host already imported it — never import it here)
     _suppress_transformers_logging()
 
     # Protection 2b: Suppress legacy model-loading prints to stdout if old
@@ -55,15 +65,22 @@ def ensure_utf8_io() -> None:
 
 
 def _suppress_transformers_logging() -> None:
-    """Set transformers logging to ERROR to prevent progress bar pollution."""
-    try:
-        import transformers
+    """Set transformers logging to ERROR to prevent progress bar pollution.
 
+    Only acts when transformers is ALREADY in sys.modules (an embedding
+    host imported it earlier). Must never import it: importing here made
+    every CLI invocation pay the full transformers startup cost on
+    machines where it happens to be installed.
+    """
+    if "transformers" not in sys.modules:
+        return
+    try:
+        transformers = sys.modules["transformers"]
         transformers_logging = getattr(transformers, "logging", None)
         if transformers_logging is not None:
             transformers_logging.set_verbosity_error()
-    except ImportError:
-        pass  # transformers not installed — nothing to suppress
+    except Exception:
+        pass  # best-effort suppression; never crash the CLI
 
 
 def _suppress_st_stdout() -> None:
@@ -116,9 +133,16 @@ def _redirect_torch_stderr_windows() -> None:
     contain GBK bytes on Windows. When an Agent calls the CLI via
     subprocess with encoding='utf-8', these bytes cause
     UnicodeDecodeError in the reader thread.
+
+    Only acts when torch is ALREADY in sys.modules (an embedding host
+    imported it earlier). Must never import it: importing here made
+    every CLI invocation pay the full torch startup cost on machines
+    where it happens to be installed.
     """
+    if "torch" not in sys.modules:
+        return
     try:
-        import torch
+        torch = sys.modules["torch"]
 
         # Only redirect if torch has the _C module (real installation)
         if hasattr(torch, "_C"):
