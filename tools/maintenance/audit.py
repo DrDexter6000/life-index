@@ -16,6 +16,8 @@ from typing import Any, Callable
 
 import yaml
 
+from tools.lib.journal_files import has_journal_files, iter_journal_files
+
 AUDIT_SCHEMA_VERSION = "m33.maintenance_audit.v0"
 
 AUDIT_DOMAINS: tuple[str, ...] = (
@@ -118,7 +120,7 @@ def _detect_layout(data_dir: Path) -> list[Issue]:
             )
 
         for month_dir in sorted(p for p in year_dir.glob("[0-9][0-9]") if p.is_dir()):
-            has_journal = any(month_dir.glob("*.md"))
+            has_journal = has_journal_files(month_dir)
             month_index = month_dir / f"index_{year_dir.name}-{month_dir.name}.md"
             if has_journal and not month_index.exists():
                 rel = _rel_path(data_dir, month_index)
@@ -179,7 +181,7 @@ def _detect_search_index(data_dir: Path) -> list[Issue]:
 
 def _detect_frontmatter(data_dir: Path) -> list[Issue]:
     issues: list[Issue] = []
-    for path in _iter_files(data_dir / "Journals", "*.md"):
+    for path in iter_journal_files(data_dir / "Journals"):
         text = _read_utf8(path)
         if text is None:
             continue

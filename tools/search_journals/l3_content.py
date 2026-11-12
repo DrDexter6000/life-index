@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 # 导入配置 (relative imports from tools/lib)
 from ..lib.paths import get_user_data_dir, get_journals_dir
+from ..lib.journal_files import iter_month_journal_files
 from ..lib.path_contract import build_journal_path_fields
 from ..lib.search_constants import (
     L3_TITLE_MATCH_BONUS,
@@ -54,7 +55,7 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
                 if year_dir.is_dir() and year_dir.name.isdigit():
                     for month_dir in year_dir.iterdir():
                         if month_dir.is_dir():
-                            files_to_search.extend(month_dir.glob("*.md"))
+                            files_to_search.extend(iter_month_journal_files(month_dir))
 
     for journal_file in files_to_search:
         try:

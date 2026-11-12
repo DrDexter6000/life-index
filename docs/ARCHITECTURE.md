@@ -487,6 +487,28 @@ CHARTER §1.10 C8 管辖的文档逐份列在这里；新增一份须经 §5.2 �
 
 Alfred 是档案馆管理员这个角色的名字。用户可以为它另设人格与称呼，文件名不变。
 
+### 4.2 Journals/ 文件种类判定（journal file kinds）
+
+`Journals/` 树下的每个文件由唯一的共享规则判定种类，实现于
+`tools/lib/journal_files.py`（纯路径判定，不打开文件）：
+
+| 种类 | 判定 | 说明 |
+|---|---|---|
+| `fragment` | `life-index_YYYY-MM-DD_<序号>.md` | 用户本人的日志原文（碎片） |
+| `digest` | `digest_*.md` | 整理稿（Host-Agent 撰写并署名；待实现） |
+| `derived_index` | `index_` / `monthly_` / `yearly_` 前缀 | 可重建的派生索引（与 backup 的 generated-artifact 规则同源） |
+| `unknown` | 其他一切 | 不当作日志处理 |
+
+规则要点：
+
+- 点开头的目录（如 `.revisions/`）内的文件**绝不是**任何种类的 live 文件，
+  枚举一律跳过；旧版本只经 `tools/lib/revisions.py` 读取。
+- 所有遍历 `Journals/` 的工具**必须**使用 `journal_files.py` 的枚举助手；
+  默认只返回 fragment，需要其他种类必须按名请求，顺序稳定。
+- `tests/contract/test_journal_file_kinds_contract.py` 以源码扫描守护此规则：
+  共享助手之外不允许出现可触及 Journals 树的 `*.md` 通配扫描
+  （白名单精确到 文件 + 模式，仅限扫描其他目录的站点）。
+
 ---
 
 ## 5. 基础设施增强

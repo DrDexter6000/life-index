@@ -69,7 +69,10 @@ _IMPORT_STDOUT_ORIGINAL = sys.stdout if _should_guard_import_stdout(sys.argv) el
 if _IMPORT_STDOUT_ORIGINAL is not None:
     sys.stdout = sys.stderr
 
-from tools.lib.journal_files import count_journal_files  # noqa: E402
+from tools.lib.journal_files import (  # noqa: E402
+    count_journal_files,
+    iter_journal_files,
+)
 from tools.lib.config import get_model_cache_dir  # noqa: E402,F401 — used via monkeypatch in tests
 from tools.lib.paths import (  # noqa: E402
     ValidationModeDataDirError,
@@ -136,9 +139,7 @@ def _latest_journal_date(journals_dir: Path) -> str | None:
     latest: str | None = None
     if not journals_dir.exists():
         return None
-    for path in journals_dir.rglob("*.md"):
-        if not path.is_file():
-            continue
+    for path in iter_journal_files(journals_dir):
         journal_date = _canonical_journal_date(path.name)
         if journal_date and (latest is None or journal_date > latest):
             latest = journal_date

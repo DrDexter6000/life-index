@@ -13,6 +13,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | Modify attachment handling | `attachment.py` | Normalize write-input and stored-metadata attachment entries |
 | Modify frontmatter format | `frontmatter.py` | SSOT: update FIELD_ORDER and type mappings (re-exports attachment + schema) |
 | Change data directory paths | `config.py` | Update USER_DATA_DIR, all other paths derive from it |
+| Decide what kind of file lives under Journals/ | `journal_files.py` | Closed kind rule (fragment / digest / derived_index / unknown) + enumeration helpers; all journals-tree walkers must use it |
 | Debug concurrent write issues | `file_lock.py` | Cross-platform advisory locks for serialization |
 | Debug L2 search performance | `metadata_cache.py` | Check SQLite WAL mode, mtime/size detection |
 | Fix FTS5 search issues | `search_index.py` | Supports auto-rebuild on corruption |
@@ -37,6 +38,7 @@ Shared infrastructure library for all Life Index atomic tools.
 - **entity_schema.py**: Entity graph schema validation. ENTITY_TYPES (new actor/artifact plus legacy person), alias conflict detection, relationship target verification, v1.2 relationship metadata defaults, and merge tombstone validation.
 - **errors.py**: Structured error codes (E{module}{type}) with recovery strategies for Agent decision-making.
 - **file_lock.py**: Cross-platform file locking for concurrent access control. Uses fcntl (Unix) and msvcrt (Windows).
+- **journal_files.py**: Canonical journal file enumeration and closed kind classification under Journals/ (fragment / digest / derived_index / unknown). Path-only rules; dot-directories such as .revisions/ are never enumerated. All journals-tree walkers use these helpers.
 - **frontmatter.py**: SSOT for YAML frontmatter parsing/formatting. Re-exports attachment.py and schema.py for backward compat.
 - **fts_search.py**: FTS5 full-text search with BM25 ranking. Extracted from search_index.py.
 - **fts_update.py**: FTS5 index building/updating (incremental and full rebuild). Extracted from search_index.py.
@@ -90,6 +92,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | fts_search.py | search_journals | ✅ 活跃 | |
 | fts_update.py | build_index | ✅ 活跃 | |
 | llm_extract.py | 无 | 🗄️ 已退役 | backward-compat shim 已删除；隔离实现仅保留在 `tools/_optional/llm_extract.py`，不在核心工具默认路径导入 |
+| journal_files.py | search_journals, entity, maintenance, backup, __main__, event_detectors | ✅ 活跃 | Journals/ 文件种类 SSOT：fragment / digest / derived_index / unknown，枚举默认只返回 fragment |
 | logger.py | ALL tools | ✅ 活跃 | |
 | metadata_cache.py | search_journals, write_journal | ✅ 活跃 | |
 | path_contract.py | write_journal, edit_journal | ✅ 活跃 | |

@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from tools.lib.journal_files import iter_journal_files
+
 SCHEMA_VERSION = "m16.maintenance.v0"
 
 
@@ -277,19 +279,12 @@ def check_orphan_related_entries(data_dir: str | None = None) -> dict[str, Any]:
             },
         )
 
-    # Scan journal files for related_entries
+    # Scan journal (fragment) files for related_entries
     orphan_refs: list[dict[str, Any]] = []
     journal_count = 0
 
     if journals_dir.exists():
-        for md_file in journals_dir.rglob("*.md"):
-            # Skip index and by-topic files
-            fname = md_file.name.lower()
-            if fname.startswith("index_") or "索引_" in fname:
-                continue
-            if any(fname.startswith(p) for p in ("主题_", "项目_", "标签_")):
-                continue
-
+        for md_file in iter_journal_files(journals_dir):
             journal_count += 1
             try:
                 import yaml

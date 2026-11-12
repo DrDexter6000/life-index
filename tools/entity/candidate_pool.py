@@ -11,6 +11,7 @@ from typing import Any
 
 from tools.lib.entity_graph import load_entity_graph, save_entity_graph
 from tools.lib.frontmatter import parse_frontmatter
+from tools.lib.journal_files import iter_journal_files
 from tools.lib.paths import get_journals_dir, get_user_data_dir, resolve_user_data_dir
 
 DEFAULT_WRITE_TIME_THRESHOLD = 2
@@ -335,10 +336,7 @@ def _frontmatter_occurrences(journals_dir: Path) -> dict[str, list[str]]:
     if not journals_dir.exists():
         return occurrences
     data_dir = get_user_data_dir()
-    journal_pattern = re.compile(r"^life-index_\d{4}-\d{2}-\d{2}_\d+\.md$")
-    for md_file in sorted(journals_dir.rglob("*.md")):
-        if not journal_pattern.match(md_file.name):
-            continue
+    for md_file in iter_journal_files(journals_dir):
         try:
             metadata, _body = parse_frontmatter(md_file.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError):
