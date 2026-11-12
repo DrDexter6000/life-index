@@ -119,6 +119,81 @@ class TestCLIEncodingSubprocess:
         assert isinstance(parsed.get("merged_results", []), list)
 
 
+# ── No ML imports at startup (subprocess, stub packages) ───────────────
+
+
+class TestNoMLImportsAtStartup:
+    """
+    Starting the search CLI (or calling ensure_utf8_io() directly) must
+    never import transformers / torch / sentence_transformers.
+
+    The retired semantic-search guards used to import them unconditionally;
+    on machines where they are installed this costs seconds of startup and
+    hundreds of MB of RSS per search invocation. Noise-suppression guards
+    may only act when an embedding host imported the library first.
+    """
+
+    STUB_PACKAGES = ("transformers", "torch", "sentence_transformers")
+
+    def _make_stub_env(self, tmp_path: Path) -> tuple[dict[str, str], Path]:
+        """Build PYTHONPATH stub packages that write a marker when imported.
+
+        The stubs shadow any real installation, so a marker file proves the
+        child process performed the import (not merely that the library is
+        installed).
+        """
+        stub_dir = tmp_path / "ml_stubs"
+        marker_dir = tmp_path / "ml_import_markers"
+        marker_dir.mkdir(parents=True)
+        for name in self.STUB_PACKAGES:
+            pkg_dir = stub_dir / name
+            pkg_dir.mkdir(parents=True)
+            (pkg_dir / "__init__.py").write_text(
+                "import os\n"
+                "from pathlib import Path\n"
+                f"Path(os.environ['LI_TEST_ML_MARKER_DIR'], {name!r}).touch()\n",
+                encoding="utf-8",
+            )
+        env = os.environ.copy()
+        env["PYTHONPATH"] = os.pathsep.join(
+            [str(stub_dir)] + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else [])
+        )
+        env["LI_TEST_ML_MARKER_DIR"] = str(marker_dir)
+        # Belt-and-braces: the child must never touch the real data dir even
+        # if a future change makes --help reach data code paths.
+        env["LIFE_INDEX_DATA_DIR"] = str(tmp_path / "isolated_data")
+        return env, marker_dir
+
+    def _assert_no_ml_imports(self, args: list[str], tmp_path: Path) -> None:
+        env, marker_dir = self._make_stub_env(tmp_path)
+        # capture_output pipes stderr (not a TTY) — exactly the condition that
+        # used to trigger the Windows torch import in _bootstrap.
+        result = subprocess.run(
+            [sys.executable, *args],
+            capture_output=True,
+            env=env,
+            timeout=120,
+            cwd=str(Path(__file__).parent.parent.parent),  # project root
+        )
+        assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
+        imported = sorted(p.name for p in marker_dir.iterdir())
+        assert imported == [], f"startup imported ML libraries: {imported}"
+
+    def test_ensure_utf8_io_does_not_import_ml_libraries(self, tmp_path: Path) -> None:
+        """Direct ensure_utf8_io() call must not import any ML library."""
+        self._assert_no_ml_imports(
+            [
+                "-c",
+                "from tools.search_journals._bootstrap import ensure_utf8_io; " "ensure_utf8_io()",
+            ],
+            tmp_path,
+        )
+
+    def test_cli_help_does_not_import_ml_libraries(self, tmp_path: Path) -> None:
+        """`python -m tools.search_journals --help` must not import any ML library."""
+        self._assert_no_ml_imports(["-m", "tools.search_journals", "--help"], tmp_path)
+
+
 # ── Unit-level bootstrap tests ─────────────────────────────────────────
 
 
@@ -158,37 +233,65 @@ class TestEncodingBootstrap:
         with patch("sys.stdout", mock_stdout), patch("sys.stderr", mock_stderr):
             ensure_utf8_io()
 
-    def test_transformers_logging_suppressed(self) -> None:
+    def test_transformers_logging_suppressed_when_already_imported(self) -> None:
         """
-        After ensure_utf8_io(), transformers logging must be at ERROR level
-        to prevent progress bars and info messages from polluting stderr.
+        When an embedding host has ALREADY imported transformers,
+        ensure_utf8_io() must set its logging to ERROR level to prevent
+        progress bars and info messages from polluting stderr.
         """
-        from tools.search_journals._bootstrap import ensure_utf8_io
-
-        ensure_utf8_io()
-
         try:
             import transformers
-
-            transformers_logging = getattr(transformers, "logging", None)
-            assert transformers_logging is not None
-            assert transformers_logging.get_verbosity() <= transformers_logging.ERROR
         except ImportError:
             pytest.skip("transformers not installed")
 
-    def test_windows_torch_stderr_redirect(self) -> None:
-        """
-        On Windows non-TTY, torch stderr must be redirected to prevent
-        GBK-encoded bytes from reaching the parent process.
-
-        This test verifies the redirect logic is wired up correctly
-        without actually loading torch.
-        """
         from tools.search_journals._bootstrap import ensure_utf8_io
 
+        transformers_logging = getattr(transformers, "logging", None)
+        if transformers_logging is None:
+            pytest.skip("transformers installed without logging module")
+
+        original_verbosity = transformers_logging.get_verbosity()
+        try:
+            # Start from a verbosity ABOVE ERROR so the assertion below can
+            # only pass if ensure_utf8_io() actually suppressed it.
+            transformers_logging.set_verbosity(transformers_logging.INFO)
+            ensure_utf8_io()
+            assert transformers_logging.get_verbosity() <= transformers_logging.ERROR
+        finally:
+            transformers_logging.set_verbosity(original_verbosity)
+
+    def test_windows_torch_stderr_redirect(self) -> None:
+        """
+        On Windows non-TTY with torch ALREADY imported by an embedding
+        host, torch stderr must be redirected to prevent GBK-encoded
+        bytes from reaching the parent process. Without torch imported,
+        stderr must be left untouched (no import, no swap).
+        """
+        import types
+
+        from tools.search_journals._bootstrap import ensure_utf8_io
+
+        mock_stderr = MagicMock()
+        mock_stderr.isatty.return_value = False
+
+        # Without torch in sys.modules: no redirect, stderr untouched.
         with (
             patch("sys.platform", "win32"),
-            patch("sys.stderr.isatty", return_value=False),
+            patch("sys.stderr", mock_stderr),
+            patch.dict(sys.modules),
         ):
-            # Should not crash even without torch installed
+            sys.modules.pop("torch", None)
             ensure_utf8_io()
+            assert sys.stderr is mock_stderr
+
+        # With a fake torch already imported (has _C like a real install):
+        # the redirect swaps stderr away from the mock.
+        fake_torch = types.ModuleType("torch")
+        fake_torch._C = types.SimpleNamespace()  # type: ignore[attr-defined]
+        with (
+            patch("sys.platform", "win32"),
+            patch("sys.stderr", mock_stderr),
+            patch.dict(sys.modules, {"torch": fake_torch}),
+        ):
+            ensure_utf8_io()
+            assert sys.stderr is not mock_stderr
