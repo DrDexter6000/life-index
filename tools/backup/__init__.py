@@ -24,6 +24,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, cast
 
 from ..lib.paths import get_journals_dir, get_by_topic_dir, get_attachments_dir, get_user_data_dir
+from ..lib.journal_files import JournalFileKind, classify_journal_path
 from ..lib.logger import get_logger
 from ..lib.file_lock import FileLock, LockTimeoutError
 
@@ -138,7 +139,9 @@ def _calculate_sha256(file_path: Path) -> str:
 
 
 def _is_generated_journal_artifact(relative_path: Path) -> bool:
-    return relative_path.name.startswith(("index_", "monthly_", "yearly_"))
+    # Shared kind rule (tools/lib/journal_files.py): index_/monthly_/yearly_ are
+    # rebuildable derived artifacts, not user-authored journal content.
+    return classify_journal_path(relative_path) is JournalFileKind.DERIVED_INDEX
 
 
 def _create_backup_subdir(dest: Path, timestamp: str, *, dry_run: bool) -> Path:

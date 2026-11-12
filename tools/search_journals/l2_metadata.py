@@ -14,6 +14,7 @@ from typing import Any, Callable, Dict, List, Optional
 # 导入配置 (relative imports from tools/lib)
 from ..lib.paths import get_user_data_dir, get_journals_dir
 from ..lib.frontmatter import parse_journal_file
+from ..lib.journal_files import iter_month_journal_files
 from ..lib.chinese_tokenizer import count_cjk_words
 from ..lib.metadata_cache import (
     get_or_update_metadata,
@@ -254,7 +255,7 @@ def _search_filesystem(
             if not month_dir.is_dir():
                 continue
 
-            for journal_file in month_dir.glob("*.md"):
+            for journal_file in iter_month_journal_files(month_dir):
                 try:
                     entry = (
                         get_or_update_metadata(journal_file)

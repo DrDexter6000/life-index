@@ -10,6 +10,7 @@ import yaml
 
 from tools.lib.entity_graph import load_entity_graph
 from tools.lib.entity_schema import get_boost_decay_defaults
+from tools.lib.journal_files import iter_journal_files
 
 SELF_ANCHOR_COMMAND = "life-index entity --set-self --id ENTITY_ID --json"
 
@@ -254,16 +255,11 @@ def _detect_zero_reference_entities(
 
     This is a neutral fact for observability only, not an audit issue.
     """
-    import re
-
     # Collect all referenced names from journal frontmatter
     referenced_names: set[str] = set()
-    pattern = re.compile(r"^life-index_\d{4}-\d{2}-\d{2}_\d+\.md$")
 
     if journals_dir.exists():
-        for md_file in journals_dir.rglob("*.md"):
-            if not pattern.match(md_file.name):
-                continue
+        for md_file in iter_journal_files(journals_dir):
             try:
                 content = md_file.read_text(encoding="utf-8")
                 if not content.startswith("---"):
@@ -364,7 +360,6 @@ def _detect_incomplete_relationships(
     journals_dir: Path,
 ) -> list[dict[str, Any]]:
     """Detect entities frequently co-occurring without a relationship record."""
-    import re
     from collections import Counter
 
     confirmed_entities = [
@@ -388,12 +383,9 @@ def _detect_incomplete_relationships(
     # Count co-occurrences in journal frontmatter people/entities fields
     co_occurrence: Counter[frozenset[str]] = Counter()
     co_occurrence_paths: dict[frozenset[str], list[str]] = {}
-    pattern = re.compile(r"^life-index_\d{4}-\d{2}-\d{2}_\d+\.md$")
 
     if journals_dir.exists():
-        for md_file in journals_dir.rglob("*.md"):
-            if not pattern.match(md_file.name):
-                continue
+        for md_file in iter_journal_files(journals_dir):
             try:
                 content = md_file.read_text(encoding="utf-8")
                 if not content.startswith("---"):

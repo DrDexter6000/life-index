@@ -9,6 +9,7 @@ from pathlib import Path
 
 from tools.lib.events import Event, EventSeverity, register_detector
 from tools.lib.frontmatter import parse_frontmatter
+from tools.lib.journal_files import has_journal_files, iter_journal_files
 
 logger = __import__("logging").getLogger(__name__)
 
@@ -21,8 +22,6 @@ DERIVED_ENTITY_PROFILES_NOTE = (
 DERIVED_INDEX_NOTE = "Writes derived index artifacts only; source journals are not modified."
 ENTITY_AUDIT_READ_NOTE = "Read-only entity audit/review/check command."
 
-_JOURNAL_PATTERN = __import__("re").compile(r"^life-index_\d{4}-\d{2}-\d{2}_\d+\.md$")
-
 
 def check_no_journal_streak(context: dict) -> list[Event]:
     """Detect consecutive days without a journal entry."""
@@ -33,11 +32,9 @@ def check_no_journal_streak(context: dict) -> list[Event]:
     if not journals_dir.exists():
         return []
 
-    # Find the most recent life-index_*.md by mtime
+    # Find the most recent fragment journal by mtime
     newest_mtime = 0.0
-    for md_file in journals_dir.rglob("*.md"):
-        if not _JOURNAL_PATTERN.match(md_file.name):
-            continue
+    for md_file in iter_journal_files(journals_dir):
         try:
             mtime = os.path.getmtime(md_file)
             if mtime > newest_mtime:
@@ -88,11 +85,8 @@ def check_monthly_review_due(context: dict) -> list[Event]:
         if not month_dir.exists():
             continue
 
-        # Check if there are any journal files in this month
-        has_journals = any(
-            _JOURNAL_PATTERN.match(f.name) for f in month_dir.iterdir() if f.is_file()
-        )
-        if not has_journals:
+        # Check if there are any journal (fragment) files in this month
+        if not has_journal_files(month_dir):
             continue
 
         month_str = f"{year}-{month:02d}"
@@ -224,9 +218,7 @@ def check_schema_migration_available(context: dict) -> list[Event]:
     # Lightweight: check first 5 files in up to 3 most recent month dirs
     count = 0
     checked = 0
-    for md_file in sorted(journals_dir.rglob("*.md"), reverse=True):
-        if not _JOURNAL_PATTERN.match(md_file.name):
-            continue
+    for md_file in reversed(list(iter_journal_files(journals_dir))):
         if checked >= 10:
             break
         checked += 1
@@ -289,9 +281,7 @@ def check_index_stale(context: dict) -> list[Event]:
 
     newest_journal_mtime = 0.0
     if journals_dir.exists():
-        for md_file in journals_dir.rglob("*.md"):
-            if not _JOURNAL_PATTERN.match(md_file.name):
-                continue
+        for md_file in iter_journal_files(journals_dir):
             try:
                 mtime = os.path.getmtime(md_file)
                 if mtime > newest_journal_mtime:

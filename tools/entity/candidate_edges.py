@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from tools.lib.frontmatter import parse_journal_file
+from tools.lib.journal_files import iter_journal_files
 from tools.lib.paths import get_journals_dir
 
 SCHEMA_VERSION = "m16.entity_candidate_edges.v0"
@@ -218,23 +219,8 @@ def run(journals_dir: Path | None = None) -> dict[str, Any]:
     """
     jdir = journals_dir or get_journals_dir()
 
-    # Scan all .md files under Journals/ (skip non-journal markdown)
-    journal_files: list[Path] = []
-    if jdir.exists():
-        for md_file in jdir.rglob("*.md"):
-            # Skip index files and by-topic files
-            if md_file.name.startswith("index_") or md_file.name.startswith("主题_"):
-                continue
-            if md_file.name.startswith("项目_") or md_file.name.startswith("标签_"):
-                continue
-            # Only include files matching journal pattern: *_{YYYY-MM-DD}_*.md
-            if re.search(r"_\d{4}-\d{2}-\d{2}_\d+\.md$", md_file.name) or re.search(
-                r"_\d{4}-\d{2}-\d{2}\.md$", md_file.name
-            ):
-                journal_files.append(md_file)
-            elif "by-topic" not in str(md_file) and "index" not in str(md_file).lower():
-                # Include any .md that's not an index — it might be a journal
-                journal_files.append(md_file)
+    # Enumerate live fragment journals via the shared kind rule
+    journal_files: list[Path] = list(iter_journal_files(jdir)) if jdir.exists() else []
 
     journals: list[dict[str, Any]] = []
     for fpath in journal_files:

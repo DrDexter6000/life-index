@@ -20,6 +20,7 @@ from typing import Any
 
 from ..lib.entity_graph import load_entity_graph
 from ..lib.frontmatter import parse_frontmatter
+from ..lib.journal_files import iter_month_journal_files
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +104,7 @@ def collect_candidates(
         for month_dir in sorted(year_dir.iterdir()):
             if not month_dir.is_dir():
                 continue
-            for md_file in sorted(month_dir.glob("*.md")):
+            for md_file in iter_month_journal_files(month_dir):
                 _extract_frontmatter_entities(md_file, counter)
 
     # Build candidates with frequency >= threshold

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from .paths import get_cache_dir, get_metadata_db_path, get_journals_dir, get_user_data_dir
 from .frontmatter import parse_journal_file
+from .journal_files import iter_journal_files, iter_month_journal_files
 from .path_contract import build_journal_path_fields
 from .chinese_tokenizer import count_cjk_words
 
@@ -569,7 +570,7 @@ def _compute_source_hash() -> str:
     journals_dir = get_journals_dir()
     sha = hashlib.sha256()
     if journals_dir.exists():
-        for journal_file in sorted(journals_dir.rglob("*.md")):
+        for journal_file in iter_journal_files(journals_dir):
             try:
                 sha.update(journal_file.read_bytes())
             except (IOError, OSError):
@@ -725,7 +726,7 @@ def update_cache_for_all_journals(
                     if not month_dir.is_dir():
                         continue
 
-                    for journal_file in month_dir.glob("*.md"):
+                    for journal_file in iter_month_journal_files(month_dir):
                         try:
                             # 检查缓存是否有效
                             cached = get_cached_metadata(conn, journal_file)
