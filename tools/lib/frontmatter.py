@@ -6,11 +6,12 @@ Life Index - Frontmatter Utilities
 本模块保留 re-export 以保证向后兼容。
 """
 
+import json
 import re
 import yaml
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # --- Re-exports from attachment.py (backward compat) ---
 from tools.lib.attachment import normalize_attachment_entries  # noqa: F401
@@ -66,6 +67,21 @@ STRING_FIELDS = {
     "summary",
 }
 
+# JSON (ensure_ascii=False) leaves some code points raw that YAML's reader
+# rejects (DEL, C1 controls, U+FFFE/U+FFFF, lone surrogates) or treats as line
+# breaks (U+2028/U+2029).  Escape them so a JSON string literal always stays a
+# faithful YAML double-quoted scalar.
+_YAML_ESCAPE_REQUIRED = re.compile("[\x7f-\x9f\u2028\u2029\ud800-\udfff\ufffe\uffff]")
+
+# Characters YAML treats as line breaks inside a scalar.
+_YAML_LINE_BREAKS = "\n\r\x85\u2028\u2029"
+
+# Marker for "this text cannot be written as a plain YAML scalar".
+_NOT_A_PLAIN_SCALAR = object()
+
+# One block-mapping nesting level.
+_MAPPING_INDENT = "  "
+
 
 def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
     """
@@ -80,12 +96,12 @@ def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
     if not content.startswith("---"):
         return {}, content
 
-    parts = content.split("---", 2)
-    if len(parts) < 3:
+    sections = _split_frontmatter_sections(content)
+    if sections is None:
         return {}, content
 
-    fm_content = parts[1].strip()
-    body = parts[2].strip()
+    fm_content = sections[0].strip()
+    body = sections[1].strip()
 
     try:
         metadata: Dict[str, Any] = yaml.safe_load(fm_content) or {}
@@ -95,14 +111,44 @@ def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
     metadata, body = _merge_legacy_content_into_body(metadata, body)
 
     # yaml.safe_load 会将 ISO 8601 时间戳解析为 datetime 对象。
-    # 整个代码库以字符串形式处理日期，转回字符串以保持接口稳定。
-    for key, value in metadata.items():
-        if isinstance(value, datetime):
-            metadata[key] = value.isoformat(timespec="seconds")
-        elif isinstance(value, date):
-            metadata[key] = value.isoformat()
+    # 整个代码库以字符串形式处理日期，递归转回字符串以保持接口稳定
+    # （顶层与嵌套 mapping/list 都不能向调用方泄漏 datetime）。
+    metadata = {key: _normalize_temporal_values(value) for key, value in metadata.items()}
 
     return metadata, body
+
+
+def _split_frontmatter_sections(content: str) -> Optional[Tuple[str, str]]:
+    """Split the ``---`` fenced block from the body.
+
+    Delimiters are recognised as whole lines (the convention every other
+    frontmatter reader in the repository uses), so a field value may contain
+    ``---`` without truncating the metadata.  Malformed files that do not use
+    whole-line fences keep the historical substring split.
+    """
+    lines = content.split("\n")
+    if lines and lines[0].strip() == "---":
+        for index in range(1, len(lines)):
+            if lines[index].strip() == "---":
+                return "\n".join(lines[1:index]), "\n".join(lines[index + 1 :])
+
+    parts = content.split("---", 2)
+    if len(parts) < 3:
+        return None
+    return parts[1], parts[2]
+
+
+def _normalize_temporal_values(value: Any) -> Any:
+    """Recursively convert YAML dates/timestamps to ISO strings."""
+    if isinstance(value, datetime):
+        return value.isoformat(timespec="seconds")
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {key: _normalize_temporal_values(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_normalize_temporal_values(item) for item in value]
+    return value
 
 
 def _recover_legacy_content_frontmatter(fm_content: str, body: str) -> Tuple[Dict[str, Any], str]:
@@ -209,8 +255,6 @@ def format_frontmatter(data: Dict[str, Any]) -> str:
 
 def _format_field(key: str, value: Any) -> str:
     """格式化单个字段"""
-    import json
-
     list_like_fields = {
         "topic",
         "tags",
@@ -225,20 +269,156 @@ def _format_field(key: str, value: Any) -> str:
         # 按逗号分割，确保 "tag1, tag2" 变成 ["tag1", "tag2"]
         value = [item.strip() for item in value.split(",") if item.strip()]
 
+    if isinstance(value, dict):
+        # 映射使用 block-style YAML：可读、保留键序、Unicode 不转义
+        return "\n".join(_format_mapping_entry(key, value, ""))
     if isinstance(value, list):
         # 列表使用 JSON 格式
-        return f"{key}: {json.dumps(value, ensure_ascii=False)}"
+        return f"{key}: {_format_flow_value(value)}"
     elif isinstance(value, str):
-        # 字符串加引号（除了特定字段）
-        if key in ("date",):
+        # 字符串加引号（除了 date 字段中本来就能原样解析的值）
+        if key in ("date",) and _date_stays_plain(value):
             return f"{key}: {value}"
-        return f'{key}: "{value}"'
+        return f"{key}: {_quote_yaml_string(value)}"
     elif isinstance(value, bool):
-        return f"{key}: {str(value).lower()}"
+        return f"{key}: {'true' if value else 'false'}"
     elif value is None:
         return f"{key}:"
+    elif isinstance(value, float):
+        return f"{key}: {_format_float(value)}"
     else:
         return f"{key}: {value}"
+
+
+def _quote_yaml_string(value: str) -> str:
+    """Return a double-quoted YAML scalar for ``value``.
+
+    A JSON string literal with ``ensure_ascii=False`` is already a valid YAML
+    double-quoted scalar for ordinary content; only the code points YAML's
+    reader cannot carry are rewritten as YAML ``\\uXXXX`` escapes.
+    """
+    literal = json.dumps(value, ensure_ascii=False)
+    return _YAML_ESCAPE_REQUIRED.sub(lambda match: "\\u%04x" % ord(match.group(0)), literal)
+
+
+def _format_flow_value(value: Any) -> str:
+    """Render a value inside an inline flow collection using JSON syntax.
+
+    ``json.dumps`` output is byte-identical for ordinary values, but PyYAML's
+    YAML 1.1 resolver reads exponent-only floats (``1e+20``) as strings, so
+    floats use ``_format_float`` and collections recurse instead.
+    """
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return _quote_yaml_string(value)
+    if isinstance(value, float):
+        return _format_float(value)
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, (list, tuple)):
+        return "[" + ", ".join(_format_flow_value(item) for item in value) + "]"
+    if isinstance(value, dict):
+        entries = (
+            f"{_format_flow_key(key)}: {_format_flow_value(item)}" for key, item in value.items()
+        )
+        return "{" + ", ".join(entries) + "}"
+    # Keep the historical TypeError for values JSON cannot represent.
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _format_flow_key(key: Any) -> str:
+    """Render a flow-mapping key; JSON always quotes keys."""
+    return _quote_yaml_string(key if isinstance(key, str) else str(key))
+
+
+def _format_float(value: float) -> str:
+    """Return a YAML float scalar; inf/nan use YAML's own spellings."""
+    if value != value:
+        return ".nan"
+    if value == float("inf"):
+        return ".inf"
+    if value == float("-inf"):
+        return "-.inf"
+    text = repr(value)
+    if "e" in text and "." not in text:
+        # YAML 1.1 only resolves floats with a decimal point, so "1e+20"
+        # would come back as a string.  "1.0e+20" is still the same float.
+        text = text.replace("e", ".0e", 1)
+    return text
+
+
+def _load_plain_scalar(text: str) -> Any:
+    """Parse ``text`` as a standalone YAML scalar, or return the sentinel.
+
+    A plain scalar is safe to emit only when YAML reads the bare text back as
+    exactly the same string.  ``safe_load`` is the authoritative check for
+    timestamps, booleans, numbers, sexagesimals and indicator characters.
+    """
+    if not text or text != text.strip():
+        return _NOT_A_PLAIN_SCALAR
+    if any(ord(char) < 0x20 or ord(char) == 0x7F for char in text):
+        return _NOT_A_PLAIN_SCALAR
+    if any(char in _YAML_LINE_BREAKS for char in text):
+        return _NOT_A_PLAIN_SCALAR
+    try:
+        return yaml.safe_load(text)
+    except yaml.YAMLError:
+        return _NOT_A_PLAIN_SCALAR
+
+
+def _is_plain_scalar(text: str) -> bool:
+    """Whether ``text`` may be written unquoted and still parse back unchanged."""
+    return bool(_load_plain_scalar(text) == text)
+
+
+def _date_stays_plain(text: str) -> bool:
+    """Whether an unquoted ``date`` value parses back to the same string."""
+    parsed = _load_plain_scalar(text)
+    if parsed == text:
+        return True
+    # parse_frontmatter normalises ISO dates/timestamps back to strings.
+    return bool(_normalize_temporal_values(parsed) == text)
+
+
+def _format_mapping_key(key: Any) -> str:
+    """Render a mapping key, quoting it when YAML would resolve it otherwise."""
+    if isinstance(key, str):
+        return key if _is_plain_scalar(key) else _quote_yaml_string(key)
+    return str(key)
+
+
+def _format_block_scalar(value: Any) -> str:
+    """Render a scalar (or inline list) value inside a block mapping."""
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return value if _is_plain_scalar(value) else _quote_yaml_string(value)
+    if isinstance(value, float):
+        return _format_float(value)
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, (list, tuple)):
+        return _format_flow_value(value)
+    return _quote_yaml_string(str(value))
+
+
+def _format_mapping_entry(key: Any, value: Any, indent: str) -> List[str]:
+    """Render one block-mapping entry (recursing into nested mappings)."""
+    rendered_key = _format_mapping_key(key)
+    if isinstance(value, dict):
+        if not value:
+            return [f"{indent}{rendered_key}: {{}}"]
+        lines = [f"{indent}{rendered_key}:"]
+        nested_indent = indent + _MAPPING_INDENT
+        for nested_key, nested_value in value.items():
+            lines.extend(_format_mapping_entry(nested_key, nested_value, nested_indent))
+        return lines
+    return [f"{indent}{rendered_key}: {_format_block_scalar(value)}"]
 
 
 def format_journal_content(data: Dict[str, Any]) -> str:
