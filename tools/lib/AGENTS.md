@@ -32,13 +32,13 @@ Shared infrastructure library for all Life Index atomic tools.
 - **config.py**: Centralized configuration, paths, templates. All paths use `pathlib.Path` for cross-platform compatibility.
 - **entity_cache.py**: SQLite-backed lookup cache helper for entity graph. Round 7 Phase 1 提供 `is_cache_fresh()` + `resolve_entity_cached()`；当前 search/write 主热路径主要使用 `entity_runtime.py`。
 - **entity_candidates.py**: Write-time entity candidate extraction (Round 7 Phase 2). Covers frontmatter + content body alias matching via runtime view.
-- **entity_graph.py**: YAML entity graph load/save/resolve. Foundational module for entity operations.
+- **entity_graph.py**: YAML entity graph load/save/resolve. Foundational module for entity operations. `load_entity_graph()` memoizes the validated parse per resolved path and file `(mtime_ns, size)` and returns a deep copy, so repeated loads in one process skip YAML parsing while in-place caller edits cannot corrupt the memo; `save_entity_graph()` updates the memo.
 - **entity_relations.py**: Relation vocabulary normalization (Round 7 Phase 3). Canonical mapping + alias helper for search/review/check.
 - **entity_runtime.py**: Runtime serving layer for entity graph (Round 7 Phase 1). Provides `EntityRuntimeView` with O(1) by_lookup, reverse_relationships, and phrase pattern registry.
 - **entity_schema.py**: Entity graph schema validation. ENTITY_TYPES (new actor/artifact plus legacy person), alias conflict detection, relationship target verification, v1.2 relationship metadata defaults, and merge tombstone validation.
 - **errors.py**: Structured error codes (E{module}{type}) with recovery strategies for Agent decision-making.
 - **file_lock.py**: Cross-platform file locking for concurrent access control. Uses fcntl (Unix) and msvcrt (Windows).
-- **journal_files.py**: Canonical journal file enumeration and closed kind classification under Journals/ (fragment / digest / derived_index / unknown). Path-only rules; dot-directories such as .revisions/ are never enumerated. All journals-tree walkers use these helpers.
+- **journal_files.py**: Canonical journal file enumeration and closed kind classification under Journals/ (fragment / digest / derived_index / unknown). Path-only rules; dot-directories such as .revisions/ are never enumerated. All journals-tree walkers use these helpers. `scan_journal_files()` walks fragments once and returns `(path, mtime, size)` from `DirEntry.stat()` for stat-only consumers (event detectors, metadata-cache reconcile); its mtime equals `Path.stat().st_mtime`.
 - **frontmatter.py**: SSOT for YAML frontmatter parsing/formatting. Re-exports attachment.py and schema.py for backward compat.
 - **fts_search.py**: FTS5 full-text search with BM25 ranking. Extracted from search_index.py.
 - **fts_update.py**: FTS5 index building/updating (incremental and full rebuild). Extracted from search_index.py.

@@ -65,6 +65,10 @@ class EventRegistry:
         if not enabled:
             return []
 
+        # Per-call context: detectors may memoize derived inputs (for example
+        # one stat walk of the journals tree) on this copy. Nothing survives
+        # the call, so long-lived hosts can never serve a stale tree scan.
+        call_context = dict(context)
         events: list[Event] = []
         deadline = time.monotonic() + timeout_ms / 1000
 
@@ -73,7 +77,7 @@ class EventRegistry:
                 logger.debug("Event detection timeout, skipping: %s", name)
                 break
             try:
-                events.extend(func(context))
+                events.extend(func(call_context))
             except Exception:
                 logger.debug("Event detector '%s' failed", name, exc_info=True)
 

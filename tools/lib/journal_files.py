@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Iterable, Iterator
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
@@ -50,32 +51,77 @@ def is_journal_file(path: Path) -> bool:
     return path.is_file() and JOURNAL_FILENAME_RE.match(path.name) is not None
 
 
+@dataclass(frozen=True, slots=True)
+class JournalFileStat:
+    """Path plus the stat facts the metadata cache stores and compares.
+
+    ``mtime`` is the same float ``Path.stat().st_mtime`` returns for the file
+    (both come from ``os.stat_result.st_mtime``), so cache signatures stay
+    exactly comparable with rows written by ``get_file_signature``.
+    """
+
+    path: Path
+    mtime: float
+    size: int
+
+
+def _iter_live_markdown_entries(root: Path) -> Iterator[os.DirEntry[str]]:
+    """Yield live ``.md`` directory entries under root (dot-directories skipped).
+
+    Entries are yielded while their directory handle is still open, so callers
+    can take ``entry.stat()`` from the same walk without re-opening the file.
+    """
+    root = Path(root)
+    if not root.is_dir():
+        return
+    pending = [str(root)]
+    while pending:
+        current = pending.pop()
+        try:
+            with os.scandir(current) as entries:
+                found: list[os.DirEntry[str]] = []
+                for entry in entries:
+                    if entry.is_dir():
+                        if not entry.name.startswith("."):
+                            pending.append(entry.path)
+                    elif entry.name.endswith(".md") and entry.is_file():
+                        found.append(entry)
+                yield from found
+        except OSError:
+            continue
+
+
 def _iter_live_markdown(root: Path) -> Iterator[Path]:
     """Yield .md files under root without descending into dot-directories.
 
     Files inside a directory whose name starts with a dot (for example
     ``.revisions/``) are never live journal-tree files of any kind.
     """
-    root = Path(root)
-    if not root.is_dir():
-        return
-    # os.scandir answers is_dir()/is_file() from the directory listing, so the
-    # walk costs no extra stat call per file.
-    pending = [str(root)]
-    while pending:
-        current = pending.pop()
-        found: list[Path] = []
+    for entry in _iter_live_markdown_entries(root):
+        yield Path(entry.path)
+
+
+def scan_journal_files(journals_dir: Path) -> list[JournalFileStat]:
+    """Walk the Journals tree once and return stat facts for live fragments.
+
+    Uses the same kind rule and dot-directory rule as ``iter_journal_files``
+    (fragments only), in the same stable path order. The stat facts come from
+    ``DirEntry.stat()``: on Windows that costs no extra system call per file;
+    elsewhere it is one ``stat``. ``mtime`` compares equal to
+    ``Path.stat().st_mtime`` for the same file on the same platform.
+    """
+    stats: list[JournalFileStat] = []
+    for entry in _iter_live_markdown_entries(journals_dir):
+        path = Path(entry.path)
+        if classify_journal_path(path) is not JournalFileKind.FRAGMENT:
+            continue
         try:
-            with os.scandir(current) as entries:
-                for entry in entries:
-                    if entry.is_dir():
-                        if not entry.name.startswith("."):
-                            pending.append(entry.path)
-                    elif entry.name.endswith(".md") and entry.is_file():
-                        found.append(Path(entry.path))
+            info = entry.stat()
         except OSError:
             continue
-        yield from found
+        stats.append(JournalFileStat(path=path, mtime=info.st_mtime, size=info.st_size))
+    stats.sort(key=lambda item: item.path)
+    return stats
 
 
 def _normalize_kinds(kinds: Iterable[JournalFileKind]) -> frozenset[JournalFileKind]:
