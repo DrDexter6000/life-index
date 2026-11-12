@@ -27,11 +27,12 @@ RATIFIED_CORE_DOMAINS = (
     ("C5", "Entity graph"),
     ("C6", "Integrity, health, backup, restore, and recovery"),
     ("C7", "Deterministic contract and eval verification"),
+    ("C8", "User-owned standing documents"),
 )
 EXPECTED_CHARTER_METADATA = {
-    "版本": "v1.12.0",
-    "批准日期": "2026-07-21",
-    "修订次数": "12",
+    "版本": "v1.13.0",
+    "批准日期": "2026-11-12",
+    "修订次数": "13",
 }
 STRUCTURED_INPUT_AUTHORITY_RULE = "\n".join(
     (
@@ -101,7 +102,7 @@ CLASSIFICATION_OWNERSHIP_NOT_CERTIFICATION_RULE = "\n".join(
 )
 CHARTER_ARCHITECTURE_AUTHORITY_SPLIT = "\n".join(
     (
-        "`CHARTER.md §1.10` is the sole authority for the stable C1–C7 and non-Core",
+        "`CHARTER.md §1.10` is the sole authority for the stable C1–C8 and non-Core",
         "classification rules and the sole named compatibility exception.",
         "`docs/ARCHITECTURE.md` owns only the exhaustive current 31-route mapping under",
         "those rules; it does not own or duplicate them.",
@@ -123,7 +124,7 @@ EXPECTED_STABLE_NON_CORE_CLASSIFICATION_RULES = "\n".join(
 ARCHITECTURE_CLASSIFICATION_POINTER = "\n".join(
     (
         "This table is the exhaustive current 31-route mapping under the Charter-owned",
-        "C1–C7 and stable non-Core classification rules in `CHARTER.md §1.10`.",
+        "C1–C8 and stable non-Core classification rules in `CHARTER.md §1.10`.",
         "It maps current routes only; it does not own or duplicate those stable rules.",
     )
 )
@@ -234,12 +235,30 @@ EXPECTED_CORE_ADMISSION_DOMAINS = "\n".join(
         "| C5 | Entity graph |",
         "| C6 | Integrity, health, backup, restore, and recovery |",
         "| C7 | Deterministic contract and eval verification |",
+        "| C8 | User-owned standing documents |",
         "",
-        "The C1–C7 identifiers are additive labels; they do not rename or weaken the",
-        "exact approved domain names. These seven domains are active Charter authority.",
+        "The C1–C8 identifiers are additive labels; they do not rename or weaken the",
+        "exact approved domain names. These eight domains are active Charter authority.",
         "CHARTER.md §1.10 is the sole list authority; lower-level documents must reference",
-        "C1–C7 and must not duplicate domain descriptions. The enumeration is closed.",
+        "C1–C8 and must not duplicate domain descriptions. The enumeration is closed.",
         "Every added Core domain requires new Human Owner substantive approval.",
+        "",
+        "**Scope notes**:",
+        "",
+        "- C1 journals have two in-file kinds, marked by `kind`. A *fragment* is the",
+        "  user's own received words together with recorded facts; every pre-existing",
+        "  journal is a fragment. A *digest* is a Host-Agent-authored, attributed",
+        "  day/month/year narrative. Core stores a digest verbatim, validates its",
+        "  structure, lists the fragments it covers, and keeps its versions. Core never",
+        "  forms, edits, or owns the interpretation a digest contains, and a digest is",
+        "  never treated as the user's own words.",
+        "- C8 covers plain-text documents that the user owns and that must outlive any",
+        "  runtime or module. Core reads and writes them, verifies that quoted user words",
+        "  exist in the cited fragment, and keeps their versions; it performs no",
+        "  interpretation. The documents under C8 are enumerated in",
+        "  `docs/ARCHITECTURE.md`; adding one requires the §5.2 substantive gate.",
+        "- These notes assign ownership. They do not claim that fragments, digests, or",
+        "  any C8 document are implemented.",
         "",
         "Human Owner approval may replace only second-production-consumer evidence. It",
         "cannot waive determinism, low/zero LLM content, cross-time semantic stability,",
@@ -270,6 +289,42 @@ EXPECTED_CORE_ADMISSION_DOMAINS = "\n".join(
         "",
         "This ratification lands D0 Charter authority only. It does not implement #163,",
         "#162, #165, or #164 and does not change current runtime or data contracts.",
+        "",
+        "**Substantive-gate ratification record (C8 and journal kinds)**:",
+        "",
+        "- **Current rule**: the closed admission list held exactly C1–C7; module state",
+        "  was either L1/L2 data state or module-local process state; journals had one",
+        "  kind.",
+        '- **Target rule**: C8 "User-owned standing documents" is added; user-owned',
+        "  standing documents are L1/L2 user data written only through Core; C1 journals",
+        "  have two kinds, fragment and digest, and a digest is Host-Agent-authored,",
+        "  attributed, stored verbatim by Core, and never the user's own words.",
+        "- **Triggering real scenario and evidence**: a user speaks short remarks to a",
+        "  host agent and each must be saved without the full-journal ceremony that",
+        "  `SKILL.md` requires for every record; an archive steward's persona and the",
+        "  user's standing instructions to it must survive a change of harness or model.",
+        "  Before this amendment §1.10 forbade module state in the user data directory",
+        "  and the closed list had no domain for a user-owned standing document.",
+        "- **Executed deterministic verification**: `tests/contract` in full and",
+        "  `tests/sanity/test_round17_baselines.py` passed on the amended documents; the",
+        "  amended expectations in `tests/contract/test_platform_ssot_absorption.py` and",
+        "  `tests/contract/test_core_command_classification.py` were first confirmed to",
+        "  fail against the unamended documents.",
+        "- **Rationale**: record the unit users actually produce, give the narrative",
+        "  layer an owner, and keep user-owned module settings with the user's data",
+        "  across runtime changes without letting modules write into the data directory.",
+        "- **Opposition addressed**: (1) a closed list that grows may lose meaning, so",
+        "  the addition keeps every non-waivable admission constraint and C8 documents",
+        "  are enumerated one by one; (2) storing agent-written narrative could read as",
+        "  Core storing interpretation, so a digest is a distinct attributed kind that",
+        "  Core only stores, validates, and versions.",
+        "- **Impact**: §1.2, §1.5, §1.10 and the architecture/CI pointers. No runtime,",
+        "  data-contract, or public-route change; the 31-route mapping is unchanged.",
+        "- **Rollback**: reversal or weakening requires a new §5.2 substantive amendment.",
+        "- **Human Owner ack**: COMPLETE — 2026-11-12; the Human Owner approved",
+        "  amendments A, B, and C and the names in writing during the drafting session,",
+        "  and instructed the drafting agent to enter this ack on the Owner's behalf.",
+        "  The decision is the Owner's own; only the transcription was done by the agent.",
     )
 )
 
@@ -301,7 +356,7 @@ EXPECTED_ADVANCED_ADDON_CHARTER_INVARIANT = (
     "use the shared Host Agent Handoff and Host Agent + Life Index Skill/Domain Skill. "
     "An Addon is presentation + Domain Skill + an optional deterministic helper; it "
     "cannot own an LLM/provider/runtime or bypass Core to read or write L1. An optional "
-    "deterministic helper enters Core only under the already-ratified closed C1-C7 "
+    "deterministic helper enters Core only under the already-ratified closed C1-C8 "
     "admission model or new Human Owner substantive approval; otherwise it remains "
     "Addon-local."
 )
@@ -347,8 +402,8 @@ EXPECTED_ADVANCED_ADDON_DUAL_CHANNEL = "\n".join(
         "",
         "| Candidate | Decision |",
         "|---|---|",
-        "| Already covered by the closed C1-C7 Core authority | Consume the canonical Core capability; do not duplicate it in the Addon. |",  # noqa: E501
-        "| Satisfies every already-ratified admission constraint and belongs within C1-C7, or receives new Human Owner substantive approval for the required authority expansion | Propose Core admission through the existing RFC/substantive-gate process; determinism and all non-waivable constraints still apply. |",  # noqa: E501
+        "| Already covered by the closed C1-C8 Core authority | Consume the canonical Core capability; do not duplicate it in the Addon. |",  # noqa: E501
+        "| Satisfies every already-ratified admission constraint and belongs within C1-C8, or receives new Human Owner substantive approval for the required authority expansion | Propose Core admission through the existing RFC/substantive-gate process; determinism and all non-waivable constraints still apply. |",  # noqa: E501
         "| Does not satisfy those conditions | Keep it Addon-local and non-canonical. |",
         "| Performs semantic understanding, orchestration, interpretation, or synthesis | It is not a deterministic helper; route it through the shared Host Agent Handoff and Host Agent + Skills. |",  # noqa: E501
         "",
@@ -529,8 +584,8 @@ def test_charter_header_records_latest_owner_ratification() -> None:
         assert actual == expected
 
     latest_revision = _charter_metadata_value(charter, "最近修订")
-    assert latest_revision.startswith("2026-07-21")
-    assert "Structured Input Authority" in latest_revision
+    assert latest_revision.startswith("2026-11-12")
+    assert "C8" in latest_revision
     assert "owner" in latest_revision.casefold()
 
 
@@ -556,6 +611,30 @@ def test_charter_records_structured_input_authority_and_substantive_gate() -> No
     ):
         assert gate_record in section
     assert "*修订 12：2026-07-21" in charter
+    assert "*修订 13：2026-11-12" in charter
+
+
+def test_admission_block_records_c8_and_journal_kinds_gate_record() -> None:
+    charter = AUTHORITY_PATHS["charter"].read_text(encoding="utf-8")
+    start_marker = "<!-- PLATFORM-SSOT:CORE-ADMISSION-DOMAINS:START -->"
+    end_marker = "<!-- PLATFORM-SSOT:CORE-ADMISSION-DOMAINS:END -->"
+    assert charter.count(start_marker) == charter.count(end_marker) == 1
+    block = charter[charter.index(start_marker) + len(start_marker) : charter.index(end_marker)]
+    record_heading = "**Substantive-gate ratification record (C8 and journal kinds)**:"
+    assert block.count(record_heading) == 1
+    record = block[block.index(record_heading) + len(record_heading) :]
+    for gate_record in (
+        "**Current rule**:",
+        "**Target rule**:",
+        "**Triggering real scenario and evidence**:",
+        "**Executed deterministic verification**:",
+        "**Rationale**:",
+        "**Opposition addressed**:",
+        "**Impact**:",
+        "**Rollback**:",
+        "**Human Owner ack**: COMPLETE — 2026-11-12",
+    ):
+        assert gate_record in record
 
 
 def test_section_1_9_supersedes_direct_provider_fallback_without_overclaiming_runtime() -> None:
@@ -957,7 +1036,7 @@ def test_advanced_addon_dual_channel_boundary_has_one_constitutional_owner() -> 
         "docs/ARCHITECTURE.md",
     )
 
-    assert "closed C1-C7 Core authority" in block
+    assert "closed C1-C8 Core authority" in block
     assert "| C1 |" not in block
     for _, domain_name in RATIFIED_CORE_DOMAINS:
         assert domain_name not in block

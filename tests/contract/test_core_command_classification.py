@@ -68,7 +68,7 @@ EXPECTED_LEGACY_ADAPTERS = frozenset({"weather"})
 
 CHARTER_CLASSIFICATION_RULES_POINTER = (
     "This table is the exhaustive current 31-route mapping under the Charter-owned\n"
-    "C1–C7 and stable non-Core classification rules in `CHARTER.md §1.10`.\n"
+    "C1–C8 and stable non-Core classification rules in `CHARTER.md §1.10`.\n"
     "It maps current routes only; it does not own or duplicate those stable rules."
 )
 OWNERSHIP_MAPPING_HEADING = "### Public command constitutional ownership/admission mapping"
