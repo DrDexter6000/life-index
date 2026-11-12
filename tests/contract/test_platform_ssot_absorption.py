@@ -318,13 +318,15 @@ EXPECTED_CORE_ADMISSION_DOMAINS = "\n".join(
         "  are enumerated one by one; (2) storing agent-written narrative could read as",
         "  Core storing interpretation, so a digest is a distinct attributed kind that",
         "  Core only stores, validates, and versions.",
-        "- **Impact**: §1.2, §1.5, §1.10 and the architecture/CI pointers. No runtime,",
-        "  data-contract, or public-route change; the 31-route mapping is unchanged.",
+        "- **Impact**: §1.2, §1.5, §1.10, a clarifying note in §4.2, and the",
+        "  architecture/CI pointers. No runtime, data-contract, or public-route change;",
+        "  the 31-route mapping is unchanged.",
         "- **Rollback**: reversal or weakening requires a new §5.2 substantive amendment.",
         "- **Human Owner ack**: COMPLETE — 2026-11-12; the Human Owner approved",
-        "  amendments A, B, and C and the names in writing during the drafting session,",
-        "  and instructed the drafting agent to enter this ack on the Owner's behalf.",
-        "  The decision is the Owner's own; only the transcription was done by the agent.",
+        "  amendments A, B, and C, the names, and the §4.2 clarifying note in writing",
+        "  during the drafting session, and instructed the drafting agent to enter this",
+        "  ack on the Owner's behalf. The decision is the Owner's own; only the",
+        "  transcription was done by the agent.",
     )
 )
 

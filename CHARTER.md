@@ -413,13 +413,15 @@ This ratification lands D0 Charter authority only. It does not implement #163,
   are enumerated one by one; (2) storing agent-written narrative could read as
   Core storing interpretation, so a digest is a distinct attributed kind that
   Core only stores, validates, and versions.
-- **Impact**: §1.2, §1.5, §1.10 and the architecture/CI pointers. No runtime,
-  data-contract, or public-route change; the 31-route mapping is unchanged.
+- **Impact**: §1.2, §1.5, §1.10, a clarifying note in §4.2, and the
+  architecture/CI pointers. No runtime, data-contract, or public-route change;
+  the 31-route mapping is unchanged.
 - **Rollback**: reversal or weakening requires a new §5.2 substantive amendment.
 - **Human Owner ack**: COMPLETE — 2026-11-12; the Human Owner approved
-  amendments A, B, and C and the names in writing during the drafting session,
-  and instructed the drafting agent to enter this ack on the Owner's behalf.
-  The decision is the Owner's own; only the transcription was done by the agent.
+  amendments A, B, and C, the names, and the §4.2 clarifying note in writing
+  during the drafting session, and instructed the drafting agent to enter this
+  ack on the Owner's behalf. The decision is the Owner's own; only the
+  transcription was done by the agent.
 <!-- PLATFORM-SSOT:CORE-ADMISSION-DOMAINS:END -->
 
 ### §1.11 召回优先检索真实模型（Recall-First Retrieval Truthfulness Model）
@@ -691,7 +693,7 @@ Presentation（呈现层）：按调用方需求截断、格式化
 
 - ❌ 用户日志内容以非 Markdown 格式存储
 - ❌ Frontmatter 核心字段（`title`、`date`、`content`）语义变更
-- ❌ `~/Documents/Life-Index/` 目录顶层结构变更
+- ❌ `~/Documents/Life-Index/` 目录顶层结构变更（经 §5.2 实质门槛列入 §1.10 C8 清单的常设文档属于增补，不改变既有结构，不在此列）
 - ❌ 引入"无法从源文件重建"的机器索引
 - ❌ 在用户数据目录外创建第二个持久化写入点
 
