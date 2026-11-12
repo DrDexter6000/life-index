@@ -262,6 +262,8 @@ def test_unified_confirm_updates_existing_journal_in_place(tmp_path: Path) -> No
         journal.relative_to(data_dir).as_posix(),
         ".cache",
         ".cache/journals.lock",
+        # edit commits now upsert the journal's metadata cache row in place
+        ".cache/metadata_cache.db",
         ".index",
         ".index/pending_writes.json",
         ".life-index/index-b",

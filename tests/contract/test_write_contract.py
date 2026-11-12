@@ -269,6 +269,7 @@ class TestWriteJournalResponseShape:
             "monthly_abstract",
             "legacy_indices",
             "metadata_relations",
+            "metadata_cache_row",
             "mark_pending",
             "index_b",
             "entity_candidates",

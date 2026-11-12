@@ -567,6 +567,30 @@ Round 8 在分层搜索架构之上，建立了完整的搜索质量保障闭环
 - **Index Manifest**：`tools/lib/index_manifest.py` 管理 FTS 索引构建状态（counts + checksums + legacy vector fields fixed at disabled/empty），支持增量更新的原子性和恢复
 - **Pending Queue**：`tools/lib/pending_writes.py` 实现写入穿透缓存，写入/编辑后标记 pending，搜索前消费，确保搜索结果包含最新数据（ADR-017）
 
+#### Metadata cache freshness（write-time upsert + reconcile）
+
+Metadata cache 的新鲜度不再依赖全库内容哈希：
+
+- **Write/edit 即时 upsert**：`tools/write_journal/core.py` 在 journal 提交后追加
+  `metadata_cache_row/post_commit` 非阻塞副作用记录并调用
+  `metadata_cache.upsert_journal_cache_row()`（内部即 `parse_and_cache_journal` 的
+  INSERT OR REPLACE 单行 upsert）；`tools/edit_journal` 在编辑提交后做同样 upsert
+  （结果字段 `metadata_cache_updated`）。失败不影响 journal 本身，恢复手段是
+  `life-index index --rebuild` 或下次搜索的 reconcile 自愈。
+- **全量重建仅三种触发**（`evaluate_cache_state()`）：(a) 无 version sidecar；
+  (b) sidecar 记录的 `schema_version` 或 `tool_version` 与当前不匹配；(c)
+  `entity_graph.yaml` 变化（sidecar 的 `source_hash` 现在只是该文件的哈希；write 时的
+  entity 候选晋升会改写 graph，因此这类 write 后的首次搜索会做一次全量重建）。
+- **Reconcile**（`ensure_cache_version_current()` → `reconcile_cache_with_files()`）：
+  非重建情况下，搜索路径以 `tools/lib/journal_files.py` 枚举 fragment 文件（stat-only），
+  逐行比较 `(mtime, size)`——与 `is_cache_valid` 同一判据——只解析新增/变更文件
+  （复用 `parse_and_cache_journal`），并删除文件已消失的行。未变更日志的内容永不被读取。
+- **`health --cache-audit` / `run_cache_audit()`**：以同一行级对比的 dry-run 形式输出
+  `valid / stale / incompatible / missing` 与行级计数，不写任何文件。
+- **已知边界（接受）**：工具外修改若 mtime 与大小均不变，则要到
+  `life-index index --rebuild` 才能被发现；sidecar schema 自 v1.1.x 升到 v2.0.0 时存量
+  安装会全量重建一次。
+
 #### Transactional write boundary
 
 `tools/write_journal/core.py` uses one ordered `side_effects` record sequence as
@@ -582,11 +606,11 @@ the execution truth for the compatibility summaries `write_outcome`,
 3. Any failure before that rename removes the temp journal and compensates only
    attachments published by this transaction. No derived view runs before the
    durable journal commit.
-4. Monthly abstract, legacy navigation indexes, metadata relations, pending
-   freshness, Index B, entity candidate capture, and confirmation snapshots
-   run after commit. Their
-   failure preserves the journal and produces `success_degraded` with a
-   machine-readable recovery strategy.
+4. Monthly abstract, legacy navigation indexes, metadata relations, the
+   metadata cache row upsert (`metadata_cache_row`), pending freshness,
+   Index B, entity candidate capture, and confirmation snapshots run after
+   commit. Their failure preserves the journal and produces `success_degraded`
+   with a machine-readable recovery strategy.
 5. `mark_pending: queued` means the existing atomic pending queue is durable;
    search preflight remains the sole consumer and freshness authority.
 6. Optional CLI `auto_index` runs only after `journal_commit=complete`, appends a

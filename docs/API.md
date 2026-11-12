@@ -243,7 +243,7 @@ Phase A 为 JSON 输出生成命令引入三层可观测性契约，全部 addit
 
 ```json
 {
-  "schema_version": "v1.1.1",
+  "schema_version": "v2.0.0",
   "tool_version": "1.1.1",
   "created_at": "2026-05-23T10:00:00+00:00",
   "source_hash": "sha256:...",
@@ -251,14 +251,24 @@ Phase A 为 JSON 输出生成命令引入三层可观测性契约，全部 addit
 }
 ```
 
+**字段语义**（`schema_version` v2.0.0 起）：
+
+| 字段 | 说明 |
+|------|------|
+| `schema_version` | 当前为 `v2.0.0`。从 v1.1.x 升级后首次搜索/索引会触发一次全量重建 |
+| `tool_version` | 写入该 sidecar 的工具版本；与当前工具版本不一致时触发一次全量重建 |
+| `source_hash` | **仅 `entity_graph.yaml` 的 SHA-256**（graph 变化 → 全量重建）。v2.0.0 之前它是全部日志 + graph 的整体内容哈希；日志内容不再参与 freshness 判断 |
+
 **CLI 入口**：
 
 | 命令 | 行为 | 副作用 |
 |------|------|--------|
 | `index --cache-dry-run` | 评估当前 cache 是否需要重建，返回 `would_rebuild` / `reasons` | **零写入** |
-| `health --cache-audit --json` | 返回 cache 版本只读审计状态 | **零写入** |
+| `health --cache-audit --json` | 返回 cache 只读审计状态（见 health 章节） | **零写入** |
 
-**失效策略**: `source_hash` mismatch 或 `schema_version` mismatch → 建议全量重建；cache 为派生产物，重建无损，不做 migration。
+**失效策略**（v2.0.0）：全量重建只发生在 (a) 无 version sidecar、(b) `schema_version` 或 `tool_version` 不匹配、(c) `entity_graph.yaml` 变化（含 write 时的 entity 候选晋升改写 graph）三种情况。其余情况搜索路径执行 **reconcile**：以 stat-only 方式遍历 fragment 文件，逐行比较 `(mtime, size)`，只解析新增/变更文件并删除文件已消失的行——不会读取未变更日志的内容。写入/编辑路径在提交后即时 upsert 该日志的 cache 行（`metadata_cache_row` / `metadata_cache_updated`）。
+
+**已知边界**：工具外修改若 mtime 与大小均未变化，则要到 `life-index index --rebuild` 才会被发现。cache 为派生产物，重建无损，不做 migration。
 
 ### Phase B Intermediate Contracts
 
@@ -699,6 +709,7 @@ python -m tools.write_journal --data '<json>'
     {"name": "monthly_abstract", "phase": "post_commit", "status": "complete", "blocking": false},
     {"name": "legacy_indices", "phase": "post_commit", "status": "complete", "blocking": false},
     {"name": "metadata_relations", "phase": "post_commit", "status": "complete", "blocking": false},
+    {"name": "metadata_cache_row", "phase": "post_commit", "status": "complete", "blocking": false},
     {"name": "mark_pending", "phase": "post_commit", "status": "queued", "blocking": false},
     {"name": "index_b", "phase": "post_commit", "status": "complete", "blocking": false},
     {"name": "entity_candidates", "phase": "post_commit", "status": "complete", "blocking": false},
@@ -805,6 +816,8 @@ staging 清理失败则以具体残留路径报告 `failed`。
 `side_effects[*].status` 只允许 `complete / queued / skipped / failed / compensated`。
 `queued` 只表示 pending queue 已原子落盘；搜索 preflight 尚需消费它，因此 freshness 仍为 degraded。
 `compensated` 表示 pre-commit 操作曾发生但已完成补偿，journal 未提交，可在解决原始错误后重试。
+`metadata_cache_row/post_commit` 表示该日志的元数据缓存行已在提交后即时 upsert（失败时
+`recovery_strategy` 为 `life-index index --rebuild`；下一次搜索的 reconcile 也会自愈该行）。
 `write --auto-index` 在 journal 已提交时追加 `auto_index/post_commit` 记录，并从完整
 记录序列重新投影兼容摘要；未提交 journal 时不会运行 auto-index。
 Dry-run 记录 `write_preview=complete`，但不伪造 `journal_commit`；其 `index_status` 仍为 `not_started`。
@@ -4915,9 +4928,14 @@ python -m tools.edit_journal --journal "<path>" [options]
   },
   "content_modified": false,
   "indices_updated": [],
+  "metadata_cache_updated": true,
   "error": null
 }
 ```
+
+`metadata_cache_updated` 表示编辑提交后已即时 upsert 该日志的元数据缓存行（additive，
+布尔值）。`false` 仅表示该派生步骤失败（编辑本身成功）；下次搜索的 reconcile 或
+`life-index index --rebuild` 会恢复。
 
 ### 错误码
 
@@ -5198,9 +5216,9 @@ python -m tools.build_index [options]
   "dry_run": true,
   "cache_version": {
     "exists": true,
-    "stored_schema_version": "v1.1.2",
+    "stored_schema_version": "v2.0.0",
     "stored_source_hash": "sha256:...",
-    "current_schema_version": "v1.1.2",
+    "current_schema_version": "v2.0.0",
     "version_match": true,
     "hash_match": true,
     "would_rebuild": false,
@@ -5208,6 +5226,11 @@ python -m tools.build_index [options]
   }
 }
 ```
+
+`would_rebuild` 只在无 sidecar、`schema_version`/`tool_version` 不匹配或
+`entity_graph.yaml` 变化（reasons：`no_existing_version` / `schema_version_mismatch` /
+`tool_version_mismatch` / `entity_graph_changed`）时为 `true`；文件级增删改由搜索路径的
+reconcile 处理，不触发全量重建。`stored_source_hash` 为 `entity_graph.yaml` 的哈希。
 
 退出码：healthy → 0, unhealthy → 1（便于 CI 集成）
 
@@ -5352,10 +5375,27 @@ python -m tools health [options]
   "cache_audit": {
     "version_exists": true,
     "status": "valid|stale|incompatible|missing",
-    "json": true
+    "json": true,
+    "total_rows": 120,
+    "up_to_date_rows": 118,
+    "stale_rows": 1,
+    "untracked_files": 1
   }
 }
 ```
+
+`status` 判定（v2.0.0 起不再对全部日志做内容哈希）：
+
+| status | 含义 |
+|--------|------|
+| `valid` | sidecar 存在且 schema/tool 版本匹配、graph 未变化，且每行 cache 记录与文件 stat 一致、无缺行文件 |
+| `stale` | 版本匹配但存在行级不一致（文件已变更/删除/新增未入缓存），或 `entity_graph.yaml` 变化 |
+| `incompatible` | sidecar 的 `schema_version` 或 `tool_version` 与当前工具不匹配（需一次全量重建） |
+| `missing` | 无 version sidecar |
+
+`total_rows` / `up_to_date_rows` / `stale_rows` / `untracked_files` 为 additive 行级计数
+（dry-run 对比结果，零写入、零日志解析）。正常写入（含 `metadata_cache_row` upsert）之后
+audit 应为 `valid`；工具外编辑后为 `stale`。
 
 Additive standard checks may include:
 

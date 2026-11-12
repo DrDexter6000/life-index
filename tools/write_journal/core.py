@@ -33,6 +33,7 @@ from ..lib.metadata_cache import (
     get_all_cached_metadata,
     init_metadata_cache,
     replace_entry_relations,
+    upsert_journal_cache_row,
 )
 from ..lib.path_contract import build_journal_path_fields
 from ..lib.related_candidates import suggest_related_entries
@@ -1116,6 +1117,32 @@ def _update_postcommit_derived_projections(
                 status=SideEffectExecutionStatus.COMPLETE,
                 blocking=False,
             )
+
+    # Keep the metadata cache current at write time so the next search does not
+    # re-read the archive (non-blocking; recovery is index --rebuild or the
+    # next search's reconcile pass).
+    try:
+        upserted_row = upsert_journal_cache_row(journal_path)
+        if upserted_row is None:
+            raise RuntimeError("metadata cache row upsert produced no row")
+    except Exception as exc:
+        _record_side_effect(
+            result,
+            name="metadata_cache_row",
+            phase="post_commit",
+            status=SideEffectExecutionStatus.FAILED,
+            blocking=False,
+            error=str(exc),
+            recovery_strategy="life-index index --rebuild",
+        )
+    else:
+        _record_side_effect(
+            result,
+            name="metadata_cache_row",
+            phase="post_commit",
+            status=SideEffectExecutionStatus.COMPLETE,
+            blocking=False,
+        )
 
     try:
         if source_rel_path is None:

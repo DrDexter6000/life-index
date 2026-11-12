@@ -12,6 +12,7 @@
     {"name": "monthly_abstract", "phase": "post_commit", "status": "complete", "blocking": false},
     {"name": "legacy_indices", "phase": "post_commit", "status": "complete", "blocking": false},
     {"name": "metadata_relations", "phase": "post_commit", "status": "complete", "blocking": false},
+    {"name": "metadata_cache_row", "phase": "post_commit", "status": "complete", "blocking": false},
     {"name": "mark_pending", "phase": "post_commit", "status": "queued", "blocking": false},
     {"name": "index_b", "phase": "post_commit", "status": "complete", "blocking": false},
     {"name": "entity_candidates", "phase": "post_commit", "status": "complete", "blocking": false},

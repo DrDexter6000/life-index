@@ -32,10 +32,14 @@ class TestCacheVersionSidecar:
         assert p.parts[-3:] == (".life-index", "cache", "_version.json")
 
     def test_write_and_read_cache_version_roundtrip(self, isolated_data_dir):
-        from tools.lib.metadata_cache import write_cache_version, read_cache_version
+        from tools.lib.metadata_cache import (
+            CACHE_VERSION_SCHEMA_VERSION,
+            write_cache_version,
+            read_cache_version,
+        )
 
         data = write_cache_version(source_hash="sha256:abc123")
-        assert data["schema_version"] == "v1.1.2"
+        assert data["schema_version"] == CACHE_VERSION_SCHEMA_VERSION
         assert data["source_hash"] == "sha256:abc123"
         assert "tool_version" in data
         assert "created_at" in data
@@ -204,19 +208,46 @@ class TestIndexCacheDryRun:
         assert cv["exists"] is False
         assert cv["would_rebuild"] is True
 
-    def test_dry_run_with_existing_version_reports_stable(self, tmp_path):
-        import hashlib
+    def test_dry_run_with_current_sidecar_reports_stable(self, tmp_path):
+        """A sidecar with the current schema/tool version and graph hash is stable.
 
+        Old rule (whole-archive content hash) pinned a hand-built sidecar whose
+        source_hash matched a hash of all journal bytes. Freshness no longer
+        hashes journals at all: the sidecar records the schema version, tool
+        version, and the entity_graph.yaml hash; file-level changes are handled
+        by the per-row reconcile pass.
+        """
         data_dir, env = _make_empty_sandbox(tmp_path)
-        actual_hash = f"sha256:{hashlib.sha256(b'').hexdigest()}"
 
+        from tools.lib.metadata_cache import write_cache_version
+
+        prev = os.environ.get("LIFE_INDEX_DATA_DIR")
+        os.environ["LIFE_INDEX_DATA_DIR"] = str(data_dir)
+        try:
+            write_cache_version()
+        finally:
+            if prev is not None:
+                os.environ["LIFE_INDEX_DATA_DIR"] = prev
+            else:
+                del os.environ["LIFE_INDEX_DATA_DIR"]
+
+        result = _run_index_dry_run(env)
+        payload = json.loads(result.stdout)
+        cv = payload["cache_version"]
+        assert cv["exists"] is True
+        assert cv["would_rebuild"] is False
+        assert cv["reasons"] == []
+
+    def test_dry_run_with_stale_tool_version_reports_rebuild(self, tmp_path):
+        """A sidecar recorded by an older tool version triggers one rebuild."""
+        data_dir, env = _make_empty_sandbox(tmp_path)
         version_dir = data_dir / ".life-index" / "cache"
         version_dir.mkdir(parents=True)
         sidecar = {
-            "schema_version": "v1.1.2",
-            "tool_version": "1.1.1",
+            "schema_version": "v2.0.0",
+            "tool_version": "0.0.1-definitely-not-current",
             "created_at": "2026-05-22T00:00:00Z",
-            "source_hash": actual_hash,
+            "source_hash": "sha256:whatever",
             "invalidation_history": [],
         }
         (version_dir / "_version.json").write_text(json.dumps(sidecar), encoding="utf-8")
@@ -225,7 +256,8 @@ class TestIndexCacheDryRun:
         payload = json.loads(result.stdout)
         cv = payload["cache_version"]
         assert cv["exists"] is True
-        assert cv["would_rebuild"] is False
+        assert cv["would_rebuild"] is True
+        assert "tool_version_mismatch" in cv["reasons"]
 
 
 class TestHealthCacheAudit:
@@ -252,21 +284,23 @@ class TestHealthCacheAudit:
 
     def test_cache_audit_reports_version_present(self, tmp_path):
         data_dir, env = _make_empty_sandbox(tmp_path)
-        version_dir = data_dir / ".life-index" / "cache"
-        version_dir.mkdir(parents=True)
-        sidecar = {
-            "schema_version": "v1.1.2",
-            "tool_version": "1.1.1",
-            "created_at": "2026-05-22T00:00:00Z",
-            "source_hash": "abc",
-            "invalidation_history": [],
-        }
-        (version_dir / "_version.json").write_text(json.dumps(sidecar), encoding="utf-8")
+
+        from tools.lib.metadata_cache import write_cache_version
+
+        prev = os.environ.get("LIFE_INDEX_DATA_DIR")
+        os.environ["LIFE_INDEX_DATA_DIR"] = str(data_dir)
+        try:
+            write_cache_version()
+        finally:
+            if prev is not None:
+                os.environ["LIFE_INDEX_DATA_DIR"] = prev
+            else:
+                del os.environ["LIFE_INDEX_DATA_DIR"]
 
         result = _run_health_cache_audit(env)
         payload = json.loads(result.stdout)
         assert payload["cache_audit"]["version_exists"] is True
-        assert payload["cache_audit"]["status"] in ("valid", "stale")
+        assert payload["cache_audit"]["status"] == "valid"
 
     def test_cache_audit_does_not_create_or_modify_files(self, tmp_path):
         data_dir, env = _make_empty_sandbox(tmp_path)
