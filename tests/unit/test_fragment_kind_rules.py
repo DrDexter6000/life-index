@@ -61,6 +61,10 @@ class TestDateShapes:
             "2026-03-07T19:43:02+01:00",
             "2026-03-07 19:43:02-05:00",
             "2026-03-07T19:43:02.5+02:00",
+            "2026-03-07T19:43",  # minute precision
+            "2026-03-07 19:43",
+            "2026-03-07T19:43+08:00",
+            "2026-03-07 19:43Z",
         ],
     )
     def test_accepted_shapes_carry_no_date_warning(self, date_value: str) -> None:
@@ -73,7 +77,9 @@ class TestDateShapes:
             "invalid-date",
             "20260307",
             "2026-3-7",
-            "2026-03-07T19:43",  # no seconds
+            "2026-03-07T19",  # hour only
+            "2026-03-07T19:43.5",  # a fraction needs seconds
+            "2026-03-07T19:43:",
             "2026-03-07T19:43:02+0100",  # zone without colon
             "2026-03-07X19:43:02",  # neither T nor space
             "2026-03-07  19:43:02",  # two spaces

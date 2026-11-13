@@ -235,6 +235,21 @@ class TestGeneratedIndexes:
         assert f"[{LABEL}](Journals/2026/03/{FILENAME})" in content
         assert "无标题" not in content
 
+    def test_edit_writes_the_label_into_the_by_topic_line(self, untitled_archive: Archive) -> None:
+        """Giving an untitled fragment a topic through edit prints its label, not a placeholder."""
+        from tools.edit_journal import edit_journal
+        from tools.lib.paths import get_by_topic_dir
+
+        _data_dir, path = untitled_archive
+        result = edit_journal(journal_path=path, frontmatter_updates={"topic": ["life"]})
+
+        assert result["success"] is True, result
+        index_text = "".join(
+            index.read_text(encoding="utf-8") for index in get_by_topic_dir().glob("*life*.md")
+        )
+        assert f"[{LABEL}]({REL_PATH})" in index_text
+        assert "无标题" not in index_text
+
     def test_navigation_index_entry_pointer_prints_the_label(
         self, untitled_archive: Archive
     ) -> None:

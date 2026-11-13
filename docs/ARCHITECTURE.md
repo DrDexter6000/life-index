@@ -550,8 +550,8 @@ kind)` 按文件种类给出必需字段；文件名决定种类（§4.2），fr
 - **digest / derived_index / unknown**：本包未定义规则，询问即抛 `ValueError`
   （digest 规则随 digest 命令落地）。
 - 不传 kind 时按 fragment 处理（既有调用方的默认）。
-- `date` 的形状检查（警告级，不做日历校验）接受：`YYYY-MM-DD`，或以 `T`/一个
-  空格连接的 `HH:MM:SS`，可带小数秒与 `Z` / `±HH:MM` 时区。
+- `date` 的形状检查（警告级，不做日历校验）接受：`YYYY-MM-DD`，或其后以 `T`/一个
+  空格连接 `HH:MM` 或 `HH:MM:SS`（秒可带小数），可再带 `Z` / `±HH:MM` 时区。
 
 ### 4.5 条目标签规则（entry display label）
 

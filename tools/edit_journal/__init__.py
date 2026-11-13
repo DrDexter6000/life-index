@@ -26,6 +26,7 @@ from ..lib.frontmatter import (
     parse_journal_file,
     format_frontmatter,
 )
+from ..lib.journal_files import display_label
 from ..lib.file_lock import FileLock, LockTimeoutError, get_journals_lock_path
 from ..lib.errors import ErrorCode, create_error_response
 from ..lib.logger import get_logger
@@ -80,10 +81,17 @@ def remove_from_index(index_file: Path, journal_filename: str) -> bool:
     return removed
 
 
-def add_to_index(index_file: Path, journal_path: Path, data: Dict[str, Any]) -> None:
-    """添加日志条目到索引文件"""
+def add_to_index(
+    index_file: Path, journal_path: Path, data: Dict[str, Any], body: str = ""
+) -> None:
+    """添加日志条目到索引文件
+
+    The bracket text is the one display label (title, else first body line,
+    else file name); a title is never invented here.
+    """
     date_str = data.get("date", "")[:10] if data.get("date") else ""
-    title = data.get("title", "无标题")
+    indexable = normalize_indexable_metadata(data) or empty_indexable_metadata()
+    title = display_label(indexable["title"], body, journal_path)
     try:
         rel_path = os.path.relpath(journal_path, get_journals_dir().parent).replace("\\", "/")
     except ValueError:
@@ -118,7 +126,7 @@ def add_to_index(index_file: Path, journal_path: Path, data: Dict[str, Any]) -> 
 
 
 def update_indices_for_change(
-    journal_path: Path, old_data: Dict[str, Any], new_data: Dict[str, Any]
+    journal_path: Path, old_data: Dict[str, Any], new_data: Dict[str, Any], body: str = ""
 ) -> List[str]:
     """
     根据数据变更更新索引
@@ -144,7 +152,7 @@ def update_indices_for_change(
         if topic:
             idx_file = get_by_topic_dir() / f"主题_{topic}.md"
             logger.info(f"检测到 topic 变更：添加 {topic}")
-            add_to_index(idx_file, journal_path, new_data)
+            add_to_index(idx_file, journal_path, new_data, body)
             if str(idx_file) not in updated_indices:
                 updated_indices.append(str(idx_file))
 
@@ -164,7 +172,7 @@ def update_indices_for_change(
         # 添加到新 project 索引
         if new_project:
             idx_file = get_by_topic_dir() / f"项目_{new_project}.md"
-            add_to_index(idx_file, journal_path, new_data)
+            add_to_index(idx_file, journal_path, new_data, body)
             if str(idx_file) not in updated_indices:
                 updated_indices.append(str(idx_file))
 
@@ -186,7 +194,7 @@ def update_indices_for_change(
         if tag:
             idx_file = get_by_topic_dir() / f"标签_{tag}.md"
             logger.debug(f"检测到 tag 添加：{tag}")
-            add_to_index(idx_file, journal_path, new_data)
+            add_to_index(idx_file, journal_path, new_data, body)
             if str(idx_file) not in updated_indices:
                 updated_indices.append(str(idx_file))
 
@@ -619,7 +627,7 @@ def edit_journal(
                 if any(k in result["changes"] for k in ["topic", "project", "tags"]):
                     logger.info("检测到索引相关字段变更，更新索引...")
                     updated = update_indices_for_change(
-                        journal_path, old_frontmatter, new_frontmatter
+                        journal_path, old_frontmatter, new_frontmatter, new_body
                     )
                     result["indices_updated"] = updated
                     logger.info(f"已更新 {len(updated)} 个索引文件")
