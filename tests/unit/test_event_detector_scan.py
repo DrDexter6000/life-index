@@ -196,6 +196,43 @@ class TestDetectorResultsUnchanged:
         assert stale[0].data["signature_state"]["current"] is False
         assert stale[0].message == "索引与日志文件不一致，建议运行 life-index index"
 
+    def test_queued_repair_is_reported_even_when_signatures_match(self, tmp_path: Path):
+        """A queued path means the index is not current, whatever its signature says."""
+        journals = tmp_path / "Journals"
+        journal = _current_schema_journal(journals / "2020" / "01" / "life-index_2020-01-01_001.md")
+        rel_path = "Journals/2020/01/life-index_2020-01-01_001.md"
+        index_dir = tmp_path / ".index"
+        index_dir.mkdir(parents=True)
+        stat = journal.stat()
+        conn = sqlite3.connect(str(index_dir / "journals_fts.db"))
+        conn.execute("CREATE VIRTUAL TABLE journals USING fts5(path, title, content)")
+        conn.execute(
+            "CREATE TABLE fts_file_stats "
+            "(path TEXT PRIMARY KEY, mtime REAL NOT NULL, size INTEGER NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO journals (path, title, content) VALUES (?, ?, ?)",
+            (rel_path, "current", "body"),
+        )
+        conn.execute(
+            "INSERT INTO fts_file_stats (path, mtime, size) VALUES (?, ?, ?)",
+            (rel_path, stat.st_mtime, stat.st_size),
+        )
+        conn.commit()
+        conn.close()
+        context = {"journals_dir": journals, "data_dir": tmp_path}
+
+        stale = [event for event in _detect_all(context) if event.type == "index_stale"]
+        assert [event.data["reason"] for event in stale] in ([], ["version_mismatch"])
+
+        (index_dir / "pending_writes.json").write_text(
+            '{"pending": ["' + rel_path + '"]}', encoding="utf-8"
+        )
+
+        stale = [event for event in _detect_all(context) if event.type == "index_stale"]
+        assert [event.data["reason"] for event in stale] == ["signature_mismatch"]
+        assert "pending_writes" in stale[0].data["signature_state"]["reasons"]
+
     def test_fewer_than_ten_journals_are_all_checked(self, tmp_path: Path):
         journals = tmp_path / "Journals"
         for day in range(1, 4):

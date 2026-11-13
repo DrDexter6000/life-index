@@ -5243,9 +5243,12 @@ python -m tools.build_index [options]
 判定是否读取：新文件、签名变化、缺 FTS 行、缺签名行的文件才被读取；已消失文件删除其 FTS 行
 与签名行；pending queue 中的 path 无论签名是否匹配都会重读，修复后按 generation 快照确认移除。
 `unparsable`/`unparsable_paths` 是 additive 字段：frontmatter 不可解析的 live fragment 会按
-整篇原始文本建行（`title`/元数据列为空，`date` 回退到文件名日期）并记录签名；它在全量重建和
-每次被重读时计数，但不会再重试或留在队列中（不会触发全库 rebuild）。完全无法读取
-（`OSError`）的文件不写任何东西，已有行与签名保持不变并保持 not-current。`pending_repaired`
+整篇原始文本建行（包括 frontmatter 区块里的文字；`title`/元数据列为空，`date` 回退到文件名
+日期）并记录签名；它在全量重建和每次被重读时计数，但不会再重试或留在队列中（不会触发全库
+rebuild）。这条保证只针对 FTS 行；其他派生存储对这类文件的处理见
+`docs/ARCHITECTURE.md` 的增量扫描一节。完全无法读取（`OSError`）的文件不写任何东西并保持
+not-current：增量模式下已有行与签名保持不变；全量重建先清空再写入，该文件此时没有行，
+由之后的扫描重试。`pending_repaired`
 是本次实际修复的队列 path。全量重建（`--rebuild`）读取全部 live fragment，并清空签名表；
 持锁后发现遗留的 `.rebuilding` marker 会视为创建者已死而删除并继续。一次成功的 archive scan
 （增量或全量）会推进 `index_meta.last_updated`；写穿不会。

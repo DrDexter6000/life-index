@@ -27,7 +27,7 @@ the same JSON file, and unserialized interleavings would silently drop paths.
 import json
 import tempfile
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping
+from typing import Dict, Iterable, List, Mapping, Optional
 
 from .file_lock import FileLock
 from .paths import get_index_dir
@@ -41,8 +41,8 @@ LEGACY_GENERATION = 0
 
 
 # Module-level helper for testability
-def _pending_file() -> Path:
-    return get_index_dir() / "pending_writes.json"
+def _pending_file(index_dir: Optional[Path] = None) -> Path:
+    return (index_dir if index_dir is not None else get_index_dir()) / "pending_writes.json"
 
 
 def _queue_lock() -> FileLock:
@@ -72,7 +72,7 @@ def _coerce_generation(value: object) -> int:
     return LEGACY_GENERATION
 
 
-def _read_state() -> tuple[List[str], Dict[str, int], int]:
+def _read_state(index_dir: Optional[Path] = None) -> tuple[List[str], Dict[str, int], int]:
     """Read the queue: (paths, path -> generation, highest generation issued).
 
     Missing or corrupt state reads as an empty queue, as before. Entries in
@@ -80,12 +80,14 @@ def _read_state() -> tuple[List[str], Dict[str, int], int]:
     generation or counter value is treated as the legacy generation instead of
     raising.
     """
-    pfile = _pending_file()
+    pfile = _pending_file(index_dir)
     if not pfile.exists():
         return [], {}, LEGACY_GENERATION
     try:
         data = json.loads(pfile.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+    except (ValueError, OSError, RecursionError):
+        # ValueError covers invalid JSON, invalid UTF-8 and an integer literal
+        # too long to convert; RecursionError covers absurdly deep nesting.
         return [], {}, LEGACY_GENERATION
     if not isinstance(data, dict) or not isinstance(data.get("pending"), list):
         return [], {}, LEGACY_GENERATION
@@ -177,9 +179,13 @@ def ack_pending(
         return removed
 
 
-def get_pending() -> List[str]:
-    """Read all pending paths. Returns empty list if file missing or corrupt."""
-    return _read_state()[0]
+def get_pending(index_dir: Optional[Path] = None) -> List[str]:
+    """Read all pending paths. Returns empty list if file missing or corrupt.
+
+    ``index_dir`` reads the queue of another data directory's ``.index``
+    (callers that are handed a data directory instead of the configured one).
+    """
+    return _read_state(index_dir)[0]
 
 
 def get_pending_generations() -> Dict[str, int]:

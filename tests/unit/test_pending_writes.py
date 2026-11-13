@@ -235,6 +235,24 @@ class TestMalformedState:
         mark_pending("Journals/2026/03/after.md")
         assert "Journals/2026/03/after.md" in get_pending()
 
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            '{"pending":["x"],"counter":' + "9" * 5000 + "}",
+            '{"pending":["x"],"generations":{"x":' + "9" * 5000 + "}}",
+            '{"pending":' + "[" * 100000 + "]" * 100000 + "}",
+        ],
+        ids=["huge_counter", "huge_generation", "deep_nesting"],
+    )
+    def test_values_the_json_parser_rejects_do_not_raise(self, index_dir: Path, payload: str):
+        """A queue file the JSON parser itself refuses reads as an empty queue."""
+        (index_dir / "pending_writes.json").write_text(payload, encoding="utf-8")
+
+        assert get_pending() == []
+        assert has_pending() is False
+        mark_pending("Journals/2026/03/a.md")
+        assert get_pending() == ["Journals/2026/03/a.md"]
+
     def test_malformed_generation_ack_does_not_raise(self, index_dir: Path):
         (index_dir / "pending_writes.json").write_text(
             '{"pending": ["x", "y"], "generations": {"x": 1e999, "y": -1}}',

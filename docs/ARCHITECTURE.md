@@ -581,7 +581,8 @@ Round 8 在分层搜索架构之上，建立了完整的搜索质量保障闭环
   （`ack_pending(snapshot, only=repaired)`）没有宽容模式：只移除“generation 未被提升
   **且** 出现在本次实际修复列表里”的路径，因此同一 path 在构建期间再次入队不会丢事件；
   旧的无 generation 列表格式继续可读（按 generation 0 处理），任何不可用的 generation
-  或 counter 值也按 generation 0 读取，不会从搜索或写入中抛出。队列变更
+  或 counter 值也按 generation 0 读取；JSON 解析器本身拒绝的文件（非法 JSON、超长整数、
+  过深嵌套）按空队列读取。两者都不会从搜索或写入中抛出。队列变更
   （mark/ack/remove/clear）经队列锁文件用共享 `FileLock` 串行化，避免 read-modify-write
   交错丢路径
 - **FTS 行写穿 + stat 增量扫描**：写入/编辑在提交后即时写穿该日志的 FTS 行
@@ -669,13 +670,17 @@ manifest 行数都不再是判据）。它和 metadata cache 用同一条规则�
   stat-only 比对侧表签名——签名未变**且已有 FTS 行**的文件不被读取；只读取签名变化、
   缺行或缺签名的文件；pending 队列中的 path 无论签名是否匹配都强制重读；文件消失则删除
   其 FTS 行与签名行。**每个可读的 live fragment 都有 FTS 行**：frontmatter 不可解析
-  （无 `---`、空/非法 YAML、字段类型不符、非 UTF-8 字节）时，整篇文件文本分段后写入
-  `content`，`title` 与元数据列为空，`date` 回退到规范文件名中的日期；该文件此后与普通行
-  一样 current（不重试、不强制 fallback）。这类文件在**全量重建**和**每次被重读**时计入
-  `fts.unparsable`/`fts.unparsable_paths`。完全无法读取（`OSError`）的文件不写任何东西，
-  已有行与签名保持不变，并保持 not-current 以便后续重试。
-- **其他新鲜度读者**：`check_index_stale`（event detector）与 L3 fallback 的
-  `fs_consistency.index_is_current()` 都改为调用同一签名检查；旧的
+  （无 `---`、空/非法 YAML、标量字段里出现映射或列表、非 UTF-8 字节）时，整篇文件文本
+  （含 frontmatter 区块里的文字）分段后写入 `content`，`title` 与元数据列为空，`date`
+  回退到规范文件名中的日期；该文件此后与普通行一样 current（不重试、不强制 fallback）。
+  数字、布尔等非字符串标量（如 `title: 2024`）按其文字入索引，不算不可解析。这类文件在
+  **全量重建**和**每次被重读**时计入 `fts.unparsable`/`fts.unparsable_paths`。完全无法
+  读取（`OSError`）的文件不写任何东西并保持 not-current 以便后续重试：增量扫描保留其已有
+  行与签名；全量重建先清空再写入，该文件此时没有行。
+  本节的保证只针对 FTS 行。元数据缓存对“标量字段里出现映射或列表”的 frontmatter 尚无同等
+  容错（实现待补）：这类文件目前仍会让元数据缓存的解析抛错。
+- **其他新鲜度读者**：`check_index_stale`（event detector，含 pending 队列）与 L3
+  fallback 的 `fs_consistency.index_is_current()` 都改为调用同一签名检查；旧的
   “newest journal mtime vs `last_updated`”和“manifest 行数 vs 实际行数”规则已删除。
 - **版本升级**：`FTS_SCHEMA_VERSION` v2 → v3。存量 v2 安装没有签名行：已记录的
   schema 版本不匹配会经既有 `check_needs_rebuild` 机制在第一次增量更新时自动做
