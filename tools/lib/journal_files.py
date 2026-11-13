@@ -215,6 +215,7 @@ def count_journal_files(journals_dir: Path) -> int:
 # The one display-label rule (docs/ARCHITECTURE.md, *Entry display label*).
 _LABEL_TERMINATORS = "。！？!?"
 _LABEL_MAX_CHARS = 30
+_LABEL_STRUCTURE_ONLY = "#-=*_>`~ \t"
 
 
 def display_label(title: str, body: str, path: Path) -> str:
@@ -223,13 +224,17 @@ def display_label(title: str, body: str, path: Path) -> str:
     Deterministic and pure (no I/O). The rule, in order:
 
     1. ``title`` stripped, when non-empty: that text, unchanged.
-    2. Otherwise the first non-blank line of ``body`` (a line that carries
-       nothing but ``#`` markers counts as blank here), with leading ``#``
-       characters and surrounding whitespace removed, cut at the first of
-       ``。！？!?`` (the terminator is kept) or at 30 characters, whichever
-       comes first; when the cut was made by the length limit and text remains
-       on that line, ``…`` is appended.
-    3. Otherwise the file name without its extension.
+    2. Otherwise the first line of ``body`` that carries text (a blank line,
+       and a line made only of Markdown structure such as ``---``, ``***`` or
+       ``##``, do not), with leading ``#`` characters and surrounding
+       whitespace removed, cut at the first of ``。！？!?`` that follows some
+       text (the terminator is kept) or at 30 characters, whichever comes
+       first; when the cut was made by the length limit and text remains on
+       that line, ``…`` is appended.
+    3. Otherwise the file name without its extension. This is also the label
+       when the first non-blank line of ``body`` is a ``---`` fence: that body
+       is a frontmatter block that could not be read, kept as raw text, and
+       its first lines are YAML, not what the user said.
 
     The label is a presentation aid only: it never replaces ``title``, which
     stays exactly what the file says (empty when there is none).
@@ -238,11 +243,27 @@ def display_label(title: str, body: str, path: Path) -> str:
     if title_text:
         return title_text
 
+    opening = True
     for line in body.splitlines():
-        text = line.strip().lstrip("#").strip()
-        if not text:
+        stripped = line.strip().lstrip("﻿")
+        if not stripped:
             continue
-        cut = next((i + 1 for i, char in enumerate(text) if char in _LABEL_TERMINATORS), None)
+        if opening and stripped == "---":
+            break
+        opening = False
+        text = stripped.lstrip("#").strip()
+        if not text.strip(_LABEL_STRUCTURE_ONLY):
+            continue
+        cut = None
+        has_text = False
+        for index, char in enumerate(text):
+            if char not in _LABEL_TERMINATORS:
+                has_text = True
+            elif has_text:
+                # A terminator ends the label only after some text: a line
+                # that opens with one (``![image](a.jpg)``) is not cut there.
+                cut = index + 1
+                break
         if cut is not None and cut <= _LABEL_MAX_CHARS:
             return text[:cut]
         if len(text) > _LABEL_MAX_CHARS:

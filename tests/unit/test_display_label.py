@@ -59,6 +59,30 @@ class TestBodyFirstLine:
         text = "a" * 33
         assert display_label("", text, PATH) == "a" * 30 + "…"
 
+    @pytest.mark.parametrize(
+        "body, expected",
+        [
+            ("![photo](a.jpg)", "![photo](a.jpg)"),
+            ("！！！太好了。然后", "！！！太好了。"),
+            ("?", "?"),
+            ("?!", "?!"),
+            ("! 然后呢？后面", "! 然后呢？"),
+        ],
+    )
+    def test_a_terminator_cuts_only_after_some_text(self, body: str, expected: str) -> None:
+        assert display_label("", body, PATH) == expected
+
+    @pytest.mark.parametrize("structure", ["***", "===", "> ", "```", "~~~", "- - -", "___"])
+    def test_structure_only_lines_carry_no_text_and_are_skipped(self, structure: str) -> None:
+        assert display_label("", f"{structure}\n实际内容", PATH) == "实际内容"
+
+    def test_a_horizontal_rule_after_text_is_skipped(self) -> None:
+        assert display_label("", "\n## \n---\n后面的话。", PATH) == "后面的话。"
+
+    def test_an_emoji_only_line_is_text(self) -> None:
+        emoji = chr(0x2764) + chr(0xFE0F)
+        assert display_label("", emoji, PATH) == emoji
+
 
 class TestFileNameFallback:
     def test_blank_body_falls_back_to_file_name_without_extension(self) -> None:
@@ -69,3 +93,15 @@ class TestFileNameFallback:
 
     def test_marker_only_body_falls_back_to_file_name(self) -> None:
         assert display_label("", "#\n###", PATH) == "life-index_2026-03-04_001"
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "---\ntitle: [unterminated\ndate: 2026-03-04\n---\n\nwhat the user said\n",
+            "\n\n---\n- a\n- b\n---\n\nwords\n",
+            chr(0xFEFF) + "---\njust a scalar\n---\nwords\n",
+        ],
+    )
+    def test_an_unread_frontmatter_block_is_labelled_by_file_name(self, raw: str) -> None:
+        """A body that opens with a ``---`` fence is raw text of an unreadable block."""
+        assert display_label("", raw, PATH) == "life-index_2026-03-04_001"
