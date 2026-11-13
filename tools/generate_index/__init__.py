@@ -189,11 +189,15 @@ def _parse_index_frontmatter(file_path: Path) -> Dict[str, Any]:
 
 
 def _entry_label_fields(metadata: Dict[str, Any], journal_file: Path) -> Dict[str, str]:
-    """Verbatim title ("" when absent) plus the one display label for one entry."""
+    """Verbatim title, display label and day (the one date rule) for one entry."""
     # Lazy like the other lib imports in this module: any top-level tools.lib
     # import (frontmatter→yaml, or the tools.lib package init→config→yaml)
     # would print before the --json stdout guard can act.
-    from ..lib.frontmatter import empty_indexable_metadata, normalize_indexable_metadata
+    from ..lib.frontmatter import (
+        empty_indexable_metadata,
+        indexable_date,
+        normalize_indexable_metadata,
+    )
     from ..lib.journal_files import display_label
 
     indexable = normalize_indexable_metadata(metadata) or empty_indexable_metadata()
@@ -201,6 +205,7 @@ def _entry_label_fields(metadata: Dict[str, Any], journal_file: Path) -> Dict[st
     return {
         "title": title,
         "display_label": display_label(title, str(metadata.get("_body", "")), journal_file),
+        "date": indexable_date(indexable, journal_file),
     }
 
 
@@ -228,7 +233,6 @@ def _read_month_summary(year: int, month_dir: Path) -> tuple[list[Dict[str, Any]
                     "file": journal_file.name,
                     "path": f"./{month}/{journal_file.name}",
                     "month": month,
-                    "date": metadata.get("date", ""),
                     **_entry_label_fields(metadata, journal_file),
                     "tags": _ensure_list(metadata.get("tags")),
                     "project": metadata.get("project", ""),
@@ -305,7 +309,6 @@ def collect_month_journals(year: int, month: int) -> list[Dict[str, Any]]:
                 {
                     "file": journal_file.name,
                     "path": f"./{journal_file.name}",
-                    "date": metadata.get("date", ""),
                     **_entry_label_fields(metadata, journal_file),
                     "tags": _ensure_list(metadata.get("tags")),
                     "project": metadata.get("project", ""),
@@ -340,7 +343,6 @@ def collect_year_journals(year: int) -> list[Dict[str, Any]]:
                         "file": journal_file.name,
                         "path": f"./{month_dir.name}/{journal_file.name}",
                         "month": month_dir.name,
-                        "date": metadata.get("date", ""),
                         **_entry_label_fields(metadata, journal_file),
                         "tags": _ensure_list(metadata.get("tags")),
                         "project": metadata.get("project", ""),

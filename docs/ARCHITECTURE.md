@@ -696,7 +696,8 @@ Metadata cache 的新鲜度不再依赖全库内容哈希：
   10 个字符（形状为 `YYYY-MM-DD`，仅数字与连字符，不做日历校验）；不符合（如 `20260311`
   或 `[2026]`）或缺失时，回退到规范 fragment 文件名中的日期，否则 `""`。这条
   `frontmatter.indexable_date()` 规则用于 FTS parsed/raw 行、metadata cache 行、不经
-  缓存的 L2 读取、兜底内容扫描与 `timeline`。缓存不再过滤 `_` 前缀键来决定“可解析”：它对 `parse_frontmatter()`
+  缓存的 L2 读取、兜底内容扫描、`timeline` 与生成的索引（`generate_index` 月/年/根
+  索引与 `index_tree` 的 navigation entries / Index B）。缓存不再过滤 `_` 前缀键来决定“可解析”：它对 `parse_frontmatter()`
   的完整结果调用 `normalize_indexable_metadata(metadata) or empty_indexable_metadata()`，
   再套用同一条日期规则；只有 `_custom: x` 的 frontmatter 因此在两个存储里得到同一个
   文件名日期。

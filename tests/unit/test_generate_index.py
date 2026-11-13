@@ -7,7 +7,12 @@ import sys
 
 import pytest
 
-from tools.generate_index import generate_root_index, rebuild_index_tree
+from tools.generate_index import (
+    collect_year_journals,
+    generate_root_index,
+    generate_yearly_index,
+    rebuild_index_tree,
+)
 
 
 @pytest.fixture
@@ -115,3 +120,95 @@ class TestGenerateIndexCliAllMonths:
         assert [(item["year"], item["month"]) for item in monthly] == [(2025, 12), (2026, 3)]
         assert payload[-1]["type"] == "index-b"
         assert payload[-1]["success"] is True
+
+
+# The one date rule for the generated indexes: a fragment whose frontmatter
+# date is missing or malformed still appears under the day the shared rule
+# gives (here: the file-name day 2026-03-11), not under ``--``.
+SHAPE_DAY = "2026-03-11"
+
+# shape name -> (seq, exact file bytes)
+DATE_SHAPES: dict[str, tuple[str, bytes]] = {
+    "no_frontmatter": ("001", "no-frontmatter shape body\n".encode()),
+    "date_digit_run_on": (
+        "002",
+        "---\ntitle: Digit Run On\ndate: 20260311\n---\n\nbody\n".encode(),
+    ),
+    "date_list": (
+        "003",
+        "---\ntitle: List Date\ndate: [2026]\n---\n\nbody\n".encode(),
+    ),
+    "date_tz_datetime": (
+        "004",
+        ("---\ntitle: Tz Datetime\ndate: 2026-03-11T19:43:02+08:00\n---\n\nbody\n").encode(),
+    ),
+}
+
+# The row label each shape's entry shows in the month index table: the
+# verbatim title, or the display label (first body line) when absent.
+SHAPE_ROW_TITLES: dict[str, str] = {
+    "no_frontmatter": "no-frontmatter shape body",
+    "date_digit_run_on": "Digit Run On",
+    "date_list": "List Date",
+    "date_tz_datetime": "Tz Datetime",
+}
+
+
+def _write_shape_month(journals_dir: Path) -> None:
+    """One month holding every shape on 2026-03-11 between two dated neighbours."""
+    month_dir = journals_dir / "2026" / "03"
+    month_dir.mkdir(parents=True, exist_ok=True)
+    (month_dir / "life-index_2026-03-10_001.md").write_text(
+        "---\ntitle: Neighbour Before\ndate: 2026-03-10\n---\n\nbody\n",
+        encoding="utf-8",
+    )
+    (month_dir / "life-index_2026-03-12_001.md").write_text(
+        "---\ntitle: Neighbour After\ndate: 2026-03-12\n---\n\nbody\n",
+        encoding="utf-8",
+    )
+    for seq, payload in DATE_SHAPES.values():
+        (month_dir / f"life-index_2026-03-11_{seq}.md").write_bytes(payload)
+
+
+class TestGeneratedIndexDateRule:
+    def test_month_index_dates_each_shape_by_the_shared_rule(self, sandbox: Path):
+        from tools.generate_index import generate_monthly_index
+
+        _write_shape_month(sandbox / "Journals")
+
+        result = generate_monthly_index(year=2026, month=3)
+
+        assert result["success"] is True
+        content = (sandbox / "Journals" / "2026" / "03" / "index_2026-03.md").read_text(
+            encoding="utf-8"
+        )
+        before = content.index("| 03-10 | [Neighbour Before]")
+        after = content.index("| 03-12 | [Neighbour After]")
+        for shape, title in SHAPE_ROW_TITLES.items():
+            seq = DATE_SHAPES[shape][0]
+            row = f"| 03-11 | [{title}](life-index_2026-03-11_{seq}.md) |"
+            assert row in content, shape
+            assert before < content.index(row) < after, shape
+        assert "| -- |" not in content
+
+    def test_year_index_collector_dates_each_shape_by_the_shared_rule(self, sandbox: Path):
+        _write_shape_month(sandbox / "Journals")
+
+        journals = collect_year_journals(2026)
+
+        by_file = {journal["file"]: journal for journal in journals}
+        assert len(by_file) == 6
+        for shape, (seq, _payload) in DATE_SHAPES.items():
+            assert by_file[f"life-index_2026-03-11_{seq}.md"]["date"] == SHAPE_DAY, shape
+        assert by_file["life-index_2026-03-10_001.md"]["date"] == "2026-03-10"
+        assert by_file["life-index_2026-03-12_001.md"]["date"] == "2026-03-12"
+
+    def test_yearly_index_counts_every_shape_fragment(self, sandbox: Path):
+        _write_shape_month(sandbox / "Journals")
+
+        result = generate_yearly_index(2026)
+
+        assert result["success"] is True
+        # _read_month_summary's fallback scan (no month index exists yet) must
+        # keep all four shape fragments, each dated by the shared rule.
+        assert result["journal_count"] == 6
