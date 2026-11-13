@@ -161,6 +161,7 @@ Do not use `recall`, broad grep, or full-directory reads for new playbooks.
 - 需要全集时，优先用同一确定性 query/filter/level/min_relevance 调 `search --limit 0`；若走分页，每次只把 `offset` 改为当前返回的 `next_offset`，按稳定 journal `rel_path` 去重累计，直到 `next_offset` 为 null 才停止。cursor 的存在或任何单独一页都不等于完整。
 - `min_relevance=0` 是 `search` 内部固定的 recall-first 默认值，不是 Host 可传的 CLI flag；Host 不得尝试 `--min-relevance`，复跑或分页时也不传任何 relevance 阈值参数——机械流程中的“同一 min_relevance”由该内部默认自动保持。
 - 只有 `status=complete` 才能声称该次响应携带完整 admitted set；最终仍为 `partial` 时，必须用自然语言向用户披露 `partial_reasons` 与 `limits_applied`，不得静默称“全部”。
+- `partial_reasons` 含 `index_not_fresh` 表示检索时索引仍不是最新——包括自动修复已经运行、但某个文件一直读不出的情况（`index_status.signature_current: false`）。此时运行 `life-index index`，读取结果里的 `fts.unreadable_paths`（读不出、因此不在索引里的文件）与 `fts.unparsable_paths`（frontmatter 解析不了、按整篇原文入索引的文件），把这些路径如实告诉用户；`index_not_fresh` 消失之前不得声称全集。
 - 收窄 query/filter 后的 `complete` 只证明该次收窄的 admitted set 完整；除非收窄方式构成对原始范围可证明穷尽且互不重叠的划分，否则不得把多个窄 `complete` 合并宣称为原始宽问题的 complete，必须向用户披露原问题仍为 partial/unfinished。
 - `success:false` + `E0301` + `reason=retrieval_resource_bound` 不是零结果：先收窄 date/topic/person/project/entity/facet，或走 `index-tree ensure` → `discover` → `navigate`，再重试；仍超界则如实报告 `observed`/`bound` 与未完成状态，不猜结论。
 - 不得用 legacy `total_found` / `total_matches` / `total_available` / `has_more` 取代 coverage authority；它们只是 `retrieval_coverage.v1` 的投影。
