@@ -1213,7 +1213,11 @@ def hierarchical_search(
     _date_range = _date_range_dict_from_plan(_plan)
 
     # Round 12 Phase 3: Unified freshness guard + pending consumption
-    from ..lib.pending_writes import has_pending as _has_pending, clear_pending as _clear_pending
+    from ..lib.pending_writes import (
+        has_pending as _has_pending,
+        get_pending as _get_pending,
+        remove_pending as _remove_pending,
+    )
     from ..lib.index_freshness import check_full_freshness as _check_full_freshness
     from ..lib.paths import get_user_data_dir as _get_user_data_dir
 
@@ -1230,6 +1234,11 @@ def hierarchical_search(
             from ..build_index import build_all as _build_all
 
             logger.info("Pending writes detected, triggering incremental index update")
+            # Snapshot first: only what was queued when the build started may
+            # be removed afterwards. A path queued *during* the build (e.g. a
+            # write whose FTS write-through could not get the index lock held
+            # by this very build) must survive for the next search.
+            _pending_snapshot = _get_pending()
             build_kwargs: dict[str, Any] = {"incremental": True, "fts_only": True}
             if derived_index_only:
                 build_kwargs["derived_index_only"] = True
@@ -1238,10 +1247,11 @@ def hierarchical_search(
                 build_result.get("success", True) if isinstance(build_result, dict) else True
             )
             if build_success:
-                _clear_pending()
-                result["pending_consumed"] = True
+                _remove_pending(_pending_snapshot)
+                _queue_empty = not _has_pending()
+                result["pending_consumed"] = _queue_empty
                 result["index_status"]["auto_updated"] = True
-                result["index_status"]["pending_consumed"] = True
+                result["index_status"]["pending_consumed"] = _queue_empty
             else:
                 error = _index_update_failure_reason(build_result)
                 logger.warning("Pending index update returned unsuccessful: %s", error)

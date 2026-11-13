@@ -9,7 +9,7 @@ from tools.lib.pending_writes import (
     get_pending,
     clear_pending,
     has_pending,
-    _pending_file,
+    remove_pending,
 )
 
 
@@ -25,6 +25,7 @@ def index_dir(tmp_path: Path) -> Path:
 def _override_index_dir(index_dir: Path, monkeypatch):
     """Override the get_index_dir getter for all tests."""
     import tools.lib.pending_writes as mod
+
     monkeypatch.setattr(mod, "get_index_dir", lambda: index_dir)
 
 
@@ -104,3 +105,83 @@ class TestAtomicWrite:
         data = json.loads(pfile.read_text(encoding="utf-8"))
         assert "pending" in data
         assert isinstance(data["pending"], list)
+
+
+class TestRemovePending:
+    def test_removes_only_listed_paths(self, index_dir: Path):
+        mark_pending("Journals/2026/03/a.md")
+        mark_pending("Journals/2026/03/b.md")
+        mark_pending("Journals/2026/03/c.md")
+
+        removed = remove_pending(["Journals/2026/03/a.md", "Journals/2026/03/c.md"])
+
+        assert removed == ["Journals/2026/03/a.md", "Journals/2026/03/c.md"]
+        assert get_pending() == ["Journals/2026/03/b.md"]
+
+    def test_absent_paths_are_noop(self, index_dir: Path):
+        mark_pending("Journals/2026/03/a.md")
+
+        removed = remove_pending(["Journals/2026/03/missing.md"])
+
+        assert removed == []
+        assert get_pending() == ["Journals/2026/03/a.md"]
+
+    def test_remove_from_empty_queue(self, index_dir: Path):
+        removed = remove_pending(["Journals/2026/03/a.md"])
+
+        assert removed == []
+        assert get_pending() == []
+
+    def test_no_temp_file_left(self, index_dir: Path):
+        mark_pending("Journals/2026/03/a.md")
+        remove_pending(["Journals/2026/03/a.md"])
+        temp_files = list(index_dir.glob("pending_writes.json.tmp*"))
+        assert len(temp_files) == 0
+
+    def test_interleaved_mark_and_remove_never_lose_a_path(self, index_dir, monkeypatch):
+        """Concurrent mark_pending / remove_pending must serialize.
+
+        Both mutate the queue with a read-modify-write of the same JSON file;
+        interleaved reads lose whichever write lands first. The write window
+        is widened with a short pause inside _atomic_write so the race is
+        deterministic on an unserialized implementation.
+        """
+        import threading
+        import time as _time
+
+        import tools.lib.pending_writes as mod
+
+        real_atomic_write = mod._atomic_write
+
+        def slow_atomic_write(paths):
+            _time.sleep(0.05)
+            real_atomic_write(paths)
+
+        monkeypatch.setattr(mod, "_atomic_write", slow_atomic_write)
+
+        outcomes = []
+
+        def marker():
+            mod.mark_pending("Journals/2026/03/added.md")
+            outcomes.append("marked")
+
+        def remover():
+            mod.remove_pending(["Journals/2026/03/removed.md"])
+            outcomes.append("removed")
+
+        for _round in range(3):
+            mark_pending("Journals/2026/03/removed.md")
+            outcomes.clear()
+            t1 = threading.Thread(target=marker)
+            t2 = threading.Thread(target=remover)
+            t1.start()
+            t2.start()
+            t1.join(timeout=30)
+            t2.join(timeout=30)
+            assert not t1.is_alive() and not t2.is_alive()
+            assert sorted(outcomes) == ["marked", "removed"]
+            # The remover's target is gone, and the marker's path survives.
+            assert get_pending() == ["Journals/2026/03/added.md"], (
+                f"round {_round}: interleaved queue mutation lost a path, " f"queue={get_pending()}"
+            )
+            clear_pending()

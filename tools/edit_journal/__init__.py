@@ -31,6 +31,7 @@ from ..lib.metadata_cache import (
     replace_entry_relations,
     upsert_journal_cache_row,
 )
+from ..lib.search_index import upsert_fts_row
 from ..lib.revisions import save_revision
 from ..lib.pending_writes import mark_pending
 from ..write_journal.attachments import process_attachments
@@ -577,26 +578,39 @@ def edit_journal(
                     result["indices_updated"] = updated
                     logger.info(f"已更新 {len(updated)} 个索引文件")
 
-                # 标记待索引更新 (Round 12 Phase 1: Pending Queue)
-                # 所有编辑（内容或元数据）都可能影响 FTS/metadata 索引
-                try:
-                    rel_path = str(journal_path.relative_to(resolve_user_data_dir())).replace(
-                        "\\", "/"
-                    )
-                    mark_pending(rel_path)
-                    logger.info(f"已标记待索引更新: {rel_path}")
-                    result["pending_marked"] = True
-                except Exception as e:
-                    logger.warning(f"标记 pending 失败（不影响编辑）：{e}")
-
-                # 编辑提交后即时更新该日志的元数据缓存行（非阻塞；失败时
-                # 由下次搜索的 reconcile 或 index --rebuild 恢复）。仅对
-                # Journals/ 树内的日志生效——缓存只覆盖该树。
+                # 编辑提交后即时写穿该日志的 FTS 行（file → row 与全量重建
+                # 同一路径；非阻塞）。写穿成功时不入 pending queue；失败时回退
+                # 到 pending queue，由下次搜索 preflight 或 life-index index 恢复。
+                # 仅对 Journals/ 树内的日志生效——FTS 只索引该树。
                 try:
                     journal_path.relative_to(get_journals_dir())
                     journal_in_journals_tree = True
                 except ValueError:
                     journal_in_journals_tree = False
+
+                result["fts_row_updated"] = False
+                result["pending_marked"] = False
+                if journal_in_journals_tree:
+                    try:
+                        upserted_fts_row = upsert_fts_row(journal_path)
+                        if upserted_fts_row is None:
+                            raise RuntimeError("FTS row write-through produced no row")
+                        result["fts_row_updated"] = True
+                    except Exception as e:
+                        logger.warning(f"FTS 行写穿失败，回退 pending queue（不影响编辑）：{e}")
+                        try:
+                            rel_path = str(
+                                journal_path.relative_to(resolve_user_data_dir())
+                            ).replace("\\", "/")
+                            mark_pending(rel_path)
+                            logger.info(f"已标记待索引更新: {rel_path}")
+                            result["pending_marked"] = True
+                        except Exception as pending_e:
+                            logger.warning(f"标记 pending 失败（不影响编辑）：{pending_e}")
+
+                # 编辑提交后即时更新该日志的元数据缓存行（非阻塞；失败时
+                # 由下次搜索的 reconcile 或 index --rebuild 恢复）。仅对
+                # Journals/ 树内的日志生效——缓存只覆盖该树。
                 if journal_in_journals_tree:
                     try:
                         upserted_row = upsert_journal_cache_row(journal_path)

@@ -25,7 +25,12 @@ from .search_constants import FTS_LIMIT, FTS_MIN_RELEVANCE, TOKENIZER_VERSION
 
 # Bump this whenever the FTS table schema changes (columns added/removed).
 # Ensures incremental updates auto-trigger a full rebuild when needed.
-FTS_SCHEMA_VERSION: int = 2  # v2: title split into raw (UNINDEXED) + title_segmented (indexed)
+FTS_SCHEMA_VERSION: int = 3
+# v3: adds the fts_file_stats side table ((mtime, size) signatures) so the
+# incremental scan decides "unchanged" from stat instead of hashing every
+# file. Existing v2 installations rebuild once automatically on the version
+# mismatch, populating the stats table.
+# v2: title split into raw (UNINDEXED) + title_segmented (indexed)
 
 # 索引存储目录 (deprecated: use get_index_dir() / get_fts_db_path())
 INDEX_DIR = get_index_dir()  # deprecated: use get_index_dir()
@@ -80,6 +85,16 @@ def init_fts_db(*, force_recreate: bool = False) -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS index_meta (
             key TEXT PRIMARY KEY,
             value TEXT
+        )
+    """)
+
+    # 文件签名侧表：(mtime, size)，供增量扫描做 stat-only 判定。
+    # 普通表（非 FTS 列）；随 journals 一起由重建/写穿/增量扫描重建。
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS fts_file_stats (
+            path TEXT PRIMARY KEY,
+            mtime REAL NOT NULL,
+            size INTEGER NOT NULL
         )
     """)
 
@@ -195,6 +210,57 @@ def write_index_meta(conn: sqlite3.Connection) -> None:
         ("last_updated", datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
+
+
+def upsert_fts_row(file_path: Path) -> Optional[Dict[str, Any]]:
+    """Upsert exactly one journal's FTS row (write/edit post-commit step).
+
+    Builds the row from the committed file through the same parse path a full
+    rebuild uses, so the stored row is identical to a rebuilt one (real
+    ``file_hash``, the file's real mtime in ``modified_time``), and records
+    the file's ``(mtime, size)`` signature so the next incremental scan can
+    skip the file.
+
+    Holds the index ``FileLock`` (the one ``build_all`` holds for a whole
+    build) with a short timeout, so a write-through can never interleave
+    inside a rebuild's enumerate → delete/insert window and be wiped. When
+    the lock is busy (typically: a rebuild is running), the write-through
+    fails fast into the caller's pending-queue fallback instead. Lock order
+    is journals lock → index lock; nothing acquires them in the reverse
+    order.
+
+    Only ``last_updated`` is refreshed in ``index_meta``; the tokenizer /
+    dict / schema version keys stay untouched so a database that still needs
+    a version-triggered rebuild keeps signalling it.
+
+    Returns the stored row dict, or ``None`` when the file yields no parsable
+    row. Infrastructural failures raise. A failure never loses or blocks the
+    journal; recovery is ``life-index index`` or the queued pending repair.
+    """
+    from datetime import datetime, timezone
+
+    from . import fts_update
+    from .config import FILE_LOCK_TIMEOUT_FTS_ROW
+    from .file_lock import FileLock, get_index_lock_path
+
+    with FileLock(get_index_lock_path(), timeout=FILE_LOCK_TIMEOUT_FTS_ROW):
+        conn = init_fts_db()
+        try:
+            doc = fts_update.parse_journal(file_path, get_journals_dir(), get_user_data_dir())
+            if doc is None:
+                return None
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM journals WHERE path = ?", (doc["path"],))
+            fts_update.insert_fts_doc(cursor, doc)
+            fts_update.record_file_stat(cursor, file_path, doc["path"])
+            cursor.execute(
+                "INSERT OR REPLACE INTO index_meta (key, value) VALUES ('last_updated', ?)",
+                (datetime.now(timezone.utc).isoformat(),),
+            )
+            conn.commit()
+            return doc
+        finally:
+            conn.close()
 
 
 def check_index_freshness() -> Dict[str, Any]:

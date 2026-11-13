@@ -49,6 +49,7 @@ INDEX_SIDE_EFFECT_NAMES = frozenset(
         "legacy_indices",
         "metadata_relations",
         "metadata_cache_row",
+        "fts_row",
         "mark_pending",
         "index_b",
         "auto_index",

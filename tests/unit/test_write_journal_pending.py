@@ -1,4 +1,11 @@
-"""Tests for write_journal pending queue integration (Round 12 Phase 1 Task 1.2)."""
+"""Tests for write_journal pending queue integration (Round 12 Phase 1 Task 1.2).
+
+Since the FTS write-through landed, a successful write no longer queues the
+journal: its FTS row is already current (``fts_row=complete``) and
+``mark_pending`` is recorded as ``skipped``. The pending queue is the
+failure-repair path — it is used exactly when the FTS row write-through
+failed, so the next search preflight can repair the index.
+"""
 
 import pytest
 from pathlib import Path
@@ -39,7 +46,7 @@ def _override_data_dir(data_dir: Path, monkeypatch):
     )
 
 
-def _write_journal(data_dir: Path) -> dict:
+def _write_journal(data_dir: Path, date: str = "2026-03-15T10:00:00") -> dict:
     """Call write_journal core with minimal data."""
     from tools.write_journal.core import write_journal
 
@@ -47,30 +54,58 @@ def _write_journal(data_dir: Path) -> dict:
         {
             "title": "Test R12 Write",
             "content": "Content for round 12 pending test.",
-            "date": "2026-03-15T10:00:00",
+            "date": date,
             "topic": ["life"],
         }
     )
 
 
 class TestWritePendingIntegration:
-    def test_write_adds_pending(self, data_dir: Path):
-        """After writing, pending_writes.json should contain the new journal path."""
+    def test_write_through_leaves_queue_empty(self, data_dir: Path):
+        """A successful FTS write-through queues nothing and reports complete."""
         clear_pending()
         result = _write_journal(data_dir)
         assert result.get("success") or result.get("write_outcome") in (
             "success",
-            "success_degraded",
+            "success_pending_confirmation",
         )
+        fts_records = [r for r in result["side_effects"] if r["name"] == "fts_row"]
+        assert [r["status"] for r in fts_records] == ["complete"]
+        pending_records = [r for r in result["side_effects"] if r["name"] == "mark_pending"]
+        assert [r["status"] for r in pending_records] == ["skipped"]
+        assert result["index_status"] == "complete"
+        assert not has_pending()
+        assert get_pending() == []
+
+    def test_fts_write_through_failure_queues_the_path(
+        self,
+        data_dir: Path,
+        monkeypatch,
+    ):
+        """A failed write-through falls back to the durable pending queue."""
+        import tools.write_journal.core as write_core
+
+        clear_pending()
+        monkeypatch.setattr(
+            write_core,
+            "upsert_fts_row",
+            lambda *_args: (_ for _ in ()).throw(OSError("synthetic FTS persistence failure")),
+        )
+
+        result = _write_journal(data_dir)
+
+        assert result["success"] is True
+        assert result["write_outcome"] == "success_degraded"
+        assert result["index_status"] == "degraded"
         assert has_pending()
         pending = get_pending()
         assert len(pending) >= 1
         assert any("life-index_2026-03-15" in p for p in pending)
-        pending_record = next(
-            item for item in result["side_effects"] if item["name"] == "mark_pending"
-        )
-        assert pending_record["status"] == "queued"
-        assert result["index_status"] == "degraded"
+        fts_records = [r for r in result["side_effects"] if r["name"] == "fts_row"]
+        assert [r["status"] for r in fts_records] == ["failed"]
+        assert fts_records[0]["recovery_strategy"] == "life-index index"
+        pending_records = [r for r in result["side_effects"] if r["name"] == "mark_pending"]
+        assert [r["status"] for r in pending_records] == ["queued"]
 
     def test_mark_pending_failure_cannot_report_complete_freshness(
         self,
@@ -83,18 +118,13 @@ class TestWritePendingIntegration:
         clear_pending()
         monkeypatch.setattr(
             write_core,
+            "upsert_fts_row",
+            lambda *_args: (_ for _ in ()).throw(OSError("synthetic FTS persistence failure")),
+        )
+        monkeypatch.setattr(
+            write_core,
             "mark_pending",
             lambda *_args: (_ for _ in ()).throw(OSError("synthetic pending persistence failure")),
-        )
-        monkeypatch.setattr(
-            write_core,
-            "refresh_index_b",
-            lambda *_args: {"success": True},
-        )
-        monkeypatch.setattr(
-            write_core,
-            "capture_write_time_candidates",
-            lambda **_kwargs: {},
         )
 
         result = _write_journal(data_dir)
@@ -110,18 +140,10 @@ class TestWritePendingIntegration:
         assert "pending persistence failure" in pending_records[0]["error"]
         assert pending_records[0]["recovery_strategy"] == "life-index index --rebuild"
 
-    def test_three_writes_three_pending(self, data_dir: Path):
-        """Three sequential writes should produce 3 pending entries."""
+    def test_three_writes_leave_queue_empty(self, data_dir: Path):
+        """Three sequential successful writes queue nothing."""
         clear_pending()
         for i in range(3):
-            from tools.write_journal.core import write_journal
-
-            write_journal(
-                {
-                    "title": f"Test {i}",
-                    "content": f"Content {i}",
-                    "date": f"2026-03-{15+i}T10:00:00",
-                    "topic": ["life"],
-                }
-            )
-        assert len(get_pending()) == 3
+            result = _write_journal(data_dir, date=f"2026-03-{15+i}T10:00:00")
+            assert result["success"] is True
+        assert get_pending() == []

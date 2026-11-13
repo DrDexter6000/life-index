@@ -18,7 +18,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | Debug L2 search performance | `metadata_cache.py` | Check SQLite WAL mode, mtime/size detection |
 | Fix FTS5 search issues | `search_index.py` | Supports auto-rebuild on corruption |
 | Debug FTS search queries | `fts_search.py` | BM25 ranking, snippet extraction, JSON field parsing |
-| Debug FTS index updates | `fts_update.py` | Incremental/full rebuild, file hashing, journal parsing |
+| Debug FTS index updates | `fts_update.py` | Incremental/full rebuild, single-row write-through insert, (mtime, size) stat scan, journal parsing |
 | Search retrieval behavior | `search_index.py`, `fts_search.py`, `metadata_cache.py`, `entity_runtime.py` | Active retrieval is keyword + Entity Graph |
 | Debug path normalization | `path_contract.py` | Canonical path normalization and route-safe path shaping |
 | Modify schema validation | `schema.py` | SCHEMA_VERSION, validate/migrate metadata, required/recommended fields |
@@ -41,7 +41,7 @@ Shared infrastructure library for all Life Index atomic tools.
 - **journal_files.py**: Canonical journal file enumeration and closed kind classification under Journals/ (fragment / digest / derived_index / unknown). Path-only rules; dot-directories such as .revisions/ are never enumerated. All journals-tree walkers use these helpers. `scan_journal_files()` walks fragments once and returns `(path, mtime, size)` from `DirEntry.stat()` for stat-only consumers (event detectors, metadata-cache reconcile); its mtime equals `Path.stat().st_mtime`.
 - **frontmatter.py**: SSOT for YAML frontmatter parsing/formatting. Re-exports attachment.py and schema.py for backward compat.
 - **fts_search.py**: FTS5 full-text search with BM25 ranking. Extracted from search_index.py.
-- **fts_update.py**: FTS5 index building/updating (incremental and full rebuild). Extracted from search_index.py.
+- **fts_update.py**: FTS5 index building/updating. Incremental scan decides "unchanged" from (mtime, size) signatures in the fts_file_stats side table; `insert_fts_doc` is the one "file → FTS row" insert shared by rebuild and write-through. Extracted from search_index.py.
 - **metadata_cache.py**: SQLite-based L2 search cache. 50-100x performance improvement over file scanning.
 - **path_contract.py**: Shared path normalization helpers for route-safe, user-safe journal paths.
 - **schema.py**: Schema version management, metadata validation and migration. Extracted from frontmatter.py.
@@ -90,14 +90,14 @@ Shared infrastructure library for all Life Index atomic tools.
 | file_lock.py | write_journal, edit_journal, build_index | ✅ 活跃 | |
 | frontmatter.py | write_journal, edit_journal, search | ✅ 活跃 | SSOT |
 | fts_search.py | search_journals | ✅ 活跃 | |
-| fts_update.py | build_index | ✅ 活跃 | |
+| fts_update.py | build_index, search_index (write/edit write-through) | ✅ 活跃 | stat 侧表判定 + 唯一 file→row 插入路径 |
 | llm_extract.py | 无 | 🗄️ 已退役 | backward-compat shim 已删除；隔离实现仅保留在 `tools/_optional/llm_extract.py`，不在核心工具默认路径导入 |
 | journal_files.py | search_journals, entity, maintenance, backup, __main__, event_detectors | ✅ 活跃 | Journals/ 文件种类 SSOT：fragment / digest / derived_index / unknown，枚举默认只返回 fragment |
 | logger.py | ALL tools | ✅ 活跃 | |
 | metadata_cache.py | search_journals, write_journal | ✅ 活跃 | |
 | path_contract.py | write_journal, edit_journal | ✅ 活跃 | |
 | paths.py | 多个 | ✅ 活跃 | |
-| pending_writes.py | write_journal, edit_journal, search_journals | ✅ 活跃 | Round 12 Phase 1 新增：写入/编辑后标记 pending，搜索前消费 |
+| pending_writes.py | write_journal, edit_journal, search_journals | ✅ 活跃 | Round 12 Phase 1 新增；FTS 写穿落地后为失败修复路径：写穿失败时入队，搜索前消费 |
 | related_candidates.py | write_journal | ✅ 活跃 | |
 | revisions.py | edit_journal | ✅ 活跃 | |
 | schema_validator.py | dev tools | ✅ 活跃 | |
@@ -105,7 +105,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | search_config.py | search_journals | ✅ 活跃 | |
 | search_constants.py | search_journals | ✅ 活跃 | 包含 deprecated semantic flag defaults、FTS、confidence、fuzzy typo、structured metadata 常量 |
 | search_diagnose.py | search_journals | ✅ 活跃 | Round 8 新增：按月 JSONL 指标聚合最近搜索诊断摘要 |
-| search_index.py | build_index, search_journals | ✅ 活跃 | |
+| search_index.py | build_index, search_journals, write_journal, edit_journal | ✅ 活跃 | `upsert_fts_row` 为 write/edit 提交后单行 FTS 写穿 |
 | search_metrics.py | search_journals | ✅ 活跃 | Round 8 新增：按月 JSONL 追加搜索指标日志 |
 | text_normalize.py | search, fts | ✅ 活跃 | |
 | timing.py | write_journal | ✅ 活跃 | write_journal 使用 Timer 做性能计时；其他工具使用 trace.py |

@@ -697,11 +697,11 @@ python -m tools.write_journal --data '<json>'
 ```json
 {
   "success": true,
-  "write_outcome": "success_degraded",
+  "write_outcome": "success_pending_confirmation",
   "journal_path": "C:/Users/.../Documents/Life-Index/Journals/2026/03/life-index_2026-03-10_001.md",
   "updated_indices": ["C:/Users/.../Documents/Life-Index/by-topic/主题_work.md"],
-  "index_status": "degraded",
-  "side_effects_status": "degraded",
+  "index_status": "complete",
+  "side_effects_status": "complete",
   "side_effects": [
     {"name": "attachments", "phase": "pre_commit", "status": "complete", "blocking": true},
     {"name": "journal_stage", "phase": "pre_commit", "status": "complete", "blocking": true},
@@ -710,7 +710,8 @@ python -m tools.write_journal --data '<json>'
     {"name": "legacy_indices", "phase": "post_commit", "status": "complete", "blocking": false},
     {"name": "metadata_relations", "phase": "post_commit", "status": "complete", "blocking": false},
     {"name": "metadata_cache_row", "phase": "post_commit", "status": "complete", "blocking": false},
-    {"name": "mark_pending", "phase": "post_commit", "status": "queued", "blocking": false},
+    {"name": "fts_row", "phase": "post_commit", "status": "complete", "blocking": false},
+    {"name": "mark_pending", "phase": "post_commit", "status": "skipped", "blocking": false},
     {"name": "index_b", "phase": "post_commit", "status": "complete", "blocking": false},
     {"name": "entity_candidates", "phase": "post_commit", "status": "complete", "blocking": false},
     {"name": "confirmation_snapshot", "phase": "post_commit", "status": "complete", "blocking": false}
@@ -814,10 +815,18 @@ staging 清理失败则以具体残留路径报告 `failed`。
 ```
 
 `side_effects[*].status` 只允许 `complete / queued / skipped / failed / compensated`。
-`queued` 只表示 pending queue 已原子落盘；搜索 preflight 尚需消费它，因此 freshness 仍为 degraded。
+`skipped`（如 `mark_pending`）表示该步骤无事可做：正常写入的 FTS 行已写穿，没有内容留在 pending queue。
+`queued` 只出现在写穿失败的降级路径上（包括索引构建锁被长时间占用、写穿短超时）：
+pending queue 已原子落盘，等待搜索 preflight 消费修复，因此 freshness 仍为 degraded。
 `compensated` 表示 pre-commit 操作曾发生但已完成补偿，journal 未提交，可在解决原始错误后重试。
 `metadata_cache_row/post_commit` 表示该日志的元数据缓存行已在提交后即时 upsert（失败时
 `recovery_strategy` 为 `life-index index --rebuild`；下一次搜索的 reconcile 也会自愈该行）。
+`fts_row/post_commit` 表示该日志的 FTS 行已在提交后即时写穿——行由提交后的文件经与全量重建
+同一条 "file → FTS row" 路径构建（真实 `file_hash`、文件真实 mtime），因此正常写入即刻可被
+全文检索，且 `index_status: complete`。写穿持有与索引构建相同的 index lock（短超时），因此不会与全量重建交错而丢行；
+拿不到锁（典型场景：重建正在进行）同样计为写穿失败，`recovery_strategy` 为
+`life-index index`，`mark_pending` 退回 `queued`，由下一次搜索 preflight 或
+`life-index index` 修复。
 `write --auto-index` 在 journal 已提交时追加 `auto_index/post_commit` 记录，并从完整
 记录序列重新投影兼容摘要；未提交 journal 时不会运行 auto-index。
 Dry-run 记录 `write_preview=complete`，但不伪造 `journal_commit`；其 `index_status` 仍为 `not_started`。
@@ -3007,9 +3016,10 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 |--------|------|--------|--------|------|
 | `pending_before_search` | bool | `true` | `true` | 搜索开始时 pending 队列非空。此字段仅在该路径存在，值**始终为 `true`**（成功/失败均不变） |
 | `auto_updated` | bool | `true` | `false` | 增量索引构建是否成功执行 |
-| `pending_consumed` | bool | `true` | `false` | pending 队列是否已清空 |
+| `pending_consumed` | bool | `true` | `false` | 本次消费开始时在队列中的路径是否已全部处理并移除、且队列已空。构建期间新入队的路径会保留到下一次搜索，此字段为 `false` |
 
 - 顶层 `pending_consumed`（bool）同时保留，作为向后兼容的快速判断字段
+- 消费只移除构建开始时的快照路径（`remove_pending`），构建期间新入队的路径原样保留
 - 构建失败时，`warnings` 数组中追加 `pending_index_update_failed: {error}` 条目，pending 队列保留以供下次搜索重试
 
 ### 错误码
@@ -4928,11 +4938,17 @@ python -m tools.edit_journal --journal "<path>" [options]
   },
   "content_modified": false,
   "indices_updated": [],
+  "fts_row_updated": true,
+  "pending_marked": false,
   "metadata_cache_updated": true,
   "error": null
 }
 ```
 
+`fts_row_updated` 表示编辑提交后已即时写穿该日志的 FTS 行（additive，布尔值；行由提交后
+的文件经与全量重建同一条 "file → FTS row" 路径重建，旧词即刻不再命中、新词即刻可检索）。
+`false` 仅表示该派生步骤失败（编辑本身成功）；此时 `pending_marked` 为 `true`，路径进入
+pending queue，由下次搜索 preflight 或 `life-index index` 修复。
 `metadata_cache_updated` 表示编辑提交后已即时 upsert 该日志的元数据缓存行（additive，
 布尔值）。`false` 仅表示该派生步骤失败（编辑本身成功）；下次搜索的 reconcile 或
 `life-index index --rebuild` 会恢复。

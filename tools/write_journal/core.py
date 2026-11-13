@@ -35,6 +35,7 @@ from ..lib.metadata_cache import (
     replace_entry_relations,
     upsert_journal_cache_row,
 )
+from ..lib.search_index import upsert_fts_row
 from ..lib.path_contract import build_journal_path_fields
 from ..lib.related_candidates import suggest_related_entries
 from ..lib import content_analysis
@@ -1144,29 +1145,68 @@ def _update_postcommit_derived_projections(
             blocking=False,
         )
 
+    # Write the journal's FTS row through from the committed file so the next
+    # search sees it without an archive-wide incremental scan. The row is
+    # built by the same parse path a full rebuild uses (non-blocking; on
+    # failure the pending queue plus the next search preflight repair it).
+    fts_row_failed = False
     try:
-        if source_rel_path is None:
-            raise RuntimeError("canonical journal rel_path is unavailable")
-        mark_pending(source_rel_path)
+        fts_row_doc = upsert_fts_row(journal_path)
+        if fts_row_doc is None:
+            raise RuntimeError("FTS row write-through produced no row")
     except Exception as exc:
+        fts_row_failed = True
         _record_side_effect(
             result,
-            name="mark_pending",
+            name="fts_row",
             phase="post_commit",
             status=SideEffectExecutionStatus.FAILED,
             blocking=False,
             error=str(exc),
-            recovery_strategy="life-index index --rebuild",
+            recovery_strategy="life-index index",
         )
     else:
-        logger.info(f"已标记待索引更新: {source_rel_path}")
+        _record_side_effect(
+            result,
+            name="fts_row",
+            phase="post_commit",
+            status=SideEffectExecutionStatus.COMPLETE,
+            blocking=False,
+        )
+
+    if not fts_row_failed:
+        # The FTS row is already current: nothing is left pending.
         _record_side_effect(
             result,
             name="mark_pending",
             phase="post_commit",
-            status=SideEffectExecutionStatus.QUEUED,
+            status=SideEffectExecutionStatus.SKIPPED,
             blocking=False,
         )
+    else:
+        try:
+            if source_rel_path is None:
+                raise RuntimeError("canonical journal rel_path is unavailable")
+            mark_pending(source_rel_path)
+        except Exception as exc:
+            _record_side_effect(
+                result,
+                name="mark_pending",
+                phase="post_commit",
+                status=SideEffectExecutionStatus.FAILED,
+                blocking=False,
+                error=str(exc),
+                recovery_strategy="life-index index --rebuild",
+            )
+        else:
+            logger.info(f"已标记待索引更新: {source_rel_path}")
+            _record_side_effect(
+                result,
+                name="mark_pending",
+                phase="post_commit",
+                status=SideEffectExecutionStatus.QUEUED,
+                blocking=False,
+            )
 
     try:
         with timer.measure("index_b_update"):

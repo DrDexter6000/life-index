@@ -126,6 +126,7 @@ def save_search_mode(mode: str) -> None:
 # 锁超时配置（秒）
 FILE_LOCK_TIMEOUT_DEFAULT = 30  # 正常操作（写日志等）
 FILE_LOCK_TIMEOUT_REBUILD = 120  # 索引重建（批量操作需要更长时间）
+FILE_LOCK_TIMEOUT_FTS_ROW = 2  # FTS 单行写穿（短超时；拿不到索引锁即失败，回退 pending queue）
 
 
 # =============================================================================

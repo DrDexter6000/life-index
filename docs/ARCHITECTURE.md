@@ -574,7 +574,14 @@ Round 8 在分层搜索架构之上，建立了完整的搜索质量保障闭环
 
 - **TOKENIZER_VERSION 机制**：`search_constants.py` 中的 `TOKENIZER_VERSION` 整数与 FTS 索引一起存储。当 jieba 分词器配置变更时，bump 版本号触发自动全量重建，确保索引 token 与查询时一致（ADR-011）
 - **Index Manifest**：`tools/lib/index_manifest.py` 管理 FTS 索引构建状态（counts + checksums + legacy vector fields fixed at disabled/empty），支持增量更新的原子性和恢复
-- **Pending Queue**：`tools/lib/pending_writes.py` 实现写入穿透缓存，写入/编辑后标记 pending，搜索前消费，确保搜索结果包含最新数据（ADR-017）
+- **Pending Queue**：`tools/lib/pending_writes.py` 实现待修复队列（ADR-017）。写入/编辑的
+  FTS 行写穿失败（含索引锁繁忙短超时）时才把路径标记 pending；搜索前消费队列，增量修复
+  索引。消费只移除构建开始时的快照路径（`remove_pending`），构建期间新入队的路径保留给
+  下一次搜索；队列变更（mark/remove/clear）经队列锁文件用共享 `FileLock` 串行化，避免
+  read-modify-write 交错丢路径
+- **FTS 行写穿 + stat 增量扫描**：写入/编辑在提交后即时写穿该日志的 FTS 行
+  （`fts_row` / `fts_row_updated`）；增量扫描以 `(mtime, size)` 侧表判定"未变更"，
+  不再读取/哈希每个文件（详见下节）
 
 #### Metadata cache freshness（write-time upsert + reconcile）
 
@@ -602,6 +609,39 @@ Metadata cache 的新鲜度不再依赖全库内容哈希：
   `life-index index --rebuild` 才能被发现；sidecar schema 自 v1.1.x 升到 v2.0.0 时存量
   安装会全量重建一次。
 
+#### FTS index freshness（write-time write-through + stat-based incremental scan）
+
+FTS 索引的新鲜度不再依赖"每次增量扫描哈希全部日志"：
+
+- **Write/edit 即时写穿**：`tools/write_journal/core.py` 在 journal 提交后追加
+  `fts_row/post_commit` 非阻塞副作用记录并调用 `search_index.upsert_fts_row()`。
+  行由**提交后的文件**经与全量重建同一条 "file → FTS row" 路径构建
+  （`fts_update.parse_journal` → `fts_update.insert_fts_doc`）：真实 `file_hash`
+  （文件内容 MD5 前 16 位）与文件真实 mtime 存入 `modified_time`，因此写穿行与
+  重建行逐列一致，正常写入即刻可被全文检索。`tools/edit_journal` 在编辑提交后做
+  同样写穿（结果字段 `fts_row_updated`）。写穿成功时 `mark_pending` 记为 `skipped`
+  （不入队）；失败时 `recovery_strategy` 为 `life-index index`，路径照旧入队
+  （`queued`），由下一次搜索 preflight 修复。写穿只刷新 `index_meta.last_updated`，
+  不改写 tokenizer/dict/schema 版本键——仍需版本触发重建的数据库不会被掩盖。
+- **与重建串行化**：写穿持有与 `build_all` 相同的 index lock（`FILE_LOCK_TIMEOUT_FTS_ROW`
+  短超时），因此不会插进一次全量重建的"枚举 → 删除/插入"窗口而被整表覆盖丢失。拿不到锁
+  即按写穿失败处理并入队。锁序恒为 journals lock → index lock（写入
+  `tools/write_journal/core.py`、编辑 `tools/edit_journal/__init__.py` 均在持有 journals
+  lock 的提交段内调用写穿；`build_all` 只持有 index lock，内部不取 journals lock），
+  无反向持锁路径，故不会死锁。
+- **(mtime, size) 侧表**：`journals_fts.db` 内的普通表 `fts_file_stats`
+  （`path PRIMARY KEY, mtime, size`）记录每个已索引文件的签名；由全量重建、
+  写穿和增量扫描共同维护，可从源文件 100% 重建（§1.2 机器检索层例外）。
+- **增量扫描**（`life-index index`、pending 修复、staleness 修复；
+  `fts_update.update_index`）：经 `tools/lib/journal_files.py` 枚举 fragment 文件，
+  stat-only 比对侧表签名——签名未变的文件**不被读取、不被哈希**；只读取签名变化
+  或无行的文件；文件消失则删除其 FTS 行与签名行（与此前一致）。
+- **版本升级**：`FTS_SCHEMA_VERSION` v2 → v3。存量 v2 安装没有签名行：已记录的
+  schema 版本不匹配会经既有 `check_needs_rebuild` 机制在第一次增量更新时自动做
+  一次全量重建并填充侧表，无需人工干预。
+- **已知边界（接受）**：工具外修改若 mtime 与大小均不变，则要到
+  `life-index index --rebuild` 才能被发现（与 metadata cache 同一判据、同一边界）。
+
 #### Transactional write boundary
 
 `tools/write_journal/core.py` uses one ordered `side_effects` record sequence as
@@ -618,12 +658,15 @@ the execution truth for the compatibility summaries `write_outcome`,
    attachments published by this transaction. No derived view runs before the
    durable journal commit.
 4. Monthly abstract, legacy navigation indexes, metadata relations, the
-   metadata cache row upsert (`metadata_cache_row`), pending freshness,
-   Index B, entity candidate capture, and confirmation snapshots run after
-   commit. Their failure preserves the journal and produces `success_degraded`
-   with a machine-readable recovery strategy.
-5. `mark_pending: queued` means the existing atomic pending queue is durable;
-   search preflight remains the sole consumer and freshness authority.
+   metadata cache row upsert (`metadata_cache_row`), the FTS row write-through
+   (`fts_row`), pending freshness, Index B, entity candidate capture, and
+   confirmation snapshots run after commit. Their failure preserves the journal
+   and produces `success_degraded` with a machine-readable recovery strategy.
+5. `fts_row: complete` means the journal's FTS row was written through from
+   the committed file; `mark_pending` is then recorded `skipped` and nothing
+   is queued. `mark_pending: queued` means the write-through failed, the
+   existing atomic pending queue is durable, and search preflight remains the
+   sole consumer and freshness authority.
 6. Optional CLI `auto_index` runs only after `journal_commit=complete`, appends a
    nonblocking post-commit record, and re-projects compatibility summaries.
 

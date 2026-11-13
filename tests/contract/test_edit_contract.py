@@ -14,6 +14,8 @@ REQUIRED_EDIT_FIELDS = {
     "changes",
     "content_modified",
     "indices_updated",
+    "fts_row_updated",
+    "pending_marked",
     "index_b_updated",
     "error",
 }

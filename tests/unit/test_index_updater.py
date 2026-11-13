@@ -58,7 +58,11 @@ class TestUpdateTopicIndex:
         data = {"title": "Test", "date": "2026-03-10"}
 
         with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
-            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+            with patch(
+                "tools.write_journal.index_updater.get_journals_dir",
+                return_value=tmp_path,
+                create=True,
+            ):
                 result = update_topic_index("work", journal_path, data)
 
         assert len(result) == 1
@@ -77,7 +81,11 @@ class TestUpdateTopicIndex:
         data = {"title": "Test", "date": "2026-03-10"}
 
         with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
-            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+            with patch(
+                "tools.write_journal.index_updater.get_journals_dir",
+                return_value=tmp_path,
+                create=True,
+            ):
                 result = update_topic_index(["work"], journal_path, data)
 
         assert len(result) == 1
@@ -96,7 +104,11 @@ class TestUpdateTopicIndex:
         data = {"title": "Test", "date": "2026-03-10"}
 
         with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
-            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+            with patch(
+                "tools.write_journal.index_updater.get_journals_dir",
+                return_value=tmp_path,
+                create=True,
+            ):
                 result = update_topic_index(["work", "learn"], journal_path, data)
 
         assert len(result) == 2
@@ -114,7 +126,11 @@ class TestUpdateTopicIndex:
         data = {"title": "Test", "date": "2026-03-10"}
 
         with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
-            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+            with patch(
+                "tools.write_journal.index_updater.get_journals_dir",
+                return_value=tmp_path,
+                create=True,
+            ):
                 result = update_topic_index("work,learn", journal_path, data)
 
         assert sorted(path.name for path in result) == ["主题_learn.md", "主题_work.md"]
@@ -157,7 +173,11 @@ class TestUpdateTopicIndex:
         data = {"title": "Test", "date": "2026-03-10"}
 
         with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
-            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+            with patch(
+                "tools.write_journal.index_updater.get_journals_dir",
+                return_value=tmp_path,
+                create=True,
+            ):
                 result = update_topic_index(["work", "", "learn"], journal_path, data)
 
         # Should only create 2 files (skip empty string)
@@ -182,7 +202,11 @@ class TestUpdateProjectIndex:
         data = {"title": "Test", "date": "2026-03-10"}
 
         with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
-            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+            with patch(
+                "tools.write_journal.index_updater.get_journals_dir",
+                return_value=tmp_path,
+                create=True,
+            ):
                 result = update_project_index("Life-Index", journal_path, data)
 
         assert result is not None
@@ -215,7 +239,11 @@ class TestUpdateProjectIndex:
         data = {"title": "Test", "date": "2026-03-10"}
 
         with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
-            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+            with patch(
+                "tools.write_journal.index_updater.get_journals_dir",
+                return_value=tmp_path,
+                create=True,
+            ):
                 result = update_project_index("NewProject", journal_path, data)
 
         assert result is not None
@@ -238,7 +266,11 @@ class TestUpdateProjectIndex:
         data = {"title": "Test", "date": "2026-03-10"}
 
         with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
-            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+            with patch(
+                "tools.write_journal.index_updater.get_journals_dir",
+                return_value=tmp_path,
+                create=True,
+            ):
                 # First call
                 result1 = update_project_index("ExistingProject", journal_path, data)
                 # Second call with same data
@@ -267,7 +299,11 @@ class TestUpdateProjectIndex:
         data2 = {"title": "Test2", "date": "2026-03-11"}
 
         with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
-            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+            with patch(
+                "tools.write_journal.index_updater.get_journals_dir",
+                return_value=tmp_path,
+                create=True,
+            ):
                 update_project_index("SameProject", journal_path1, data1)
                 update_project_index("SameProject", journal_path2, data2)
 
@@ -296,7 +332,11 @@ class TestUpdateTagIndices:
         data = {"title": "Test", "date": "2026-03-10"}
 
         with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
-            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+            with patch(
+                "tools.write_journal.index_updater.get_journals_dir",
+                return_value=tmp_path,
+                create=True,
+            ):
                 result = update_tag_indices(["python", "testing"], journal_path, data)
 
         assert len(result) == 2
@@ -314,7 +354,11 @@ class TestUpdateTagIndices:
         data = {"title": "Test", "date": "2026-03-10"}
 
         with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
-            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+            with patch(
+                "tools.write_journal.index_updater.get_journals_dir",
+                return_value=tmp_path,
+                create=True,
+            ):
                 result = update_tag_indices("会议,项目进展", journal_path, data)  # type: ignore[arg-type]
 
         assert sorted(path.name for path in result) == ["标签_会议.md", "标签_项目进展.md"]
@@ -350,7 +394,11 @@ class TestUpdateTagIndices:
         data = {"title": "Test", "date": "2026-03-10"}
 
         with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
-            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+            with patch(
+                "tools.write_journal.index_updater.get_journals_dir",
+                return_value=tmp_path,
+                create=True,
+            ):
                 result = update_tag_indices(["python", "", "testing"], journal_path, data)
 
         # Should only create 2 files (skip empty string)
@@ -371,7 +419,11 @@ class TestUpdateTagIndices:
         data = {"title": "Test", "date": "2026-03-10"}
 
         with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
-            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+            with patch(
+                "tools.write_journal.index_updater.get_journals_dir",
+                return_value=tmp_path,
+                create=True,
+            ):
                 # First call
                 result1 = update_tag_indices(["duplicate"], journal_path, data)
                 # Second call with same data
@@ -396,7 +448,11 @@ class TestUpdateTagIndices:
         data = {"title": "Test", "date": "2026-03-10"}
 
         with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
-            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+            with patch(
+                "tools.write_journal.index_updater.get_journals_dir",
+                return_value=tmp_path,
+                create=True,
+            ):
                 result = update_tag_indices(["newtag"], journal_path, data)
 
         assert len(result) == 1
@@ -423,7 +479,11 @@ class TestUpdateTagIndices:
         data2 = {"title": "Test2", "date": "2026-03-11"}
 
         with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
-            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+            with patch(
+                "tools.write_journal.index_updater.get_journals_dir",
+                return_value=tmp_path,
+                create=True,
+            ):
                 update_tag_indices(["sametag"], journal_path1, data1)
                 update_tag_indices(["sametag"], journal_path2, data2)
 
@@ -450,7 +510,11 @@ class TestUpdateMonthlyAbstract:
             "---\ntitle: test\ndate: 2026-03-04\ntopic: work\n---\n\n# test\n",
             encoding="utf-8",
         )
-        with patch("tools.write_journal.index_updater.get_journals_dir", return_value=journals_dir):
+        with patch(
+            "tools.write_journal.index_updater.get_journals_dir",
+            return_value=journals_dir,
+            create=True,
+        ):
             with patch("tools.generate_index.get_journals_dir", return_value=journals_dir):
                 with patch("tools.generate_index.get_user_data_dir", return_value=tmp_path):
                     result = update_index(year=2026, month=3)
@@ -469,7 +533,11 @@ class TestUpdateMonthlyAbstract:
             "---\ntitle: test\ndate: 2026-03-04\ntopic: work\n---\n\n# test\n",
             encoding="utf-8",
         )
-        with patch("tools.write_journal.index_updater.get_journals_dir", return_value=journals_dir):
+        with patch(
+            "tools.write_journal.index_updater.get_journals_dir",
+            return_value=journals_dir,
+            create=True,
+        ):
             with patch("tools.generate_index.get_journals_dir", return_value=journals_dir):
                 with patch("tools.generate_index.get_user_data_dir", return_value=tmp_path):
                     result = update_index(year=2026, month=3)
@@ -486,7 +554,11 @@ class TestUpdateMonthlyAbstract:
             "---\ntitle: test\ndate: 2026-03-04\ntopic: work\n---\n\n# test\n",
             encoding="utf-8",
         )
-        with patch("tools.write_journal.index_updater.get_journals_dir", return_value=journals_dir):
+        with patch(
+            "tools.write_journal.index_updater.get_journals_dir",
+            return_value=journals_dir,
+            create=True,
+        ):
             with patch("tools.generate_index.get_journals_dir", return_value=journals_dir):
                 with patch("tools.generate_index.get_user_data_dir", return_value=tmp_path):
                     result = update_index(year=2026, month=3)
@@ -512,7 +584,11 @@ class TestUpdateMonthlyAbstract:
             "---\ntitle: test\ndate: 2026-03-04\ntopic: work\n---\n\n# test\n",
             encoding="utf-8",
         )
-        with patch("tools.write_journal.index_updater.get_journals_dir", return_value=journals_dir):
+        with patch(
+            "tools.write_journal.index_updater.get_journals_dir",
+            return_value=journals_dir,
+            create=True,
+        ):
             with patch("tools.generate_index.get_journals_dir", return_value=journals_dir):
                 with patch("tools.generate_index.get_user_data_dir", return_value=tmp_path):
                     result = update_index(year=2026, month=3, dry_run=True)
@@ -525,7 +601,11 @@ class TestUpdateMonthlyAbstract:
         journals_dir = tmp_path / "Journals"
         month_dir = journals_dir / "2026" / "03"
         month_dir.mkdir(parents=True)
-        with patch("tools.write_journal.index_updater.get_journals_dir", return_value=journals_dir):
+        with patch(
+            "tools.write_journal.index_updater.get_journals_dir",
+            return_value=journals_dir,
+            create=True,
+        ):
             with patch("tools.generate_index.get_journals_dir", return_value=journals_dir):
                 with patch("tools.generate_index.get_user_data_dir", return_value=tmp_path):
                     result = update_index(year=2026, month=3)
@@ -549,7 +629,11 @@ class TestIndexEntryFormat:
         data = {"title": "Test", "date": "2026-03-10"}
 
         with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
-            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+            with patch(
+                "tools.write_journal.index_updater.get_journals_dir",
+                return_value=tmp_path,
+                create=True,
+            ):
                 result = update_topic_index(["work"], journal_path, data)
 
         if result:
@@ -569,7 +653,11 @@ class TestIndexEntryFormat:
         data = {"title": "My Test Title", "date": "2026-03-10"}
 
         with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
-            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+            with patch(
+                "tools.write_journal.index_updater.get_journals_dir",
+                return_value=tmp_path,
+                create=True,
+            ):
                 result = update_topic_index(["work"], journal_path, data)
 
         if result:
@@ -589,7 +677,11 @@ class TestIndexEntryFormat:
         data = {"title": "Test", "date": "2026-03-10"}
 
         with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
-            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+            with patch(
+                "tools.write_journal.index_updater.get_journals_dir",
+                return_value=tmp_path,
+                create=True,
+            ):
                 # First call
                 result1 = update_topic_index(["duplicate"], journal_path, data)
                 # Second call with same data
@@ -618,7 +710,11 @@ class TestIndexEntryFormat:
         data2 = {"title": "Test2", "date": "2026-03-11"}
 
         with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
-            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+            with patch(
+                "tools.write_journal.index_updater.get_journals_dir",
+                return_value=tmp_path,
+                create=True,
+            ):
                 update_topic_index(["same"], journal_path1, data1)
                 update_topic_index(["same"], journal_path2, data2)
 

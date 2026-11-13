@@ -19,9 +19,9 @@ scenarios:
     name: "标准写入 - 用户提供地点和天气"
     description: >
       用户提供 content + location + weather，不需要自动填充。
-      core.py 写入后始终设置 needs_confirmation=true（Agent 需确认地点/天气），
-      pending freshness 仍是 committed degradation，因此
-      write_outcome=success_degraded，同时保留 needs_confirmation=true。
+      core.py 写入后始终设置 needs_confirmation=true（Agent 需确认地点/天气）。
+      FTS 行已在提交后写穿（fts_row=complete，mark_pending=skipped），
+      索引无需修复，因此 write_outcome=success_pending_confirmation。
     input:
       date: "2026-04-04"
       title: "标准写入测试"
@@ -35,12 +35,12 @@ scenarios:
       vector_return: true
     assertions:
       success: true
-      write_outcome: "success_degraded"
+      write_outcome: "success_pending_confirmation"
       needs_confirmation: true
       location_auto_filled: false
       weather_auto_filled: false
-      index_status: "degraded"
-      side_effects_status: "degraded"
+      index_status: "complete"
+      side_effects_status: "complete"
       error_is_null: true
 
   - id: "WB-02"
@@ -59,7 +59,7 @@ scenarios:
       vector_return: false
     assertions:
       success: true
-      write_outcome: "success_degraded"
+      write_outcome: "success_pending_confirmation"
       needs_confirmation: true
       location_auto_filled: true
       weather_auto_filled: true
@@ -85,7 +85,7 @@ scenarios:
       vector_return: false
     assertions:
       success: true
-      write_outcome: "success_degraded"
+      write_outcome: "success_pending_confirmation"
       needs_confirmation: true
       location_auto_filled: false
       weather_auto_filled: true
@@ -134,7 +134,7 @@ scenarios:
       vector_return: false
     assertions:
       success: true
-      write_outcome: "success_degraded"
+      write_outcome: "success_pending_confirmation"
       needs_confirmation: true
       location_auto_filled: true
       error_is_null: true
@@ -145,7 +145,7 @@ scenarios:
     name: "content 为空 - 仍然写入成功"
     description: >
       content 字段为空字符串。core.py 不验证 content 是否非空，
-      因此写入成功。pending freshness 使摘要为 success_degraded，
+      因此写入成功。FTS 行写穿成功，摘要为 success_pending_confirmation，
       同时仍要求 confirmation。
       注意：这是实际行为的如实记录，空内容校验不在 Round 5 范围内。
     input:
@@ -159,7 +159,7 @@ scenarios:
       vector_return: false
     assertions:
       success: true
-      write_outcome: "success_degraded"
+      write_outcome: "success_pending_confirmation"
       needs_confirmation: true
       location_auto_filled: true
       error_is_null: true
@@ -168,7 +168,7 @@ scenarios:
     name: "date 缺失 - 默认今天"
     description: >
       缺少 date 时，write 路径默认使用本地今天日期并继续写入。
-      Agent 应看到 committed success_degraded + needs_confirmation，
+      Agent 应看到 committed success_pending_confirmation + needs_confirmation，
       而不是要求用户补日期。
     input:
       title: "无日期测试"
@@ -180,7 +180,7 @@ scenarios:
       vector_return: false
     assertions:
       success: true
-      write_outcome: "success_degraded"
+      write_outcome: "success_pending_confirmation"
       needs_confirmation: true
       location_auto_filled: true
       weather_auto_filled: true

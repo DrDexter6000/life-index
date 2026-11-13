@@ -4,6 +4,10 @@ Life Index - FTS Update Module
 FTS5 索引更新功能
 
 从 search_index.py 提取的索引构建/更新逻辑。
+
+增量扫描以文件 (mtime, size) 签名（fts_file_stats 侧表）判定"未变更"，
+只读取新增/变更文件；insert_fts_doc 是 "file → FTS row" 的唯一插入路径，
+全量重建与写入/编辑后的单行写穿共用它。
 """
 
 import hashlib
@@ -21,6 +25,7 @@ _STALE_MARKER_TIMEOUT_S = 300
 
 from .chinese_tokenizer import segment_for_fts
 from .frontmatter import parse_frontmatter
+from .journal_files import iter_journal_files
 from .path_contract import build_journal_path_fields, safe_relative_path
 
 
@@ -107,6 +112,61 @@ def get_indexed_files(conn: sqlite3.Connection) -> dict[str, tuple[str, str]]:
     return result
 
 
+def get_file_stats(conn: sqlite3.Connection) -> dict[str, tuple[float, int]]:
+    """获取已记录的文件签名（路径 -> (mtime, size)，来自 fts_file_stats 侧表）。"""
+    cursor = conn.cursor()
+    cursor.execute("SELECT path, mtime, size FROM fts_file_stats")
+
+    result = {}
+    for row in cursor.fetchall():
+        result[row[0]] = (row[1], row[2])
+
+    return result
+
+
+def record_file_stat(cursor: sqlite3.Cursor, file_path: Path, rel_path: str) -> None:
+    """记录文件当前 (mtime, size) 签名，供下次增量扫描做 stat-only 判定。"""
+    stat = file_path.stat()
+    cursor.execute(
+        "INSERT OR REPLACE INTO fts_file_stats (path, mtime, size) VALUES (?, ?, ?)",
+        (rel_path, stat.st_mtime, stat.st_size),
+    )
+
+
+def insert_fts_doc(cursor: sqlite3.Cursor, doc: dict[str, Any]) -> None:
+    """插入一条 FTS 行（"file → FTS row" 的唯一插入路径）。
+
+    全量重建与写入/编辑后的单行写穿共用本函数，保证两条路径产出的行
+    逐列一致（含真实 file_hash 与文件真实 mtime）。
+    """
+    cursor.execute(
+        """
+                    INSERT INTO journals (
+                        path, title, title_segmented, content, date, location, weather,
+                        topic, project, tags, mood, people,
+                        file_hash, modified_time
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+        (
+            doc["path"],
+            doc["title"],
+            doc["title_segmented"],
+            doc["content"],
+            doc["date"],
+            doc["location"],
+            doc["weather"],
+            doc["topic"],
+            doc["project"],
+            doc["tags"],
+            doc["mood"],
+            doc["people"],
+            doc["file_hash"],
+            doc["modified_time"],
+        ),
+    )
+
+
 def _check_rebuild_marker(fts_db_path: Path) -> Path:
     """Return marker path. Raise if active rebuild detected."""
     marker = fts_db_path.parent / _REBUILD_MARKER_NAME
@@ -186,42 +246,39 @@ def update_index(
         conn = init_fts_db_func()
         cursor = conn.cursor()
 
-        # 获取当前已索引的文件
+        # 获取当前已索引的文件与已记录的文件签名
         indexed_files = get_indexed_files(conn)
+        indexed_stats = get_file_stats(conn)
 
-        # 扫描所有日志文件
+        # 扫描所有日志文件（仅经 journal_files 枚举；以 (mtime, size) stat-only
+        # 判定是否变更——未变更的文件不再被读取或哈希）。
         current_files = set()
         files_to_update = []
 
         if journals_dir.exists():
-            for year_dir in journals_dir.iterdir():
-                if not year_dir.is_dir() or not year_dir.name.isdigit():
+            for journal_file in iter_journal_files(journals_dir):
+                rel_path = safe_relative_path(journal_file, user_data_dir)
+                current_files.add(rel_path)
+
+                stat = journal_file.stat()
+                if indexed_stats.get(rel_path) == (stat.st_mtime, stat.st_size):
+                    # 签名未变 → 视为未变更，不读文件内容
                     continue
 
-                for month_dir in year_dir.iterdir():
-                    if not month_dir.is_dir():
-                        continue
+                if rel_path not in indexed_files:
+                    # 新文件
+                    files_to_update.append(("add", journal_file, rel_path))
+                else:
+                    # 文件已修改（或签名记录缺失，保守起见重读）
+                    files_to_update.append(("update", journal_file, rel_path))
 
-                    for journal_file in month_dir.glob("life-index_*.md"):
-                        rel_path = safe_relative_path(journal_file, user_data_dir)
-                        current_files.add(rel_path)
-
-                        # 检查是否需要更新
-                        file_hash = get_file_hash(journal_file)
-
-                        if rel_path not in indexed_files:
-                            # 新文件
-                            files_to_update.append(("add", journal_file, rel_path))
-                        elif indexed_files[rel_path][0] != file_hash:
-                            # 文件已修改
-                            files_to_update.append(("update", journal_file, rel_path))
-
-        # 找出需要删除的索引（文件已不存在）
-        files_to_remove = set(indexed_files.keys()) - current_files
+        # 找出需要删除的索引（文件已不存在；含孤儿签名行）
+        files_to_remove = (set(indexed_files.keys()) | set(indexed_stats)) - current_files
 
         # 如果不是增量模式，清空所有索引
         if not incremental:
             cursor.execute("DELETE FROM journals")
+            cursor.execute("DELETE FROM fts_file_stats")
             files_to_remove = set()
             files_to_update = [("add", user_data_dir / p, p) for p in current_files]
             result["removed"] = len(indexed_files)
@@ -229,6 +286,7 @@ def update_index(
         # 执行删除
         for rel_path in files_to_remove:
             cursor.execute("DELETE FROM journals WHERE path = ?", (rel_path,))
+            cursor.execute("DELETE FROM fts_file_stats WHERE path = ?", (rel_path,))
             result["removed"] = (result["removed"] or 0) + 1
 
         # 执行添加/更新
@@ -242,33 +300,13 @@ def update_index(
                 else:
                     result["added"] = (result["added"] or 0) + 1
 
-                # 插入新记录
-                cursor.execute(
-                    """
-                    INSERT INTO journals (
-                        path, title, title_segmented, content, date, location, weather,
-                        topic, project, tags, mood, people,
-                        file_hash, modified_time
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        doc["path"],
-                        doc["title"],
-                        doc["title_segmented"],
-                        doc["content"],
-                        doc["date"],
-                        doc["location"],
-                        doc["weather"],
-                        doc["topic"],
-                        doc["project"],
-                        doc["tags"],
-                        doc["mood"],
-                        doc["people"],
-                        doc["file_hash"],
-                        doc["modified_time"],
-                    ),
-                )
+                # 插入新记录并记录签名
+                insert_fts_doc(cursor, doc)
+                try:
+                    record_file_stat(cursor, file_path, rel_path)
+                except OSError:
+                    # 记录签名失败只影响下次扫描多读一次，不阻断本次构建
+                    logger.warning("Failed to record file stat for %s", rel_path)
 
         conn.commit()
         conn.close()
