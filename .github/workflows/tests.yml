@@ -111,7 +111,9 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run quarantine tests
-        run: pytest -m quarantine -v --timeout=300
+        # Exit code 5 (nothing collected) is the normal state: no suite is
+        # quarantined unless tests/conftest.py does not know its directory.
+        run: pytest -m quarantine -v --timeout=300 || [ "$?" -eq 5 ]
 
   coverage:
     if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.draft == false) }}

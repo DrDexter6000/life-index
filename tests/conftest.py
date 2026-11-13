@@ -32,6 +32,34 @@ NIGHTLY_UNIT_FILES = frozenset(
 )
 
 
+# Suites that are deterministic and need no external dependency or real data:
+# they gate every pull request. The integration, end-to-end and sanity suites
+# were quarantined while search depended on model weights; it no longer does,
+# and a suite that only runs after the merge lets stale tests land.
+BLOCKER_DIRS = ("unit/", "search_journals/", "integration/", "e2e/", "sanity/")
+
+
+def gate_markers_for(rel_path: str) -> tuple[str, ...]:
+    """The CI gate markers for a test file, by its path relative to ``tests/``.
+
+    This is the one rule that decides which gate runs a test
+    (``docs/CI_HARD_CHECKS.md`` lists the gates).
+    """
+    # Nightly: benchmark, perf, eval
+    if rel_path.startswith(("benchmark/", "perf/", "eval/")) or rel_path in NIGHTLY_UNIT_FILES:
+        return ("nightly",)
+    # Quarantine: tests that read the developer's real data directory
+    if rel_path.startswith("dev/"):
+        return ("quarantine", "realdata")
+    # Contract: contract tests (except promoted blocker files)
+    if rel_path.startswith("contract/"):
+        return ("blocker",) if rel_path in BLOCKER_CONTRACT_FILES else ("contract",)
+    if rel_path.startswith(BLOCKER_DIRS):
+        return ("blocker",)
+    # Default: anything else under tests/ gets quarantine to be safe
+    return ("quarantine",)
+
+
 def pytest_collection_modifyitems(config, items):
     for item in items:
         # Skip if already explicitly marked in source code
@@ -46,35 +74,5 @@ def pytest_collection_modifyitems(config, items):
             # item not under tests/ (e.g. from external plugins)
             continue
 
-        # Nightly: benchmark, perf, eval
-        if rel_path.startswith(("benchmark/", "perf/", "eval/")):
-            item.add_marker(pytest.mark.nightly)
-            continue
-        if rel_path in NIGHTLY_UNIT_FILES:
-            item.add_marker(pytest.mark.nightly)
-            continue
-
-        # Quarantine: dev, e2e, integration, sanity
-        if rel_path.startswith(("dev/", "e2e/", "integration/", "sanity/")):
-            item.add_marker(pytest.mark.quarantine)
-            if rel_path.startswith("dev/"):
-                item.add_marker(pytest.mark.realdata)
-            if rel_path.startswith(("e2e/", "integration/")):
-                item.add_marker(pytest.mark.semantic)
-            continue
-
-        # Contract: contract tests (except promoted blocker files)
-        if rel_path.startswith("contract/"):
-            if rel_path in BLOCKER_CONTRACT_FILES:
-                item.add_marker(pytest.mark.blocker)
-            else:
-                item.add_marker(pytest.mark.contract)
-            continue
-
-        # Blocker: unit tests (except nightly eval files) + search_journals
-        if rel_path.startswith(("unit/", "search_journals/")):
-            item.add_marker(pytest.mark.blocker)
-            continue
-
-        # Default: anything else under tests/ gets quarantine to be safe
-        item.add_marker(pytest.mark.quarantine)
+        for marker in gate_markers_for(rel_path):
+            item.add_marker(getattr(pytest.mark, marker))

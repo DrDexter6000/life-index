@@ -93,6 +93,13 @@ block pull request readiness, but failures must be triaged.
   structural AST policy above to `tools/search_journals`, `tools/smart_search`,
   and `tools/eval`.
 - The blocker marker set spans the files collected by `pytest -m blocker`.
+  `tests/conftest.py` (`gate_markers_for`) assigns the gate markers by test
+  directory and owns that mapping. The unit, search, integration, end-to-end
+  and sanity suites are blocker: they are deterministic and need no external
+  dependency or real data. Only tests that read a real data directory, and
+  directories the mapping does not know, are quarantine.
+  The quarantine job passes when nothing is quarantined, which is the normal
+  state.
 - Deterministic eval contract checks are Tier 1 because they protect provider
   retirement, fail-fast, serialization, and sentinel wiring. The workflow and
   pre-push gate delegate to `scripts/run_eval_gate.sh` so its no-argument path
@@ -165,6 +172,9 @@ Tier 2 changes must update the corresponding workflow and this inventory.
 
 ## Version History
 
+- v1.3-public (2026-11-13): the integration, end-to-end and sanity suites moved
+  from quarantine to the blocker gate. They had been green for months and ran
+  only after the merge, so a change could land with tests it had made stale.
 - v1.2.1-public (2026-07-02): clarified Tier 2 benchmark thresholds as
   shared-runner fail-safes, not precise local performance gates.
 - v1.2-public (2026-06-20): added public-surface-allowlist as a Tier 1 hard check.

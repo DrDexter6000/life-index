@@ -244,6 +244,41 @@ def test_search_eval_gate_remains_tier1_blocking_smoke() -> None:
     assert "github.event.pull_request.draft == false" in str(job.get("if", ""))
 
 
+def _gate_markers_for(rel_path: str) -> tuple[str, ...]:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "life_index_tests_conftest", REPO_ROOT / "tests" / "conftest.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return tuple(module.gate_markers_for(rel_path))
+
+
+@pytest.mark.parametrize("suite", ["unit", "search_journals", "integration", "e2e", "sanity"])
+def test_deterministic_suites_gate_pull_requests(suite: str) -> None:
+    """A suite that only runs after the merge lets stale tests land."""
+    assert _gate_markers_for(f"{suite}/test_anything.py") == ("blocker",)
+
+
+def test_only_real_data_and_unclassified_tests_are_quarantined() -> None:
+    assert _gate_markers_for("dev/test_anything.py") == ("quarantine", "realdata")
+    assert _gate_markers_for("a_new_directory/test_anything.py") == ("quarantine",)
+    assert _gate_markers_for("test_at_the_top.py") == ("quarantine",)
+
+
+def test_slow_suites_stay_out_of_the_pull_request_gates() -> None:
+    for suite in ("benchmark", "perf", "eval"):
+        assert _gate_markers_for(f"{suite}/test_anything.py") == ("nightly",)
+    assert _gate_markers_for("unit/test_eval_runner.py") == ("nightly",)
+
+
+def test_contract_suite_is_split_between_the_contract_and_blocker_gates() -> None:
+    assert _gate_markers_for("contract/test_anything.py") == ("contract",)
+    assert _gate_markers_for("contract/test_error_contract.py") == ("blocker",)
+
+
 def test_quarantine_remains_tier2_post_merge_only() -> None:
     workflow = _workflow("tests.yml")
 
