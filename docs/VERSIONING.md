@@ -177,8 +177,7 @@ For a formal release:
 
 When a new version line, milestone PRD, or contract-affecting release is being
 planned, maintainers should review any local cross-consumer intake queue
-available in the workspace. In the current Life Index CLI + GUI workspace, that
-queue is `.strategy/CLI_CAPABILITY_REQUESTS.md`.
+available in the workspace.
 
 This intake queue is not a second roadmap and does not override the CLI release
 contract. Its role is to make GUI and advanced-module needs visible before CLI
