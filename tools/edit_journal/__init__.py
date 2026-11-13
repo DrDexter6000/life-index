@@ -20,6 +20,7 @@ from typing import Dict, List, Optional, Any, Tuple
 # 导入配置 (relative imports from parent tools package)
 from ..lib.paths import get_journals_dir, get_by_topic_dir, get_user_data_dir, resolve_user_data_dir
 from ..lib.frontmatter import (
+    frontmatter_rewrite_blocker,
     parse_journal_file,
     format_frontmatter,
 )
@@ -199,6 +200,16 @@ def _normalize_to_list(value: Any) -> List[str]:
     if isinstance(value, str):
         return [value]
     return []
+
+
+def _is_private_key(key: Any) -> bool:
+    """Whether a metadata key is an internal ``_``-prefixed string key.
+
+    ``parse_journal_file`` adds such keys itself. A non-string key is never
+    private, and this predicate must not raise on one: the rewrite guard runs
+    first, but the filter may not depend on that.
+    """
+    return isinstance(key, str) and key.startswith("_")
 
 
 def _apply_edit_updates(  # noqa: C901
@@ -498,6 +509,17 @@ def edit_journal(
                     "请先查询新地点的天气；如果 query_weather 失败，可手动提供天气后再一起修改",
                 )
 
+        blocker = frontmatter_rewrite_blocker(journal_path.read_text(encoding="utf-8"))
+        if blocker is not None:
+            logger.warning(f"frontmatter 无法安全重写（{blocker}）：{journal_path}")
+            return create_error_response(
+                ErrorCode.FRONTMATTER_INVALID,
+                f"Frontmatter cannot be rewritten without loss: {blocker}",
+                {"path": str(journal_path), "reason": blocker},
+                "Leave the file unchanged and report the file and reason to the user;"
+                " do not retry or repair it automatically",
+            )
+
         def compute_updates(
             current_frontmatter: Dict[str, Any], current_body: str
         ) -> tuple[Dict[str, Any], Dict[str, Any], str, Dict[str, Any]]:
@@ -512,7 +534,7 @@ def edit_journal(
             )
 
         metadata = parse_journal_file(journal_path)
-        initial_frontmatter = {k: v for k, v in metadata.items() if not k.startswith("_")}
+        initial_frontmatter = {k: v for k, v in metadata.items() if not _is_private_key(k)}
         initial_body = metadata.get("_body", "")
 
         old_frontmatter, new_frontmatter, new_body, computed_result = compute_updates(
@@ -539,7 +561,7 @@ def edit_journal(
                 original_content = journal_path.read_text(encoding="utf-8")
                 locked_metadata = parse_journal_file(journal_path)
                 locked_frontmatter = {
-                    k: v for k, v in locked_metadata.items() if not k.startswith("_")
+                    k: v for k, v in locked_metadata.items() if not _is_private_key(k)
                 }
                 locked_body = locked_metadata.get("_body", "")
                 old_frontmatter, new_frontmatter, new_body, computed_result = compute_updates(

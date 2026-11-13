@@ -466,6 +466,7 @@ Aggregation And Heuristic Evidence。不得把 `search_journals.total_found` 直
 - edit flow 默认不要求像 write flow 那样的 post-write confirmation loop，但对高风险 replace / destructive edit，Agent 可先做额外确认
 - 如果 coupled-field prerequisite（如新地点对应天气）尚未解决，不得直接把 edit 当作可安全执行
 - 如果 edit tool 执行失败，不得宣称修改已成功
+- 如果 `edit` 返回 `E0202` 且 `details.reason` 为 `unreadable` 或 `not_round_trippable`：告诉用户是哪个文件、为什么（该 frontmatter 无法在不丢失内容的前提下重写）；不要重试，也不要改用其它方式修复该文件，除非用户明确要求（规则见 `docs/ARCHITECTURE.md` 的 *Frontmatter 重写边界*）
 - 如果 journal mutation 已完成但 weather alignment 未完成，必须诚实区分“编辑状态”和“字段语义对齐状态”
 
 ### 工作流4: 生成摘要

@@ -114,11 +114,46 @@ def frontmatter_is_unreadable(content: str) -> bool:
     True for a list or scalar root, a YAML error the legacy-content recovery
     cannot turn into a mapping, and a recursive structure. A file without a
     ``---`` block and an empty block (``---\\n---``) are readable (they simply
-    carry no fields). ``migrate`` uses this to leave such a file untouched
-    instead of rewriting it as schema version 1.
+    carry no fields). A rewriter refuses such a file through
+    :func:`frontmatter_rewrite_blocker`, which reports this as ``"unreadable"``.
     """
     _metadata, _body, unreadable = _read_frontmatter(content)
     return unreadable
+
+
+def frontmatter_rewrite_blocker(content: str) -> Optional[str]:
+    """Reason an existing file's frontmatter cannot be written back, or ``None``.
+
+    A tool that rewrites an existing frontmatter first proves it can write it
+    back. Two reason codes block a rewrite:
+
+    - ``"unreadable"``: a present block has no readable mapping root, so
+      ``parse_frontmatter`` reads it as no fields and a rewrite would delete the
+      user's YAML text.
+    - ``"not_round_trippable"``: the block is readable, but serializing the
+      parsed mapping and parsing the result does not give back an equal mapping
+      (a non-string key, ``!!set``, ``!!pairs``, a null in a known field, ...).
+      ``format_frontmatter`` always emits ``schema_version``; that one additive
+      default is not a loss, so it is ignored when the source has no
+      ``schema_version``.
+
+    A file without a ``---`` block and an empty block are rewritable, as is a
+    file whose YAML would merely be laid out differently after a rewrite. The
+    comparison is on parsed values and uses the same parser as every reader.
+    """
+    metadata, body, unreadable = _read_frontmatter(content)
+    if unreadable:
+        return "unreadable"
+
+    try:
+        rendered = format_frontmatter(metadata)
+        rewritten, _rewritten_body = parse_frontmatter(f"{rendered}\n\n{body}")
+    except Exception:  # noqa: BLE001 - the serializer must never make a rewriter crash
+        return "not_round_trippable"
+
+    if "schema_version" not in metadata:
+        rewritten.pop("schema_version", None)
+    return None if rewritten == metadata else "not_round_trippable"
 
 
 def _read_frontmatter(content: str) -> Tuple[Dict[str, Any], str, bool]:
@@ -766,6 +801,10 @@ def update_frontmatter_fields(
 
     try:
         content = file_path.read_text(encoding="utf-8")
+        blocker = frontmatter_rewrite_blocker(content)
+        if blocker is not None:
+            result["error"] = f"frontmatter rewrite blocked ({blocker})"
+            return result
         metadata, body = parse_frontmatter(content)
 
         # 记录变更

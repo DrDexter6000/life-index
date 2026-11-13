@@ -206,6 +206,56 @@ class TestUnreadableFrontmatterIsLeftUntouched:
         assert "line one" in body
 
 
+class TestNotRoundTrippableFrontmatterIsLeftUntouched:
+    """D3: migrate also refuses a readable mapping the serializer cannot reproduce."""
+
+    NOT_ROUND_TRIPPABLE = {
+        "set_value": (
+            "---\nschema_version: 1\ntitle: T\ndate: 2025-06-15\n"
+            "tags: !!set {alpha: null, beta: null}\n---\n\nbody\n"
+        ),
+        "pairs_value": (
+            "---\nschema_version: 1\ntitle: T\ndate: 2025-06-15\n"
+            "custom: !!pairs [a: b, c: d]\n---\n\nbody\n"
+        ),
+    }
+
+    @staticmethod
+    def _journal(tmp_path: Path) -> Path:
+        journal = tmp_path / "Journals" / "2025" / "06" / "life-index_2025-06-15_001.md"
+        journal.parent.mkdir(parents=True, exist_ok=True)
+        return journal
+
+    @pytest.mark.parametrize("shape", sorted(NOT_ROUND_TRIPPABLE))
+    def test_apply_leaves_the_bytes_unchanged(self, tmp_path: Path, shape):
+        from tools.migrate import apply_migrations
+
+        journal = self._journal(tmp_path)
+        original = self.NOT_ROUND_TRIPPABLE[shape].encode()
+        journal.write_bytes(original)
+
+        result = apply_migrations(tmp_path / "Journals")
+
+        assert result["migrated_count"] == 0
+        assert result["failed_count"] == 1
+        assert result["failed_files"][0]["path"] == str(journal)
+        assert "not_round_trippable" in result["failed_files"][0]["error"]
+        assert journal.read_bytes() == original
+
+    @pytest.mark.parametrize("shape", sorted(NOT_ROUND_TRIPPABLE))
+    def test_scan_reports_the_file_as_unparseable(self, tmp_path: Path, shape):
+        from tools.migrate import scan_journals
+
+        journal = self._journal(tmp_path)
+        journal.write_bytes(self.NOT_ROUND_TRIPPABLE[shape].encode())
+
+        report = scan_journals(tmp_path / "Journals")
+
+        assert report["total_scanned"] == 1
+        assert report["version_distribution"] == {"unparseable": 1}
+        assert report["needs_migration"] == 0
+
+
 class TestOneFileNeverAbortsTheRun:
     """A file the migration cannot compute fails alone; the run goes on."""
 
