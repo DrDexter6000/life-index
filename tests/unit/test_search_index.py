@@ -446,14 +446,18 @@ Original content.
                             assert result1["success"] is True
                             assert result1["added"] == 1
 
-                            # Modify file
+                            # Modify file. The new content has a different byte
+                            # length: freshness is decided by the per-file
+                            # (mtime, size) signature, so an equal-length rewrite
+                            # can be invisible when both writes land in the same
+                            # timestamp tick.
                             journal_file.write_text(
                                 """---
 title: Modified
 date: 2026-03-14
 ---
 
-Modified content.
+Modified content is longer than the original.
 """,
                                 encoding="utf-8",
                             )

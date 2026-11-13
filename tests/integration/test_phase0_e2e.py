@@ -4,7 +4,7 @@ Phase 0 Integration Test — CLI encoding + FTS schema migration (Round 10).
 End-to-end verification that T0.1–T0.3 work together:
 1. CLI subprocess with Chinese query returns valid JSON (T0.1)
 2. Search result titles are raw text, not segmented (T0.2)
-3. Old v1 schema auto-migrates to v2 on search (T0.3)
+3. Old schema auto-migrates to the current version on search (T0.3)
 """
 
 import json
@@ -113,7 +113,8 @@ class TestPhase0Integration:
         Steps:
         1. Create v1 schema DB (no title_segmented)
         2. Call update_index() which triggers ensure_fts_schema()
-        3. Verify schema is now v2 and titles are raw
+        3. Verify the schema is now current (see FTS_SCHEMA_VERSION) and titles
+           are raw
         """
         import importlib
         import tools.lib.search_index as si_mod
@@ -163,10 +164,10 @@ class TestPhase0Integration:
             assert results[0]["title"] == "回忆小风筝"
 
     @pytest.mark.integration
-    def test_rebuild_produces_v2_schema_with_raw_titles(self, isolated_data_dir: Path) -> None:
+    def test_rebuild_produces_current_schema_with_raw_titles(self, isolated_data_dir: Path) -> None:
         """
-        Fresh `life-index index --rebuild` should produce v2 schema
-        with raw titles and segmented title_segmented column.
+        Fresh `life-index index --rebuild` should produce the current schema
+        with raw titles and a segmented title_segmented column.
         """
         import importlib
         import tools.lib.search_index as si_mod
@@ -177,6 +178,7 @@ class TestPhase0Integration:
 
         from tools.lib.search_index import (
             FTS_DB_PATH,
+            FTS_SCHEMA_VERSION,
             update_index,
         )
 
@@ -195,7 +197,7 @@ class TestPhase0Integration:
         conn.close()
 
         assert schema_row is not None
-        assert int(schema_row[0]) == 2, "Schema should be v2"
+        assert int(schema_row[0]) == FTS_SCHEMA_VERSION, f"Schema should be v{FTS_SCHEMA_VERSION}"
 
         assert data_row is not None
         title, title_segmented = data_row
