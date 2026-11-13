@@ -30,6 +30,7 @@ JOURNALS_DIR = get_journals_dir()
 from .l1_index import search_l1_index
 from .l2_metadata import search_l2_metadata
 from .l3_content import search_l3_content
+from .utils import annotate_kind_and_display_label
 
 # 导入 logger
 try:
@@ -624,6 +625,10 @@ def run_keyword_pipeline(
 
         l3_results = _filter_candidate_items(l3_results)
 
+        # FTS rows carry no body: kind comes from the file name and the label
+        # from the metadata cache by path (file-name fallback). Items whose
+        # producer already attached both fields are skipped.
+        annotate_kind_and_display_label(l3_results)
         # 如果没有 FTS 结果，使用传统文件系统扫描
         if not l3_results:
             # IMPORTANT: when FTS is unavailable, fallback must search full corpus.

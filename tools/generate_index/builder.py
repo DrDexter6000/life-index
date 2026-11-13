@@ -14,7 +14,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
 from tools.generate_index.navigation import IndexNode, build_month_node_ref, enumerate_index_nodes
-from tools.lib.frontmatter import parse_frontmatter
+from tools.lib.frontmatter import (
+    empty_indexable_metadata,
+    normalize_indexable_metadata,
+    parse_frontmatter,
+)
+from tools.lib.journal_files import display_label
 from tools.lib.paths import get_user_data_dir
 
 NAVIGABLE_SIGNALS = ("topic", "people", "project")
@@ -34,18 +39,20 @@ def safe_relative_path(path: Path, data_dir: Path | None = None) -> str:
     return rel
 
 
-def _parse_file_frontmatter(path: Path) -> dict[str, Any]:
+def _parse_file_frontmatter(path: Path) -> tuple[dict[str, Any], str]:
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
-        return {}
+        return {}, ""
     if not text.startswith("---\n"):
-        return {}
+        return {}, ""
     try:
-        metadata, _body = parse_frontmatter(text)
+        metadata, body = parse_frontmatter(text)
     except (TypeError, ValueError):
-        return {}
-    return metadata if isinstance(metadata, dict) else {}
+        return {}, ""
+    # parse_frontmatter is typed to always return a mapping; the isinstance
+    # arm keeps the same defensive shape the old single-dict version had.
+    return (metadata, body) if isinstance(metadata, dict) else ({}, "")
 
 
 def _iter_field_values(value: Any) -> Iterable[str]:
@@ -85,12 +92,14 @@ def _entry_ref(path: Path, node: IndexNode, data_dir: Path) -> dict[str, Any] | 
     rel = safe_relative_path(path, data_dir)
     if not rel:
         return None
-    metadata = _parse_file_frontmatter(path)
+    metadata, body = _parse_file_frontmatter(path)
     signals = {field: list(_iter_field_values(metadata.get(field))) for field in NAVIGABLE_SIGNALS}
+    indexable = normalize_indexable_metadata(metadata) or empty_indexable_metadata()
     payload: dict[str, Any] = {
         "relative_path": rel,
         "date": str(metadata.get("date", "")) if metadata.get("date") is not None else "",
-        "title": str(metadata.get("title", "")) if metadata.get("title") is not None else "",
+        "title": indexable["title"],
+        "display_label": display_label(indexable["title"], body, path),
         "signals": {k: v for k, v in signals.items() if v},
     }
     node_ref = _entry_node_ref(node)

@@ -383,14 +383,18 @@ class TestValidateMetadata:
         assert len(errors) == 0
 
     def test_missing_required_fields(self):
-        """Missing required fields should be reported"""
+        """Missing required fields should be reported.
+
+        The fragment rule (the default kind) requires only ``date``; a
+        missing title is no longer an error."""
         metadata = {
             "location": "Beijing",
         }
         issues = validate_metadata(metadata)
 
         errors = [i for i in issues if i["level"] == "error"]
-        assert len(errors) == 2  # missing title and date
+        assert len(errors) == 1  # missing date only
+        assert errors[0]["field"] == "date"
 
     def test_invalid_date_format(self):
         """Invalid date format should generate warning"""
@@ -734,10 +738,9 @@ class TestFieldConstants:
         assert "links" in FIELD_ORDER
 
     def test_required_fields(self):
-        """Required fields should be title and date"""
+        """The default (fragment) rule requires only date"""
         required = get_required_fields()
-        assert "title" in required
-        assert "date" in required
+        assert required == ["date"]
 
     def test_recommended_fields(self):
         """Recommended fields should include common metadata"""

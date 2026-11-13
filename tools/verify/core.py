@@ -11,6 +11,7 @@ from typing import Any, Dict, List
 
 from ..lib.paths import get_attachments_dir, get_by_topic_dir, get_journals_dir, get_user_data_dir
 from ..lib.frontmatter import get_required_fields, parse_journal_file
+from ..lib.journal_files import JournalFileKind, classify_journal_path
 from ..lib.path_contract import build_journal_path_fields
 
 
@@ -50,6 +51,47 @@ def _rel_path(file_path: Path) -> str:
         journals_dir=get_journals_dir(),
         user_data_dir=get_user_data_dir(),
     )["rel_path"]
+
+
+_KNOWN_FRONTMATTER_KINDS = frozenset(kind.value for kind in JournalFileKind)
+
+
+def _required_fields_for(file_path: Path) -> List[str]:
+    """Required frontmatter fields for the kind of file this is (schema SSOT).
+
+    The file name decides the kind; the field list comes from the one
+    ``get_required_fields`` rule. A file whose name is not a fragment has no
+    required-fields rule in this package, so it gets no required-field check.
+    """
+    try:
+        return get_required_fields(classify_journal_path(file_path))
+    except ValueError:
+        return []
+
+
+def _frontmatter_kind_issue(metadata: Dict[str, Any], file_path: Path) -> str | None:
+    """Warning text when a declared frontmatter ``kind`` disagrees with the file name.
+
+    The file name decides the kind; a declared ``kind`` that is not a known
+    value, or that differs from the file-name kind, is reported. No reader
+    changes behaviour because of the declared value.
+    """
+    declared = metadata.get("kind")
+    if declared is None or (isinstance(declared, str) and not declared.strip()):
+        return None
+    declared_text = str(declared).strip()
+    if declared_text not in _KNOWN_FRONTMATTER_KINDS:
+        return (
+            f"{file_path.name}: unknown frontmatter kind {declared_text!r} "
+            f"(expected one of {sorted(_KNOWN_FRONTMATTER_KINDS)})"
+        )
+    filename_kind = classify_journal_path(file_path)
+    if declared_text != filename_kind.value:
+        return (
+            f"{file_path.name}: frontmatter kind {declared_text!r} does not match "
+            f"filename kind {filename_kind.value!r}"
+        )
+    return None
 
 
 def _load_fts_paths() -> set[str]:
@@ -112,7 +154,6 @@ def run_verify() -> Dict[str, Any]:
 
     # Check 1: Frontmatter validity
     frontmatter_check = CheckResult(name="frontmatter_valid", status="ok", count=0)
-    required_fields = get_required_fields()
 
     for journal_file in journal_files:
         try:
@@ -122,8 +163,13 @@ def run_verify() -> Dict[str, Any]:
                 frontmatter_check.issues.append(f"{journal_file.name}: {metadata['_error']}")
             else:
                 frontmatter_check.count += 1
-                # Check required fields
-                for req_field in required_fields:
+                # Declared frontmatter kind must agree with the file name
+                kind_issue = _frontmatter_kind_issue(metadata, journal_file)
+                if kind_issue:
+                    frontmatter_check.status = "warning"
+                    frontmatter_check.issues.append(kind_issue)
+                # Required fields come from the one per-kind rule
+                for req_field in _required_fields_for(journal_file):
                     if req_field not in metadata or not metadata[req_field]:
                         frontmatter_check.status = "warning"
                         frontmatter_check.issues.append(f"{journal_file.name}: missing {req_field}")
@@ -141,7 +187,7 @@ def run_verify() -> Dict[str, Any]:
             if "_error" in metadata:
                 continue
             required_check.count += 1
-            for req_field in required_fields:
+            for req_field in _required_fields_for(journal_file):
                 if req_field not in metadata or not metadata[req_field]:
                     required_check.status = "warning"
                     required_check.issues.append(f"{journal_file.name}: missing {req_field}")

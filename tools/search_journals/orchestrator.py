@@ -588,6 +588,8 @@ class SmartSearchOrchestrator:
                 if candidate_score > existing_score:
                     for field_name in (
                         "title",
+                        "display_label",
+                        "kind",
                         "date",
                         "abstract",
                         "snippet",

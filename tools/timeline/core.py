@@ -13,6 +13,7 @@ from ..lib.frontmatter import (
     normalize_indexable_metadata,
     parse_journal_file,
 )
+from ..lib.journal_files import classify_journal_path, display_label
 
 
 def run_timeline(
@@ -97,6 +98,12 @@ def run_timeline(
                         entry = {
                             "date": indexable_date(indexable, journal_file),
                             "title": indexable["title"],
+                            "kind": classify_journal_path(journal_file).value,
+                            "display_label": display_label(
+                                indexable["title"],
+                                str(metadata.get("_body", "")),
+                                journal_file,
+                            ),
                             "mood": indexable["mood"],
                             "abstract": indexable["abstract"],
                             "path": str(journal_file.relative_to(_journals_dir.parent)),

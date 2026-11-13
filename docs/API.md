@@ -619,7 +619,7 @@ python -m tools.write_journal --data '<json>'
 |------|------|------|--------|------|
 | title | string | ❌ | 自动生成/调用方补齐 | 日志标题（≤20字） |
 | content | string | ⚠️ workflow 通常要求 | - | 日志正文（原样保留） |
-| date | string | ❌ | today | 日期（ISO 8601: YYYY-MM-DD）；省略时使用本地今天日期并记录 `field_sources.date="auto"` |
+| date | string | ❌ | today | 日期（ISO 8601: YYYY-MM-DD）；省略时使用本地今天日期并记录 `field_sources.date="auto"`。校验（形状检查）也接受带时间与时区的写法，接受的形状见 `docs/ARCHITECTURE.md` 的*每种类的必需字段*一节 |
 | location | string | ❌ | 默认地点兜底 | 结构化地点；trim 后非空即为权威值，仅空白或缺失时使用配置默认地点 |
 | weather | string | ❌ | 自动查询/手动兜底 | 结构化天气；trim 后非空即为权威值，仅空白或缺失时按已解析地点自动查询 |
 | mood | array | ❌ | [] | 心情标签 |
@@ -1293,6 +1293,8 @@ python -m tools journal list --recent
         "rel_path": "Journals/2026/05/life-index_2026-05-28_001.md",
         "journal_route_path": "2026/05/life-index_2026-05-28_001.md",
         "title": "示例日志",
+        "kind": "fragment",
+        "display_label": "示例日志",
         "date": "2026-05-28",
         "metadata": {},
         "attachments": [],
@@ -1312,6 +1314,10 @@ python -m tools journal list --recent
 
 列表项不返回 `content`，用于目录、最近日志列表和后续 `journal get` 导航。
 `total_matches` 是分页前匹配总数，`total_found` 是本次返回条数。
+
+`title` 是文件所写的标题，无标题 fragment 为空字符串（不是占位符）；展示时
+用 `display_label`（规则见 `docs/ARCHITECTURE.md` 的*条目标签规则*一节），`kind` 是文件名
+种类（如 `"fragment"`）。
 
 ### 错误行为
 
@@ -2757,7 +2763,7 @@ child 与正确链接 manifest **同时**为 non-retryable `rollback_failed` 且
 #### Field Semantics
 
 - `success`: retrieval execution success, not "Agent has answered the user". Empty results (`E0303`) are still `success: true`.
-- `merged_results`: primary result list consumers should use; items have `path`, `rel_path`, `title`, `date`, `rrf_score`. Results are capped by `--limit` (default 20) at the presentation layer. The retrieval core always returns the complete ranked candidate set; use `--limit 0` to bypass truncation.
+- `merged_results`: primary result list consumers should use; items have `path`, `rel_path`, `title`, `kind`, `display_label`, `date`, `rrf_score`. `title` is exactly what the file says (empty for an untitled fragment); show `display_label` then (rule: `docs/ARCHITECTURE.md`, *条目标签规则*) and read `kind` (e.g. `"fragment"`). Results are capped by `--limit` (default 20) at the presentation layer. The retrieval core always returns the complete ranked candidate set; use `--limit 0` to bypass truncation.
 - `total_matches`: complete candidate set size before presentation-layer truncation. Invariant: `total_matches >= total_found` always holds. Per CHARTER §1.11, the retrieval/ranking layer must not silently hard-cap results.
 - `retrieval_coverage` (`retrieval_coverage.v1`): single authority for retrieval completeness as of Phase 1. `total_found` / `total_matches` / `total_available` / `has_more` are **projections** of it (`total_matches`/`total_available` = `observed_total`; `total_found` = `returned`; `has_more` = `next_offset is not None`). Full shape, complete/partial rules, the `partial_reasons` / `limits_applied` vocabulary, and the high-cardinality fail-closed behavior are documented in **`retrieval_coverage` Authority** below.
 - `display_summary`: human-readable count such as "Showing 5 of 56 results" or "Showing all 20 results" (when `--limit 0` or no truncation applied).
@@ -3109,7 +3115,7 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 #### Field Semantics
 
 - `success`: retrieval execution success. Evidence pack construction failure does not affect this.
-- `filtered_results`: primary result list for consumers. Items have `title`, `path`, `date`, `rrf_score`.
+- `filtered_results`: primary result list for consumers. Items have `title`, `kind`, `display_label`, `path`, `date`, `rrf_score`. `title` stays empty for an untitled fragment — show `display_label` instead and never write the label back as a title (rule: `docs/ARCHITECTURE.md`, *条目标签规则*); `kind` names the file-name kind of the entry.
 - `smart_search_mode`: default is `deterministic_scaffold`; current explicit
   `--synthesize` is an accepted deterministic no-op/no-answer compatibility path.
 - `agent_instructions` / `answer_scaffold`: the v1 agent-ready contract. Calling agents should synthesize from returned evidence and cite only returned results.
@@ -3181,7 +3187,7 @@ python -m tools.smart_search --query "..." [options]
   "query": "我和女儿之间有哪些珍贵的回忆？",
   "rewritten_query": "我和女儿之间有哪些珍贵的回忆？",
   "filtered_results": [
-    {"title": "...", "path": "...", "date": "...", "rrf_score": 0.85}
+    {"title": "...", "kind": "fragment", "display_label": "...", "path": "...", "date": "...", "rrf_score": 0.85}
   ],
   "summary": "",
   "citations": [],
@@ -5676,8 +5682,8 @@ python -m tools verify [--json]
 
 | 检查名 | 说明 |
 |--------|------|
-| `frontmatter_valid` | 每篇日志的 YAML frontmatter 是否可正常解析 |
-| `required_fields` | 必填字段（如 `date`）是否完整 |
+| `frontmatter_valid` | 每篇日志的 YAML frontmatter 是否可正常解析；frontmatter 里声明的 `kind` 不是已知值、或与文件名种类不一致时，记一条 warning（文件名决定种类，声明值不改变任何读取行为） |
+| `required_fields` | 按文件种类的必填字段（fragment 只有 `date`；规则见 `docs/ARCHITECTURE.md` 的*每种类的必需字段*一节）是否完整 |
 | `fts_consistency` | FTS 索引条目与实际日志文件的一致性（缺失 / 孤儿） |
 | `attachment_refs` | 正文中引用的附件文件是否存在 |
 | `topic_consistency` | `by-topic/` 索引中链接的日志路径是否有效 |
@@ -5689,6 +5695,8 @@ python -m tools verify [--json]
 - **只读**：不创建、修改或删除任何文件。
 - `success` 为 `true` 当且仅当 `issues_count == 0`。
 - 存在问题时，`suggestion` 包含修复建议（如 `life-index index --rebuild`）。
+- `date` 形状检查（警告级）：仅形状检查，不做日历校验；接受的形状见
+  `docs/ARCHITECTURE.md` 的*每种类的必需字段*一节。
 
 ---
 
@@ -5707,7 +5715,9 @@ python -m tools verify [--json]
 | `range` | array | yes | `[start_month, end_month]` as `"YYYY-MM"` strings |
 | `entries` | array | yes | Timeline entry objects |
 | `entries[].date` | string | yes | Entry date `"YYYY-MM-DD"` |
-| `entries[].title` | string | yes | Entry title |
+| `entries[].title` | string | yes | Entry title, exactly what the file says (empty for an untitled fragment) |
+| `entries[].kind` | string | yes | File-name kind of the entry, e.g. `"fragment"` |
+| `entries[].display_label` | string | yes | One display label (rule: `docs/ARCHITECTURE.md`, *条目标签规则*); show it when `title` is empty |
 | `entries[].mood` | array | yes | Mood tags |
 | `entries[].abstract` | string | yes | Entry abstract/summary |
 | `entries[].path` | string | yes | Relative journal path |
@@ -5764,6 +5774,8 @@ python -m tools timeline --range <START> <END> [--topic <topic>]
     {
       "date": "2026-01-15",
       "title": "项目启动",
+      "kind": "fragment",
+      "display_label": "项目启动",
       "mood": ["focused"],
       "abstract": "开始了新项目的开发...",
       "path": "Journals/2026/01/life-index_2026-01-15_001.md"
@@ -5805,7 +5817,9 @@ python -m tools timeline --range <START> <END> [--topic <topic>]
 | `matches[].date` | string | yes | Entry date `"YYYY-MM-DD"` |
 | `matches[].year` | int | yes | Entry year |
 | `matches[].years_ago` | int | yes | How many years before target |
-| `matches[].title` | string | yes | Entry title |
+| `matches[].title` | string | yes | Entry title, exactly what the file says (empty for an untitled fragment) |
+| `matches[].kind` | string | yes | File-name kind of the entry, e.g. `"fragment"` |
+| `matches[].display_label` | string | yes | One display label (rule: `docs/ARCHITECTURE.md`, *条目标签规则*); show it when `title` is empty |
 | `matches[].abstract` | string | yes | Entry abstract |
 | `matches[].mood` | array | yes | Mood tags from the timeline entry |
 | `matches[].path` | string | yes | Relative journal path (forward slashes only) |

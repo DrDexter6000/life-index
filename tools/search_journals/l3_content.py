@@ -14,7 +14,7 @@ from ..lib.frontmatter import (
     indexable_date,
     normalize_indexable_metadata,
 )
-from ..lib.journal_files import iter_month_journal_files
+from ..lib.journal_files import classify_journal_path, display_label, iter_month_journal_files
 from ..lib.path_contract import build_journal_path_fields
 from ..lib.search_constants import (
     L3_TITLE_MATCH_BONUS,
@@ -116,7 +116,9 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
                 results.append(
                     {
                         "date": date,
-                        "title": title or "无标题",
+                        "title": title,
+                        "kind": classify_journal_path(journal_file).value,
+                        "display_label": display_label(title, body, journal_file),
                         **path_fields,
                         "title_match": title_match,
                         "body_matches": body_matches,

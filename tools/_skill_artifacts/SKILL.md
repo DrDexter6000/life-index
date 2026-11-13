@@ -435,6 +435,13 @@ Intelligence owner: Host Agent + Skill remain responsible for planning, multi-ho
 Language-assisted evaluation belongs to Host Agent + Life Index Skill. The A5 candidate removes product eval provider/prompt/client ownership; #163 remains open pending review, and D1-A is not complete.
 <!-- PLATFORM-SSOT:EVAL-LANGUAGE-JUDGE:END -->
 
+**结果条目的 `title` / `kind` / `display_label`**：检索类结果
+（`search` / `smart-search` / `timeline` / `on-this-day` / `journal list`）的每个
+条目都带这三个字段。`title` 是文件所写的标题，无标题碎片为空字符串——**展示时
+改用 `display_label`**（唯一的展示标签：标题、否则正文第一行的截断、否则文件
+名）。**绝不把 `display_label` 写回文件当标题**；它只是呈现辅助。`kind`（如
+`"fragment"`）由文件名决定，告诉你这条结果是哪一类条目（碎片还是整理稿）。
+
 **执行约束**：使用 `smart-search` 时检查 `query_plan.sub_queries`、
 `query_plan.strategy` 与检索诊断，消费 `agent_instructions`、`answer_scaffold`、
 `filtered_results` 和 `evidence_pack`；只引用已返回或读取的来源。深度分析由宿主

@@ -539,6 +539,41 @@ pending queue。`edit` 在动手前检查一次，拿到写锁后对锁内读到
 这个 guard，被拒绝的文件列入 `failed_files`（读不出的文件连版本都不知道，dry-run 计入
 `unparseable`）。写新文件的工具（`write`、`import`）不经过这个 guard。
 
+### 4.4 每种类的必需字段（per-kind required fields）
+
+`tools/lib/schema.py` 的 `get_required_fields(kind)` / `validate_metadata(metadata,
+kind)` 按文件种类给出必需字段；文件名决定种类（§4.2），frontmatter 里声明的
+`kind` 不改变任何读取行为。完整规则只在本节描述，其他文档指向本节：
+
+- **fragment**：唯一必需字段是 `date`。标题、topic 等是解释，不是 fragment 的
+  必需字段；`verify` 与 Data Doctor 审计的 frontmatter 检查都取自这一条规则。
+- **digest / derived_index / unknown**：本包未定义规则，询问即抛 `ValueError`
+  （digest 规则随 digest 命令落地）。
+- 不传 kind 时按 fragment 处理（既有调用方的默认）。
+- `date` 的形状检查（警告级，不做日历校验）接受：`YYYY-MM-DD`，或其后以 `T`/一个
+  空格连接 `HH:MM` 或 `HH:MM:SS`（秒可带小数），可再带 `Z` / `±HH:MM` 时区。
+
+### 4.5 条目标签规则（entry display label）
+
+`tools/lib/journal_files.py` 的 `display_label(title, body, path)` 是唯一的展示
+标签规则，确定且纯（无 I/O）。完整规则只在本节描述，其他文档指向本节：
+
+1. `title` 去首尾空白后非空：返回该文本，原样。
+2. 否则取 `body` 第一条带文字的行（空行，以及只由 Markdown 结构符号组成的行，如
+   `##`、`***`、正文中途的 `---`，都不算），去掉行首 `#` 记号与首尾空白，在第一个
+   前面已有文字的 `。！？!?`（终止符保留）或第 30 个字符处截断，以先到者为准；因
+   长度截断且该行还有剩余文字时追加 `…`。以终止符开头的行（如 `![图](a.jpg)`）不在
+   开头处截断。
+3. 否则返回不带扩展名的文件名。`body` 的第一条非空行是 `---` 时也返回文件名：那是
+   一个读不出的 frontmatter 区块被当作原文保留，开头几行是 YAML，不是用户说的话。
+
+标签只是呈现辅助：它永不取代 `title`——`title` 保持文件所写（没有即为空）。
+宿主 agent 展示结果时，`title` 为空就用 `display_label`，且绝不能把标签写回
+文件当标题。结果的 `kind` 字段（文件名种类，如 `"fragment"`）告诉调用方这是
+哪一类条目。metadata cache 以 `display_label` 列存标签（写行时计算，读取方
+不再为标签打开文件；`CACHE_VERSION_SCHEMA_VERSION` 升至 v2.2.0，存量安装重建
+一次）；FTS 表不加列，来自 FTS 的结果按路径查 cache 取标签，无行时用文件名。
+
 ---
 
 ## 5. 基础设施增强
@@ -665,13 +700,17 @@ Metadata cache 的新鲜度不再依赖全库内容哈希：
   的完整结果调用 `normalize_indexable_metadata(metadata) or empty_indexable_metadata()`，
   再套用同一条日期规则；只有 `_custom: x` 的 frontmatter 因此在两个存储里得到同一个
   文件名日期。
+- **展示标签列**：cache 行写入时按*条目标签规则*一节计算 `display_label` 列，读取方
+  （含 FTS 结果的按路径取标签）不再为标签打开日志文件；sidecar schema 升到 v2.2.0
+  时存量安装重建一次。
 - **兜底内容扫描**（`l3_content.py`）：先严格按 UTF-8 读取；遇到 `UnicodeDecodeError`
   时把替换后的整篇文本作为可搜索正文、不带任何元数据（与 FTS raw 行完全一致）。可读文件
   用同一条规则读取，不可解析文件按整篇文本参与匹配。它的相关度门槛与遍历范围不在本规则
   之内。
 - **已知边界（接受）**：工具外修改若 mtime 与大小均不变，则要到
   `life-index index --rebuild` 才能被发现；sidecar schema 自 v1.1.x 升到 v2.0.0 时存量
-  安装会全量重建一次，v2.1.0 因列表列统一为 JSON 数组再重建一次。
+  安装会全量重建一次，v2.1.0 因列表列统一为 JSON 数组再重建一次，v2.2.0 因新增
+  `display_label` 列再重建一次。
 
 #### FTS index freshness（signature reconciliation on every search）
 

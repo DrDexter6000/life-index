@@ -16,7 +16,8 @@ from typing import Any, Callable
 
 import yaml
 
-from tools.lib.journal_files import has_journal_files, iter_journal_files
+from tools.lib.journal_files import classify_journal_path, has_journal_files, iter_journal_files
+from tools.lib.schema import get_required_fields
 
 AUDIT_SCHEMA_VERSION = "m33.maintenance_audit.v0"
 
@@ -216,7 +217,10 @@ def _detect_frontmatter(data_dir: Path) -> list[Issue]:
                 )
             )
             continue
-        for field in ("title", "date", "topic"):
+        # Required fields come from the one per-kind rule (schema SSOT); the
+        # file name decides the kind. iter_journal_files yields fragments
+        # only, whose rule is defined.
+        for field in get_required_fields(classify_journal_path(path)):
             if field not in metadata:
                 issues.append(
                     _issue(
