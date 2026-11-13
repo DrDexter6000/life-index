@@ -48,42 +48,6 @@ BLOCKED = {
         "---\ntitle: T\ndate: 2026-03-04\ncustom: !!pairs [a: b]\n---\n\nbody\n",
         "not_round_trippable",
     ),
-    "title_null": (
-        "---\ntitle:\ndate: 2026-03-04\n---\n\nbody\n",
-        "not_round_trippable",
-    ),
-    "topic_scalar": (
-        "---\ntitle: T\ndate: 2026-03-04\ntopic: life\n---\n\nbody\n",
-        "not_round_trippable",
-    ),
-    "topic_null": (
-        "---\ntitle: T\ndate: 2026-03-04\ntopic:\n---\n\nbody\n",
-        "not_round_trippable",
-    ),
-    "tags_scalar": (
-        "---\ntitle: T\ndate: 2026-03-04\ntags: alpha, beta\n---\n\nbody\n",
-        "not_round_trippable",
-    ),
-    "tags_null": (
-        "---\ntitle: T\ndate: 2026-03-04\ntags:\n---\n\nbody\n",
-        "not_round_trippable",
-    ),
-    "people_scalar": (
-        "---\ntitle: T\ndate: 2026-03-04\npeople: Alice\n---\n\nbody\n",
-        "not_round_trippable",
-    ),
-    "people_null": (
-        "---\ntitle: T\ndate: 2026-03-04\npeople:\n---\n\nbody\n",
-        "not_round_trippable",
-    ),
-    "mood_scalar": (
-        "---\ntitle: T\ndate: 2026-03-04\nmood: calm\n---\n\nbody\n",
-        "not_round_trippable",
-    ),
-    "mood_null": (
-        "---\ntitle: T\ndate: 2026-03-04\nmood:\n---\n\nbody\n",
-        "not_round_trippable",
-    ),
     "private_key": (
         "---\n_custom: x\n---\n\nbody\n",
         "not_round_trippable",
@@ -141,3 +105,74 @@ def test_edit_refuses_without_touching_the_journal(isolated_data_dir, shape, mod
     assert journal.read_bytes() == original
     assert list_revisions(journal) == []
     assert _derived_state(isolated_data_dir) == before
+
+
+# Shapes the serializer normalizes on purpose: an edit goes through, and the
+# rewritten file says the same thing in the serializer's form.
+NORMALIZED = {
+    "title_null": ("title:\ndate: 2026-03-04", {"date": "2026-03-04"}),
+    "topic_scalar": (
+        "title: T\ndate: 2026-03-04\ntopic: life",
+        {"title": "T", "date": "2026-03-04", "topic": ["life"]},
+    ),
+    "tags_comma_text": (
+        "title: T\ndate: 2026-03-04\ntags: alpha, beta",
+        {"title": "T", "date": "2026-03-04", "tags": ["alpha", "beta"]},
+    ),
+    "people_null": ("title: T\ndate: 2026-03-04\npeople:", {"title": "T", "date": "2026-03-04"}),
+    "unknown_null": (
+        "title: T\ndate: 2026-03-04\ncustom:",
+        {"title": "T", "date": "2026-03-04", "custom": None},
+    ),
+    "nested_mapping": (
+        "title: T\ndate: 2026-03-04\nplace:\n  name: x\n  lat: 1.5",
+        {"title": "T", "date": "2026-03-04", "place": {"name": "x", "lat": 1.5}},
+    ),
+}
+
+
+@pytest.mark.parametrize("shape", sorted(NORMALIZED))
+def test_edit_still_rewrites_what_the_serializer_only_normalizes(isolated_data_dir, shape):
+    from tools.lib.frontmatter import parse_frontmatter
+    from tools.lib.schema import SCHEMA_VERSION
+
+    frontmatter, expected = NORMALIZED[shape]
+    journal = _journal(isolated_data_dir)
+    journal.write_bytes(f"---\n{frontmatter}\n---\n\nthe body stays\n".encode())
+
+    result = edit_journal(journal_path=journal, frontmatter_updates={"weather": "sunny"})
+
+    assert result["success"] is True, result
+    metadata, body = parse_frontmatter(journal.read_text(encoding="utf-8"))
+    assert metadata == {"schema_version": SCHEMA_VERSION, "weather": "sunny", **expected}
+    assert body.strip() == "the body stays"
+
+
+def test_edit_checks_again_under_the_lock(isolated_data_dir, monkeypatch):
+    """The content read under the lock is what gets rewritten, so it is what is checked."""
+    import tools.edit_journal as edit_module
+
+    journal = _journal(isolated_data_dir)
+    journal.write_bytes(b"---\ntitle: T\ndate: 2026-03-04\n---\n\nbody\n")
+    swapped = b"---\ntitle: T\ndate: 2026-03-04\n2024: x\n---\n\nother words\n"
+    real_apply = edit_module._apply_edit_updates
+    calls = []
+
+    def apply_then_swap(**kwargs):
+        computed = real_apply(**kwargs)
+        calls.append(1)
+        if len(calls) == 1:
+            # Another writer replaces the file after the first check passed.
+            journal.write_bytes(swapped)
+        return computed
+
+    monkeypatch.setattr(edit_module, "_apply_edit_updates", apply_then_swap)
+
+    result = edit_journal(journal_path=journal, frontmatter_updates={"weather": "sunny"})
+
+    assert len(calls) == 1
+    assert result["success"] is False
+    assert result["error"]["code"] == "E0202"
+    assert result["error"]["details"]["reason"] == "not_round_trippable"
+    assert journal.read_bytes() == swapped
+    assert list_revisions(journal) == []

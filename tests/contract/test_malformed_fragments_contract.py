@@ -127,19 +127,10 @@ EDIT_BLOCKED = {
     "list_root": "unreadable",
     "recursive_alias": "unreadable",
     "scalar_root": "unreadable",
-    "mood_null": "not_round_trippable",
-    "mood_scalar": "not_round_trippable",
     "non_string_key_boolean": "not_round_trippable",
     "non_string_key_null": "not_round_trippable",
     "non_string_key_number": "not_round_trippable",
-    "people_null": "not_round_trippable",
-    "people_scalar": "not_round_trippable",
     "private_key_only": "not_round_trippable",
-    "tags_null": "not_round_trippable",
-    "tags_scalar": "not_round_trippable",
-    "title_null": "not_round_trippable",
-    "topic_null": "not_round_trippable",
-    "topic_scalar": "not_round_trippable",
 }
 
 

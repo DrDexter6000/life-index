@@ -212,6 +212,21 @@ def _is_private_key(key: Any) -> bool:
     return isinstance(key, str) and key.startswith("_")
 
 
+def _rewrite_refusal(journal_path: Path, content: str) -> Optional[Dict[str, Any]]:
+    """The E0202 envelope when ``content``'s frontmatter cannot be written back."""
+    blocker = frontmatter_rewrite_blocker(content)
+    if blocker is None:
+        return None
+    logger.warning(f"frontmatter 无法安全重写（{blocker}）：{journal_path}")
+    return create_error_response(
+        ErrorCode.FRONTMATTER_INVALID,
+        f"Frontmatter cannot be rewritten without loss: {blocker}",
+        {"path": str(journal_path), "reason": blocker},
+        "Leave the file unchanged and report the file and reason to the user;"
+        " do not retry or repair it automatically",
+    )
+
+
 def _apply_edit_updates(  # noqa: C901
     *,
     journal_path: Path,
@@ -509,16 +524,9 @@ def edit_journal(
                     "请先查询新地点的天气；如果 query_weather 失败，可手动提供天气后再一起修改",
                 )
 
-        blocker = frontmatter_rewrite_blocker(journal_path.read_text(encoding="utf-8"))
-        if blocker is not None:
-            logger.warning(f"frontmatter 无法安全重写（{blocker}）：{journal_path}")
-            return create_error_response(
-                ErrorCode.FRONTMATTER_INVALID,
-                f"Frontmatter cannot be rewritten without loss: {blocker}",
-                {"path": str(journal_path), "reason": blocker},
-                "Leave the file unchanged and report the file and reason to the user;"
-                " do not retry or repair it automatically",
-            )
+        refusal = _rewrite_refusal(journal_path, journal_path.read_text(encoding="utf-8"))
+        if refusal is not None:
+            return refusal
 
         def compute_updates(
             current_frontmatter: Dict[str, Any], current_body: str
@@ -559,6 +567,11 @@ def edit_journal(
             with lock:
                 logger.debug("获取文件锁成功")
                 original_content = journal_path.read_text(encoding="utf-8")
+                # The file may have changed since the check above; the content
+                # read under the lock is the one that gets rewritten.
+                refusal = _rewrite_refusal(journal_path, original_content)
+                if refusal is not None:
+                    return refusal
                 locked_metadata = parse_journal_file(journal_path)
                 locked_frontmatter = {
                     k: v for k, v in locked_metadata.items() if not _is_private_key(k)

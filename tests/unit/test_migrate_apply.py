@@ -207,7 +207,12 @@ class TestUnreadableFrontmatterIsLeftUntouched:
 
 
 class TestNotRoundTrippableFrontmatterIsLeftUntouched:
-    """D3: migrate also refuses a readable mapping the serializer cannot reproduce."""
+    """D3: migrate refuses to rewrite an outdated file the serializer cannot reproduce.
+
+    Such a file is readable, so the scan reports its real version and that it
+    needs a migration; ``--apply`` fails it alone and keeps its bytes. A file
+    that is already current is never rewritten, so the guard does not concern it.
+    """
 
     NOT_ROUND_TRIPPABLE = {
         "set_value": (
@@ -243,7 +248,7 @@ class TestNotRoundTrippableFrontmatterIsLeftUntouched:
         assert journal.read_bytes() == original
 
     @pytest.mark.parametrize("shape", sorted(NOT_ROUND_TRIPPABLE))
-    def test_scan_reports_the_file_as_unparseable(self, tmp_path: Path, shape):
+    def test_scan_reports_the_real_version_and_the_blocker(self, tmp_path: Path, shape):
         from tools.migrate import scan_journals
 
         journal = self._journal(tmp_path)
@@ -252,8 +257,44 @@ class TestNotRoundTrippableFrontmatterIsLeftUntouched:
         report = scan_journals(tmp_path / "Journals")
 
         assert report["total_scanned"] == 1
-        assert report["version_distribution"] == {"unparseable": 1}
+        assert report["version_distribution"] == {"1": 1}
+        assert report["needs_migration"] == 1
+        assert report["outdated_files"][0]["rewrite_blocker"] == "not_round_trippable"
+
+    def test_scan_names_no_blocker_for_a_rewritable_outdated_file(self, tmp_path: Path):
+        from tools.migrate import scan_journals
+
+        journal = self._journal(tmp_path)
+        journal.write_bytes(b"---\nschema_version: 1\ntitle: T\ndate: 2025-06-15\n---\n\nbody\n")
+
+        report = scan_journals(tmp_path / "Journals")
+
+        assert report["needs_migration"] == 1
+        assert "rewrite_blocker" not in report["outdated_files"][0]
+
+    @pytest.mark.parametrize("shape", sorted(NOT_ROUND_TRIPPABLE))
+    def test_a_current_file_is_not_a_failure(self, tmp_path: Path, shape):
+        from tools.lib.schema import SCHEMA_VERSION
+        from tools.migrate import apply_migrations, scan_journals
+
+        journal = self._journal(tmp_path)
+        original = (
+            self.NOT_ROUND_TRIPPABLE[shape]
+            .replace("schema_version: 1", f"schema_version: {SCHEMA_VERSION}")
+            .encode()
+        )
+        assert original != self.NOT_ROUND_TRIPPABLE[shape].encode()
+        journal.write_bytes(original)
+
+        report = scan_journals(tmp_path / "Journals")
+        result = apply_migrations(tmp_path / "Journals")
+
+        assert report["version_distribution"] == {str(SCHEMA_VERSION): 1}
         assert report["needs_migration"] == 0
+        assert result["already_current"] == 1
+        assert result["failed_count"] == 0
+        assert result["migrated_count"] == 0
+        assert journal.read_bytes() == original
 
 
 class TestOneFileNeverAbortsTheRun:

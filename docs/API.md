@@ -4955,8 +4955,8 @@ envelope：
 
 - `error.code` 为 `E0202`（`FRONTMATTER_INVALID`）
 - `error.message` 与 `error.details.reason` 指明原因：`unreadable`（frontmatter 区块读不出
-  mapping root）或 `not_round_trippable`（区块可读，但序列化后再解析得不到相同 mapping，
-  例如非字符串键、`!!set`、`!!pairs`）
+  mapping root）或 `not_round_trippable`（区块可读，但序列化器写不回去，例如非字符串键、
+  `_` 开头的键、`!!set`、`!!pairs`）
 - 文件字节保持不变；不创建 revision，不更新索引/缓存，不入 pending queue，不留锁
 
 该拒绝适用于所有编辑类型（仅修改 frontmatter、追加正文、替换正文）以及 `--dry-run`。
@@ -7434,11 +7434,12 @@ life-index version
 > （mapping/list 出现在标量字段等）都不算不可读，仍按正常 schema 迁移；字段规则见
 > `docs/ARCHITECTURE.md` 的 *Metadata cache freshness* 一节。
 >
-> **不可重写 frontmatter（第二个原因）**：区块可读、但序列化器写不回去的 frontmatter
-> （非字符串键、`!!set`、`!!pairs` 等——序列化后再解析得不到相同 mapping）同样被拒绝。
-> dry-run 也计入 `version_distribution.unparseable`；`--apply` 不重写它，列入
-> `failed_files` 且 `error` 含 reason `not_round_trippable`，文件字节保持不变。两个原因
-> 与调用规则见 `docs/ARCHITECTURE.md` 的 *Frontmatter 重写边界*。
+> **可读但写不回去的 frontmatter**：区块可读、但序列化器写不回去（非字符串键、`_` 开头
+> 的键、`!!set`、`!!pairs` 等）的文件，版本读得出来，所以 dry-run 按它的真实版本计数；
+> 需要迁移时照常列入 `outdated_files`，并多带一个 `rewrite_blocker`（值为
+> `not_round_trippable`）。`--apply` 不重写这样的文件，列入 `failed_files` 且 `error` 含该
+> reason，文件字节保持不变。已是当前版本的文件本来就不会被重写，计入 `already_current`。
+> 判定规则见 `docs/ARCHITECTURE.md` 的 *Frontmatter 重写边界*。
 >
 > **单个文件不会中断整次迁移**：`--apply` 对某个文件算不出迁移结果时（`schema_version`
 > 不是数字、frontmatter 含序列化器写不回去的非字符串键等），该文件列入 `failed_files`、
