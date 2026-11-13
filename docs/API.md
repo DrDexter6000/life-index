@@ -243,7 +243,7 @@ Phase A 为 JSON 输出生成命令引入三层可观测性契约，全部 addit
 
 ```json
 {
-  "schema_version": "v2.0.0",
+  "schema_version": "v2.1.0",
   "tool_version": "1.1.1",
   "created_at": "2026-05-23T10:00:00+00:00",
   "source_hash": "sha256:...",
@@ -255,9 +255,16 @@ Phase A 为 JSON 输出生成命令引入三层可观测性契约，全部 addit
 
 | 字段 | 说明 |
 |------|------|
-| `schema_version` | 当前为 `v2.0.0`。从 v1.1.x 升级后首次搜索/索引会触发一次全量重建 |
+| `schema_version` | 当前为 `v2.1.0`。从更早版本升级后首次搜索/索引会触发一次全量重建 |
 | `tool_version` | 写入该 sidecar 的工具版本；与当前工具版本不一致时触发一次全量重建 |
 | `source_hash` | **仅 `entity_graph.yaml` 的 SHA-256**（graph 变化 → 全量重建）。v2.0.0 之前它是全部日志 + graph 的整体内容哈希；日志内容不再参与 freshness 判断 |
+
+**v2.1.0 的存储表示变更**：列表列（`topic`/`tags`/`mood`/`people`/`links`/
+`related_entries`）现在统一存放 JSON 数组——标量值存为单项数组（此前存为 JSON 标量，
+如 `topic: life` → `"life"`，现为 `["life"]`），`null` 存为 `[]`（此前为 JSON `null`）。
+原因：两个派生存储共用 `frontmatter.normalize_indexable_metadata()` 的“什么可索引”规则，
+缓存必须拿到保证类型的 `list[str]`。读取端同时接受旧表示，但版本号提升会让存量安装
+重建一次，从而不再保留混合表示。
 
 **CLI 入口**：
 
@@ -2898,6 +2905,7 @@ Shape:
 
 - `status` is `"complete"` **iff** this single response carries the whole admitted set with no remainder: `returned == observed_total`, `next_offset` is null, and both `partial_reasons` and `limits_applied` are empty. A `partial` status **always** carries ≥1 entry in `partial_reasons` (there is no "partial without a reason"); each reason explains one honest defect. The `partial_reasons` vocabulary is closed and every entry has a real emission path; reasons without a reachable Phase 1 emission path were removed rather than advertised.
 - `unread_page` is recorded whenever this response window does NOT carry the whole admitted set (`returned < observed_total`) — including a nonzero-offset final page where `next_offset` is already null. `next_offset` / `has_more` signal **only** whether the same deterministic query can mechanically continue to a next page; they do not imply completeness, and `next_offset` is emitted only when it strictly advances past the current offset (an empty window never yields `next_offset=0` or a cursor equal to the offset). (The tool holds no snapshot/cursor between pages; if the corpus changes between requests, each page recomputes against the current `observed_total` and stays honest — it never fabricates `complete`.)
+- `index_not_fresh` is recorded when the index is not current at retrieval time: the search preflight's post-repair signature verdict is `false` (`index_status.signature_current: false`, even with `auto_updated: true` — a path whose read fails keeps the index not-current however often the repair retries), or no signature verdict exists and a stale/failed update is reported (`index_stale:` / `index_update_failed:` / `pending_index_update_failed:`).
 - `result_limit:<n>` is recorded in `limits_applied` only when the presentation `limit` truly bound the result window (`offset + limit < observed_total`); a final page whose shortfall comes from the `offset` alone records no `result_limit`, and a `limit` that excluded nothing records nothing. `fts_min_hits:<n>` is recorded when the segmented-query min-hits post-filter dropped ≥1 candidate that no fallback recovered (a fully recovered exclusion records nothing). `l2_source_cap:<n>` (from the existing `l2_total_available` field, which preserves the upstream source total even when an L0 candidate filter narrows the returned window) is recorded only when the L2 metadata source was actually capped (`l2_truncated=true`).
 - Default token-match relevance threshold is `0`: neither the FTS layer nor the merge/ranking layer drops low-relevance token-matches via a dynamic threshold. An explicit nonzero threshold marks `partial` with `threshold_excluded` + `fts_threshold:<n>` **only when it actually excludes ≥1 candidate**; a configured threshold that excludes 0 does not mark partial. `min_relevance=0` is the intentional Phase 1 recall-first default: search passes an explicit zero token-match threshold and thereby bypasses the legacy high-frequency dynamic threshold; this is by design, not an omission.
 - Level 1/2 responses build `retrieval_coverage` from the level's own complete result array (`l1_results` / `l2_results`; `merged_results` stays empty). The presentation layer paginates that array — not the empty `merged_results` — and scopes `returned`/`offset`/`next_offset` to the page window, with the legacy totals projected from the coverage authority.
@@ -3010,6 +3018,11 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 - `vector_fresh` 是 legacy compatibility 字段；当前始终为 `true`，不代表存在向量索引。
 - `auto_updated`：若签名检查/版本检查判为 stale 触发了增量构建，为 `true`；否则为 `false`
   （仅 stale 时出现）。增量构建只读取新增/变更/待修复的文件，并删除已消失文件的 FTS 行。
+- `signature_current`（additive）：搜索 preflight **修复之后**重新运行只读签名比较的结论，
+  `true`/`false`。`false` 表示索引在检索时仍不 current（例如某个 fragment 的读取一直失败），
+  此时即使 `auto_updated: true`，`retrieval_coverage` 也会报告 `index_not_fresh`。
+  **没有真正运行签名检查时不出现该键**（例如注入的测试替身），此时 coverage 回退到既有
+  判定（见 `retrieval_coverage` 一节）。
 
 #### Pending-writes 路径（有待消费写入）
 
@@ -3037,9 +3050,11 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
   `mark_pending` 提升”且“该 path 实际被修复”时才移除。同一 path 在构建期间再次入队会保留，
   构建期间新入队的 path 也原样保留
 - 队列中的 path 无论其 `(mtime, size)` 签名是否匹配都会被强制重读（签名无法证明写穿已成功）；
-  不可解析的 live fragment 仍会按原始文本建行并记录签名，计入 `fts.unparsable`，不会留在队列中
+  不可解析（frontmatter 读不出 mapping root）的 live fragment 仍会按原始文本建行并记录签名，
+  计入 `fts.unparsable`，不会留在队列中
 - 队列为空时搜索先做只读签名检查；队列非空时 preflight 直接进入修复，并在修复后重新运行同一
-  只读比较。L3 fallback 使用的 `index_signature_current` 结论只来自这次比较，不来自构建返回值
+  只读比较。L3 fallback 使用的 `index_signature_current` 结论只来自这次比较，不来自构建返回值；
+  同一结论出现在 `index_status.signature_current` 中，并被 `retrieval_coverage` 消费
 - 构建失败时，`warnings` 数组中追加 `pending_index_update_failed: {error}` 条目，pending 队列保留以供下次搜索重试
 
 ### 错误码
@@ -4978,7 +4993,7 @@ python -m tools.edit_journal --journal "<path>" [options]
 | 字段 | 值 | 含义 |
 |------|----|------|
 | `fts_row.status` | `complete` / `skipped` / `failed` | 写穿结果 |
-| `fts_row.reason` | string / null | `skipped` 时为 `not_a_live_fragment`；`complete` 时为 null，若 frontmatter 不可解析而按原始文本建行则为 `unparsable_frontmatter_indexed_as_text`；`failed` 时为写穿错误（若队列写入也失败，reason 追加 `pending_queue_failed: ...`） |
+| `fts_row.reason` | string / null | `skipped` 时为 `not_a_live_fragment`；`complete` 时为 null，若 frontmatter 读不出 mapping root 而按原始文本建行则为 `unparsable_frontmatter_indexed_as_text`；`failed` 时为写穿错误（若队列写入也失败，reason 追加 `pending_queue_failed: ...`） |
 | `fts_row.recovery` | string / null | 需要修复时给调用方的命令：写穿失败且已入队为 `life-index index`；写穿失败且入队也失败为 `life-index index --rebuild`；`skipped`/`complete` 为 null |
 
 只有 `fts_row.status == "failed"` 且 `pending_marked == true` 时，该 path 才已进入 pending
@@ -5234,6 +5249,8 @@ python -m tools.build_index [options]
     "total": 45,
     "unparsable": 0,
     "unparsable_paths": [],
+    "unreadable": 0,
+    "unreadable_paths": [],
     "pending_repaired": []
   },
   "semantic_status": "disabled",
@@ -5245,13 +5262,18 @@ python -m tools.build_index [options]
 增量模式（`life-index index`，无 `--rebuild`）以每个 live fragment 的 `(mtime, size)` 签名
 判定是否读取：新文件、签名变化、缺 FTS 行、缺签名行的文件才被读取；已消失文件删除其 FTS 行
 与签名行；pending queue 中的 path 无论签名是否匹配都会重读，修复后按 generation 快照确认移除。
-`unparsable`/`unparsable_paths` 是 additive 字段：frontmatter 不可解析的 live fragment 会按
-整篇原始文本建行（包括 frontmatter 区块里的文字；`title`/元数据列为空，`date` 回退到文件名
-日期）并记录签名；它在全量重建和每次被重读时计数，但不会再重试或留在队列中（不会触发全库
-rebuild）。这条保证只针对 FTS 行；其他派生存储对这类文件的处理见
-`docs/ARCHITECTURE.md` 的增量扫描一节。完全无法读取（`OSError`）的文件不写任何东西并保持
+`unparsable`/`unparsable_paths` 是 additive 字段：只有 frontmatter **读不出 mapping root**
+的 live fragment（没有 `---` 区块、list/scalar root、legacy 恢复也读不了的 YAML、递归结构、
+非 UTF-8 字节）会按整篇原始文本建行（包括 frontmatter 区块里的文字；`title`/元数据列为空，
+`date` 走共享日期规则：frontmatter 日期，否则规范文件名日期）并记录签名。字段里的 mapping/
+list 或数字/布尔只影响该字段（按扁平文字入索引），不会让整行变成原始文本。这条规则对 FTS
+行与元数据缓存是同一条，完整字段语义与日期规则见 `docs/ARCHITECTURE.md` 的
+*Metadata cache freshness* 一节。它在全量重建和每次被重读时计数，但不会再重试或留在队列中
+（不会触发全库 rebuild）。完全无法读取（`OSError`）的文件不写任何东西并保持
 not-current：增量模式下已有行与签名保持不变；全量重建先清空再写入，该文件此时没有行，
-由之后的扫描重试。`pending_repaired`
+由之后的扫描重试。这类文件在**增量与全量两种模式**下都计入 additive 的
+`unreadable`（计数）与 `unreadable_paths`（path 列表），`total` 仍然照常计入该文件——
+“重建成功”不再掩盖一个没有被索引的文件。`pending_repaired`
 是本次实际修复的队列 path。全量重建（`--rebuild`）读取全部 live fragment，并清空签名表；
 持锁后发现遗留的 `.rebuilding` marker 会视为创建者已死而删除并继续。一次成功的 archive scan
 （增量或全量）会推进 `index_meta.last_updated`；写穿不会。
@@ -5284,9 +5306,9 @@ not-current：增量模式下已有行与签名保持不变；全量重建先清
   "dry_run": true,
   "cache_version": {
     "exists": true,
-    "stored_schema_version": "v2.0.0",
+    "stored_schema_version": "v2.1.0",
     "stored_source_hash": "sha256:...",
-    "current_schema_version": "v2.0.0",
+    "current_schema_version": "v2.1.0",
     "version_match": true,
     "hash_match": true,
     "would_rebuild": false,
@@ -5680,6 +5702,11 @@ python -m tools verify [--json]
 - `success`: whether the timeline was generated successfully.
 - `range`: two-element array of the requested time range (YYYY-MM format, inclusive).
 - `entries`: sorted by date ascending.
+- `entries[].date`: the shared fragment date rule — frontmatter `date` text whose first
+  10 characters have the shape `YYYY-MM-DD`, otherwise the date carried by the canonical
+  fragment filename, otherwise `""`. A fragment whose frontmatter has no readable mapping
+  root is still listed with empty metadata fields and its filename date. The rule itself
+  lives in `docs/ARCHITECTURE.md` (*Metadata cache freshness*).
 - `entries[].path`: relative path to the journal file.
 - `total`: total count of entries in the response.
 
@@ -7383,6 +7410,17 @@ life-index version
   "deterministic_changes": [{"path": "...", "changes": ["removed sentiment_score", "removed themes"]}]
 }
 ```
+
+> **不可读 frontmatter**：一个带 `---` 区块但读不出 mapping root 的文件（list/scalar root，
+> 含 `false`/`0`/`[]` 这类假值；legacy 恢复也读不了的 YAML；递归结构）在 dry-run 中计入
+> `version_distribution.unparseable`，不进入 `outdated_files`；`--apply` 不重写它，而是按
+> 解析失败列入 `failed_files`，文件字节保持不变。空区块（`---\n---`）与字段畸形
+> （mapping/list 出现在标量字段等）都不算不可读，仍按正常 schema 迁移；字段规则见
+> `docs/ARCHITECTURE.md` 的 *Metadata cache freshness* 一节。
+>
+> **单个文件不会中断整次迁移**：`--apply` 对某个文件算不出迁移结果时（`schema_version`
+> 不是数字、frontmatter 含序列化器写不回去的非字符串键等），该文件列入 `failed_files`、
+> 字节保持不变，其余文件照常迁移。
 
 > **E08xx 状态**: Reserved / 未实现。`tools/migrate/` 当前不发射结构化 E08xx 错误码；迁移失败以非结构化日志或异常形式报告。E0800–E0803 为预留编码，未来若迁移模块统一接入 `tools/lib/errors.py` 结构化错误体系时可启用。
 

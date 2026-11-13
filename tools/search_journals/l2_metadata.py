@@ -13,7 +13,12 @@ from typing import Any, Callable, Dict, List, Optional
 
 # 导入配置 (relative imports from tools/lib)
 from ..lib.paths import get_user_data_dir, get_journals_dir
-from ..lib.frontmatter import parse_journal_file
+from ..lib.frontmatter import (
+    empty_indexable_metadata,
+    indexable_date,
+    normalize_indexable_metadata,
+    parse_journal_file,
+)
 from ..lib.journal_files import iter_month_journal_files
 from ..lib.chinese_tokenizer import count_cjk_words
 from ..lib.metadata_cache import (
@@ -308,7 +313,7 @@ def _search_filesystem(
 def _read_metadata_without_cache(journal_file: Path) -> Optional[Dict[str, Any]]:
     """Parse a journal into the L2 entry shape without creating cache state."""
     metadata = parse_journal_file(journal_file)
-    if not metadata or "_error" in metadata:
+    if not metadata:
         return None
 
     path_fields = build_journal_path_fields(
@@ -317,18 +322,21 @@ def _read_metadata_without_cache(journal_file: Path) -> Optional[Dict[str, Any]]
         user_data_dir=get_user_data_dir(),
     )
     word_count = count_cjk_words(str(metadata.get("_body", "")))
-    date = str(metadata.get("date") or "")[:10]
-    title = str(metadata.get("title") or "")
-    location = str(metadata.get("location") or "")
-    weather = str(metadata.get("weather") or "")
-    topic = metadata.get("topic", [])
-    project = metadata.get("project", "")
-    tags = metadata.get("tags", [])
-    mood = metadata.get("mood", [])
-    people = metadata.get("people", [])
-    abstract = metadata.get("abstract", "")
-    links = metadata.get("links", [])
-    related_entries = metadata.get("related_entries", [])
+    # The same values the metadata cache stores for this file: the shared
+    # indexable-metadata rule and the one date rule.
+    indexable = normalize_indexable_metadata(metadata) or empty_indexable_metadata()
+    date = indexable_date(indexable, journal_file)
+    title = indexable["title"]
+    location = indexable["location"]
+    weather = indexable["weather"]
+    topic = indexable["topic"]
+    project = indexable["project"]
+    tags = indexable["tags"]
+    mood = indexable["mood"]
+    people = indexable["people"]
+    abstract = indexable["abstract"]
+    links = indexable["links"]
+    related_entries = indexable["related_entries"]
     cache_shape_metadata = {
         "date": date,
         "title": title,

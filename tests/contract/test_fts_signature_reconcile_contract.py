@@ -480,6 +480,85 @@ class TestD5OrphanedRebuildMarker:
         )
         assert not marker.exists(), "the orphaned marker must be removed and the rebuild proceed"
 
+    def test_marker_left_by_a_real_dead_child_process_does_not_block_the_repair(
+        self, isolated_data_dir
+    ):
+        """D6: the marker comes from a real child that dies while holding it.
+
+        Same scenario as above, but the ``.rebuilding`` marker is written by a
+        child process that calls ``os._exit`` immediately afterwards (the way a
+        builder killed during the automatic schema-version rebuild leaves it).
+        A schema-version-2 database without ``fts_file_stats`` then needs a full
+        rebuild that only proceeds if the orphaned marker is removed.
+        """
+        import subprocess
+        import sys
+
+        from tools.lib.paths import get_fts_db_path, get_user_data_dir
+        from tools.lib.search_index import FTS_SCHEMA_VERSION
+
+        word = "d6-child-marker-word"
+        kept = _write_journal(_payload("2026-06-04", "A", f"alpha {word}"))
+        deleted = _write_journal(_payload("2026-06-05", "B", f"beta {word}"))
+        _build_rebuild()
+
+        db_path = get_fts_db_path()
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.execute("DROP TABLE IF EXISTS fts_file_stats")
+            conn.execute("UPDATE index_meta SET value = '2' WHERE key = 'schema_version'")
+            conn.commit()
+        finally:
+            conn.close()
+
+        marker = get_user_data_dir() / ".index" / ".rebuilding"
+        assert not marker.exists()
+        child_code = (
+            "import os, sys\n"
+            "from pathlib import Path\n"
+            "sys.path.insert(0, sys.argv[2])\n"
+            "from tools.lib.fts_update import _write_rebuild_marker\n"
+            "_write_rebuild_marker(Path(sys.argv[1]))\n"
+            "os._exit(0)\n"
+        )
+        child = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                child_code,
+                str(marker),
+                str(Path(__file__).resolve().parents[2]),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert child.returncode == 0, child.stderr
+        assert marker.exists(), "the dead child must have left the rebuild marker behind"
+
+        Path(deleted["journal_path"]).unlink()
+
+        response = _search(word)
+
+        names = _merged_names(response)
+        assert Path(kept["journal_path"]).name in names
+        assert Path(deleted["journal_path"]).name not in names, (
+            "a deleted fragment must not be returned after a real child left an "
+            "orphaned rebuild marker"
+        )
+        assert not marker.exists(), "the orphaned marker must be removed and the rebuild proceed"
+
+        conn = sqlite3.connect(str(db_path))
+        try:
+            stats_count = conn.execute("SELECT COUNT(*) FROM fts_file_stats").fetchone()[0]
+            recorded_version = conn.execute(
+                "SELECT value FROM index_meta WHERE key = 'schema_version'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert stats_count == 1, "the rebuild must repopulate the signature table"
+        assert int(recorded_version) == FTS_SCHEMA_VERSION
+
 
 class TestPreflightReadCost:
     @staticmethod

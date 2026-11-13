@@ -3,6 +3,8 @@
 Unit tests for L2 metadata cache module
 """
 
+from pathlib import Path
+
 import pytest
 from unittest.mock import patch
 
@@ -455,10 +457,14 @@ class TestParseAndCacheJournalEdgeCases:
         finally:
             conn.close()
 
-    def test_parse_and_cache_journal_preserves_string_topic_for_safe_upstream_normalization(
-        self, tmp_path
-    ):
-        """Legacy scalar topic values remain readable for upstream normalization."""
+    def test_parse_and_cache_journal_normalizes_scalar_topic_to_one_item_list(self, tmp_path):
+        """A scalar list field is stored as a one-item JSON array (D1).
+
+        The shared indexable-metadata rule hands every derived store a
+        ``list[str]`` for a list field; the cache keeps storing JSON, so a
+        legacy ``topic: "think"`` now reads back as ``["think"]``. The value
+        itself is unchanged and stays readable for upstream normalization.
+        """
         test_file = tmp_path / "string_topic.md"
         test_file.write_text(
             '---\ntitle: "String Topic"\ndate: 2026-03-13\ntopic: "think"\n---\n\nContent\n',
@@ -473,9 +479,9 @@ class TestParseAndCacheJournalEdgeCases:
             conn.close()
 
         assert cached is not None
-        assert cached["topic"] == "think"
+        assert cached["topic"] == ["think"]
         matched = next(item for item in all_entries if item["title"] == "String Topic")
-        assert matched["topic"] == "think"
+        assert matched["topic"] == ["think"]
 
 
 class TestConnectionManagement:
@@ -984,6 +990,201 @@ class TestCachePerformance:
         # Cache read should remain well below human-visible latency even on
         # slower Windows CI/storage.
         assert cache_time < 0.05, f"Cache read took {cache_time * 1000:.2f}ms, expected < 50ms"
+
+
+class TestMalformedFrontmatterNeverBreaksTheCache:
+    """One fragment's content can never make the metadata cache raise.
+
+    A fragment with no readable mapping root behaves like a file without
+    frontmatter: a row with empty metadata is cached, the parse returns a row
+    instead of raising, and the reconcile/rebuild paths count it as an update
+    rather than an error. A malformed field keeps the other fields.
+    """
+
+    # shape name -> frontmatter block (None means "no frontmatter at all")
+    UNREADABLE_SHAPES = {
+        "no_frontmatter": None,
+        "empty_frontmatter": "",
+        "invalid_yaml": "title: [unterminated\ndate: 2026-03-04",
+        "list_root": "- a\n- b",
+        "scalar_root": "just a scalar",
+        "date_impossible": "title: T\ndate: 2026-99-99",
+        "recursive_alias": "title: T\ncustom: &a [*a]",
+    }
+
+    # shape name -> (frontmatter block, expected stored fields)
+    MALFORMED_FIELD_SHAPES = {
+        "title_mapping": (
+            "title: {nested: value}\ndate: 2026-03-04",
+            {"title": "nested: value", "date": "2026-03-04"},
+        ),
+        "title_list": (
+            "title: [a, b]\ndate: 2026-03-04",
+            {"title": "a, b", "date": "2026-03-04"},
+        ),
+        "date_number": (
+            "title: T\ndate: 20260304",
+            {"title": "T", "date": "2026-03-04"},
+        ),
+        "date_list": (
+            "title: T\ndate: [2026]",
+            {"title": "T", "date": "2026-03-04"},
+        ),
+        "topic_mapping": (
+            "title: T\ndate: 2026-03-04\ntopic: {a: b}",
+            {"title": "T", "date": "2026-03-04", "topic": ["a: b"]},
+        ),
+        "tags_list_mapping": (
+            "title: T\ndate: 2026-03-04\ntags:\n  - a\n  - k: v",
+            {"title": "T", "date": "2026-03-04", "tags": ["a", "k: v"]},
+        ),
+        "people_mapping": (
+            "title: T\ndate: 2026-03-04\npeople: {a: b}",
+            {"title": "T", "date": "2026-03-04", "people": ["a: b"]},
+        ),
+        "mood_list_mapping": (
+            "title: T\ndate: 2026-03-04\nmood:\n  - a\n  - k: v",
+            {"title": "T", "date": "2026-03-04", "mood": ["a", "k: v"]},
+        ),
+    }
+
+    ALL_SHAPES = {
+        **UNREADABLE_SHAPES,
+        **{key: value[0] for key, value in MALFORMED_FIELD_SHAPES.items()},
+    }
+
+    @staticmethod
+    def _fragment(data_dir, frontmatter, *, date="2026-03-04") -> Path:
+        month = Path(data_dir) / "Journals" / "2026" / "03"
+        month.mkdir(parents=True, exist_ok=True)
+        journal = month / f"life-index_{date}_001.md"
+        if frontmatter is None:
+            journal.write_text("plain text, no frontmatter\n", encoding="utf-8")
+        else:
+            journal.write_text(f"---\n{frontmatter}\n---\n\nbody\n", encoding="utf-8")
+        return journal
+
+    @pytest.mark.parametrize("shape", sorted(ALL_SHAPES))
+    def test_parse_and_cache_journal_never_raises(self, isolated_data_dir, shape):
+        journal = self._fragment(isolated_data_dir, self.ALL_SHAPES[shape])
+
+        conn = init_metadata_cache()
+        try:
+            cached = parse_and_cache_journal(conn, journal)
+            entries = get_all_cached_metadata(conn)
+        finally:
+            conn.close()
+
+        assert cached is not None
+        assert cached["date"] == "2026-03-04"
+        assert any(entry["rel_path"] == cached["rel_path"] for entry in entries)
+
+    @pytest.mark.parametrize("shape", sorted(UNREADABLE_SHAPES))
+    def test_an_unreadable_root_stores_no_metadata(self, isolated_data_dir, shape):
+        journal = self._fragment(isolated_data_dir, self.UNREADABLE_SHAPES[shape])
+
+        conn = init_metadata_cache()
+        try:
+            cached = parse_and_cache_journal(conn, journal)
+        finally:
+            conn.close()
+
+        assert cached is not None
+        assert cached["title"] == ""
+        assert cached["topic"] == []
+        assert cached["tags"] == []
+        assert cached["mood"] == []
+        assert cached["people"] == []
+        assert cached["links"] == []
+        assert cached["related_entries"] == []
+
+    @pytest.mark.parametrize("shape", sorted(MALFORMED_FIELD_SHAPES))
+    def test_a_malformed_field_keeps_the_other_metadata(self, isolated_data_dir, shape):
+        frontmatter, expected = self.MALFORMED_FIELD_SHAPES[shape]
+        journal = self._fragment(isolated_data_dir, frontmatter)
+
+        conn = init_metadata_cache()
+        try:
+            cached = parse_and_cache_journal(conn, journal)
+        finally:
+            conn.close()
+
+        assert cached is not None
+        for key, value in expected.items():
+            assert cached[key] == value, key
+
+    @pytest.mark.parametrize("shape", sorted(ALL_SHAPES))
+    def test_reconcile_counts_the_file_as_updated_not_as_an_error(self, isolated_data_dir, shape):
+        from tools.lib.metadata_cache import reconcile_cache_with_files
+
+        self._fragment(isolated_data_dir, self.ALL_SHAPES[shape])
+
+        result = reconcile_cache_with_files()
+
+        assert result == {"updated": 1, "skipped": 0, "removed": 0, "errors": 0}
+
+    @pytest.mark.parametrize("shape", sorted(ALL_SHAPES))
+    def test_full_cache_rebuild_survives_the_file(self, isolated_data_dir, shape):
+        self._fragment(isolated_data_dir, self.ALL_SHAPES[shape])
+        self._fragment(
+            isolated_data_dir,
+            'title: "Valid"\ndate: "2026-03-05"\ntopic: [life]',
+            date="2026-03-05",
+        )
+
+        result = update_cache_for_all_journals()
+
+        assert result["updated"] == 2
+        assert result["errors"] == 0
+
+    def test_a_parsable_file_stores_the_normalized_values(self, isolated_data_dir):
+        journal = self._fragment(
+            isolated_data_dir,
+            "title: 2024\ndate: 2026-03-04\nlocation: 42\nweather: true\n"
+            "project: 3.5\ntopic: life\ntags: [alpha, 7]\nmood:\npeople: Alice",
+        )
+
+        conn = init_metadata_cache()
+        try:
+            cached = parse_and_cache_journal(conn, journal)
+        finally:
+            conn.close()
+
+        assert cached is not None
+        assert cached["title"] == "2024"
+        assert cached["date"] == "2026-03-04"
+        assert cached["location"] == "42"
+        assert cached["weather"] == "True"
+        assert cached["project"] == "3.5"
+        assert cached["topic"] == ["life"]
+        assert cached["tags"] == ["alpha", "7"]
+        assert cached["mood"] == []
+        assert cached["people"] == ["Alice"]
+
+    @pytest.mark.parametrize(
+        ("frontmatter", "title", "expected_date"),
+        [
+            # A number is a readable scalar, not broken frontmatter; the date
+            # rule rejects an 8-digit value and falls back to the filename.
+            ("title: T\ndate: 20260304", "T", "2026-03-04"),
+            # A null scalar reads as empty text, never as SQL NULL.
+            ("title:\ndate: 2026-03-04", "", "2026-03-04"),
+        ],
+    )
+    def test_a_number_or_null_scalar_is_stored_as_text(
+        self, isolated_data_dir, frontmatter, title, expected_date
+    ):
+        journal = self._fragment(isolated_data_dir, frontmatter)
+
+        conn = init_metadata_cache()
+        try:
+            cached = parse_and_cache_journal(conn, journal)
+        finally:
+            conn.close()
+
+        assert cached is not None
+        assert cached["title"] == title
+        assert cached["date"] == expected_date
 
 
 if __name__ == "__main__":

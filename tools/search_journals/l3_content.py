@@ -9,6 +9,11 @@ from typing import Any, Dict, List, Optional
 
 # 导入配置 (relative imports from tools/lib)
 from ..lib.paths import get_user_data_dir, get_journals_dir
+from ..lib.frontmatter import (
+    empty_indexable_metadata,
+    indexable_date,
+    normalize_indexable_metadata,
+)
 from ..lib.journal_files import iter_month_journal_files
 from ..lib.path_contract import build_journal_path_fields
 from ..lib.search_constants import (
@@ -59,12 +64,32 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
 
     for journal_file in files_to_search:
         try:
-            content = journal_file.read_text(encoding="utf-8")
-            metadata, body = parse_frontmatter(content)
+            # D6: decode strictly first. Bytes that are not UTF-8 cost the whole
+            # fragment's metadata (same as its FTS raw-text row): the replaced
+            # text is the searchable body, nothing is parsed from it.
+            metadata: Dict[str, Any]
+            body: str
+            try:
+                content = journal_file.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                metadata = {}
+                body = journal_file.read_text(encoding="utf-8", errors="replace")
+                indexable = empty_indexable_metadata()
+            else:
+                metadata, body = parse_frontmatter(content)
+                parsed_indexable = normalize_indexable_metadata(metadata)
+                if parsed_indexable is None:
+                    # Same treatment as the fragment's FTS row: the whole file is
+                    # searchable text, no metadata, date from the one date rule.
+                    metadata, body = {}, content
+                    parsed_indexable = empty_indexable_metadata()
+                indexable = parsed_indexable
+
+            date = indexable_date(indexable, journal_file)
 
             # 在标题中搜索
             title_match = False
-            title = metadata.get("title", "")
+            title = indexable["title"]
             if query_lower in title.lower():
                 title_match = True
 
@@ -90,7 +115,7 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
 
                 results.append(
                     {
-                        "date": metadata.get("date", "")[:10],
+                        "date": date,
                         "title": title or "无标题",
                         **path_fields,
                         "title_match": title_match,
@@ -99,14 +124,14 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
                         "relevance": relevance,
                         "source": "content_search",
                         # 补充元数据字段
-                        "location": metadata.get("location", ""),
-                        "weather": metadata.get("weather", ""),
-                        "mood": metadata.get("mood", []),
-                        "people": metadata.get("people", []),
-                        "tags": metadata.get("tags", []),
-                        "topic": metadata.get("topic", []),
-                        "abstract": metadata.get("abstract", ""),
-                        "project": metadata.get("project", ""),
+                        "location": indexable["location"],
+                        "weather": indexable["weather"],
+                        "mood": indexable["mood"],
+                        "people": indexable["people"],
+                        "tags": indexable["tags"],
+                        "topic": indexable["topic"],
+                        "abstract": indexable["abstract"],
+                        "project": indexable["project"],
                         # 保留完整的 metadata 供后续使用
                         "metadata": metadata,
                     }

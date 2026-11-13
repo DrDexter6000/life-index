@@ -28,10 +28,14 @@ logger = logging.getLogger(__name__)
 _REBUILD_MARKER_NAME = ".rebuilding"
 
 from .chinese_tokenizer import segment_for_fts
-from .frontmatter import parse_frontmatter
+from .frontmatter import (
+    empty_indexable_metadata,
+    indexable_date,
+    normalize_indexable_metadata,
+    parse_frontmatter,
+)
 from .journal_files import (
     JournalFileStat,
-    fragment_date_from_filename,
     scan_journal_files,
 )
 from .path_contract import build_journal_path_fields, safe_relative_path
@@ -87,40 +91,6 @@ def _read_identity(
     return identity, (stat.st_mtime, stat.st_size)
 
 
-def _scalar_text(value: Any) -> str | None:
-    """Text of a YAML scalar, or ``None`` when the value is not a scalar.
-
-    Hand-written frontmatter such as ``title: 2024`` or ``weather: true``
-    parses to a number or a boolean. That is still a readable value: it is
-    indexed as its text instead of costing the journal its metadata.
-    """
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, (bool, int, float)):
-        return str(value)
-    return None
-
-
-def _require_str(metadata: dict[str, Any], key: str) -> str:
-    """Return a metadata scalar as text; a mapping or list here is unparsable."""
-    text = _scalar_text(metadata.get(key, ""))
-    if text is None:
-        raise TypeError(f"field {key!r} must be a scalar, got {type(metadata[key]).__name__}")
-    return text
-
-
-def _metadata_text(value: Any) -> str:
-    """Normalize an indexed list-or-scalar field; a mapping is unparsable."""
-    if isinstance(value, list):
-        return ", ".join(str(item) for item in value)
-    text = _scalar_text(value)
-    if text is None:
-        raise TypeError(f"field must be a scalar or list, got {type(value).__name__}")
-    return text
-
-
 def _parse_content(
     content: str,
     raw: bytes,
@@ -136,7 +106,11 @@ def _parse_content(
 
         # 使用 SSOT frontmatter 解析
         metadata, body = parse_frontmatter(content)
-        if not metadata:
+        # D1: one shared rule for "what is indexable metadata". ``None`` means
+        # the frontmatter has no readable mapping root and the caller falls back
+        # to the raw-text row; a malformed field never makes the row raw.
+        indexable = normalize_indexable_metadata(metadata)
+        if indexable is None:
             return None
 
         # 构建可索引文档
@@ -148,7 +122,7 @@ def _parse_content(
         # file_hash is computed from the same bytes the row content came from.
         # R11 fix: 'title' stores raw original text (for display),
         # 'title_segmented' stores jieba tokens (for FTS matching).
-        raw_title = _require_str(metadata, "title")
+        raw_title = indexable["title"]
         segmented_title = segment_for_fts(raw_title, mode="index")
         segmented_content = segment_for_fts(body, mode="index")
 
@@ -157,14 +131,14 @@ def _parse_content(
             "title": raw_title,
             "title_segmented": segmented_title,
             "content": segmented_content,
-            "date": _require_str(metadata, "date")[:10],
-            "location": _require_str(metadata, "location"),
-            "weather": _require_str(metadata, "weather"),
-            "topic": _metadata_text(metadata.get("topic")),
-            "project": _require_str(metadata, "project"),
-            "tags": _metadata_text(metadata.get("tags")),
-            "mood": _metadata_text(metadata.get("mood")),
-            "people": _metadata_text(metadata.get("people")),
+            "date": indexable_date(indexable, file_path),
+            "location": indexable["location"],
+            "weather": indexable["weather"],
+            "topic": ", ".join(indexable["topic"]),
+            "project": indexable["project"],
+            "tags": ", ".join(indexable["tags"]),
+            "mood": ", ".join(indexable["mood"]),
+            "people": ", ".join(indexable["people"]),
             "file_hash": _content_hash(raw),
             "modified_time": (
                 datetime.fromtimestamp(modified_time_ts).isoformat()
@@ -190,8 +164,8 @@ def _raw_document(
 
     CHARTER §1.11 does not allow a fragment the user can describe with a token
     to be unreachable: the whole file text is segmented into ``content``; every
-    metadata column stays empty except ``date``, which falls back to the date
-    carried by the canonical fragment filename.
+    metadata column stays empty except ``date``, which follows the one date rule
+    (frontmatter date, else the canonical fragment filename).
     """
     path_fields = build_journal_path_fields(
         file_path, journals_dir=journals_dir, user_data_dir=user_data_dir
@@ -201,7 +175,7 @@ def _raw_document(
         "title": "",
         "title_segmented": "",
         "content": segment_for_fts(content, mode="index"),
-        "date": fragment_date_from_filename(file_path) or "",
+        "date": indexable_date(empty_indexable_metadata(), file_path),
         "location": "",
         "weather": "",
         "topic": "",
@@ -230,10 +204,11 @@ def read_journal_document(
     caller can treat a transient read failure as "not repaired" instead of
     deleting a valid row.
 
-    Every readable live fragment yields a document. When the frontmatter does
-    not parse (no leading ``---``, empty/invalid YAML, a field of an unexpected
-    type, bytes that are not valid UTF-8) the document is the raw-text row from
-    :func:`_raw_document` and ``unparsable`` is True.
+    Every readable live fragment yields a document. When the frontmatter has no
+    readable mapping root (no leading ``---``, empty/invalid YAML, a list/scalar
+    root, a recursive structure, bytes that are not valid UTF-8) the document is
+    the raw-text row from :func:`_raw_document` and ``unparsable`` is True. A
+    malformed field keeps the fragment's other metadata.
 
     ``recorded_signature`` is ``None`` unless the stability identity
     ``(st_mtime_ns, st_size, st_ino)`` is unchanged across the read; the next
@@ -546,6 +521,8 @@ def update_index(
             "total": int,
             "unparsable": int,          # additive: read as raw text (frontmatter did not parse)
             "unparsable_paths": [str],  # additive
+            "unreadable": int,          # additive: read raised OSError, nothing written
+            "unreadable_paths": [str],  # additive
             "pending_repaired": [str],  # additive: force_paths actually repaired
             "error": str (optional)
         }
@@ -592,6 +569,8 @@ def _update_index_locked(
         "total": 0,
         "unparsable": 0,
         "unparsable_paths": [],
+        "unreadable": 0,
+        "unreadable_paths": [],
         "pending_repaired": [],
         "error": None,
     }
@@ -689,7 +668,11 @@ def _update_index_locked(
                 except (OSError, IOError) as e:
                     # Transient read failure: keep whatever row and signature
                     # exist; the file stays not-current and a later scan retries.
+                    # D5: name it in the result. A full rebuild has no earlier
+                    # row to keep, so silence here would read as "indexed".
                     logger.warning("Failed to read %s: %s", rel_path, e)
+                    result["unreadable"] = (result["unreadable"] or 0) + 1
+                    result["unreadable_paths"].append(rel_path)
                     continue
 
                 if unparsable:

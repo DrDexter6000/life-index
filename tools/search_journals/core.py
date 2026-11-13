@@ -1340,6 +1340,14 @@ def hierarchical_search(
             finally:
                 _refresh_fallback_verdict()
 
+    # D4: record what the read-only signature check already proved. ``None``
+    # means no real signature check ran (e.g. a test-double report), so the key
+    # stays absent and coverage keeps its previous behaviour. ``false`` means
+    # the index was still not current after any repair — a completed build does
+    # not make the retrieval complete.
+    if _index_fallback_verdict is not None:
+        result.setdefault("index_status", {})["signature_current"] = _index_fallback_verdict
+
     # Round 19 Phase 1-C Track B: Time expression parsing
     # Sub-PRD-2.C: Prefer query_preprocessor date_range (broader pattern coverage)
     # Fallback to time_parser for edge cases not handled by preprocessor.

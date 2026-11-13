@@ -641,5 +641,117 @@ class TestIntegration:
         assert result["vector"] is None
 
 
+class TestUnreadableFragmentIsNamed:
+    """D5: a file whose read raises ``OSError`` must be named in the result.
+
+    The build still succeeds for the rest of the archive, ``total`` keeps
+    counting the fragment as a live file, and the unreadable path is reported
+    instead of silently leaving no row behind (which a full rebuild would
+    otherwise make indistinguishable from "indexed").
+    """
+
+    @staticmethod
+    def _write(data_dir: Path, date: str, body: str) -> Path:
+        month = data_dir / "Journals" / "2026" / "03"
+        month.mkdir(parents=True, exist_ok=True)
+        journal = month / f"life-index_{date}_001.md"
+        journal.write_text(
+            f'---\ntitle: "{body}"\ndate: "{date}"\ntopic: [life]\n---\n\n{body}\n',
+            encoding="utf-8",
+        )
+        return journal
+
+    @staticmethod
+    def _deny_reads(monkeypatch: pytest.MonkeyPatch, denied: Path):
+        real_read_bytes = Path.read_bytes
+
+        def denying(self, *args, **kwargs):
+            if Path(self) == denied:
+                raise PermissionError(f"synthetic unreadable file: {denied}")
+            return real_read_bytes(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_bytes", denying)
+        return real_read_bytes
+
+    def test_full_rebuild_names_the_unreadable_fragment(self, isolated_data_dir, monkeypatch):
+        unreadable = self._write(isolated_data_dir, "2026-03-04", "unreadableword")
+        readable = self._write(isolated_data_dir, "2026-03-05", "readableword")
+
+        real_read_bytes = self._deny_reads(monkeypatch, unreadable)
+        result = build_all(incremental=False)
+        monkeypatch.setattr(Path, "read_bytes", real_read_bytes)
+
+        assert result["success"] is True
+        fts = result["fts"]
+        assert fts["unreadable"] == 1
+        assert fts["unreadable_paths"] == [
+            str(unreadable.relative_to(isolated_data_dir)).replace("\\", "/")
+        ]
+        # ``total`` keeps counting every live fragment.
+        assert fts["total"] == 2
+
+        from tools.lib.search_index import init_fts_db
+
+        conn = init_fts_db()
+        try:
+            paths = {row[0] for row in conn.execute("SELECT path FROM journals").fetchall()}
+        finally:
+            conn.close()
+        unreadable_rel = str(unreadable.relative_to(isolated_data_dir)).replace("\\", "/")
+        readable_rel = str(readable.relative_to(isolated_data_dir)).replace("\\", "/")
+        assert readable_rel in paths
+        assert unreadable_rel not in paths
+
+    def test_incremental_scan_names_the_unreadable_fragment(self, isolated_data_dir, monkeypatch):
+        unreadable = self._write(isolated_data_dir, "2026-03-04", "keepthisrow")
+        readable = self._write(isolated_data_dir, "2026-03-05", "readableword")
+        assert build_all(incremental=False)["success"] is True
+
+        unreadable_rel = str(unreadable.relative_to(isolated_data_dir)).replace("\\", "/")
+        readable_rel = str(readable.relative_to(isolated_data_dir)).replace("\\", "/")
+
+        # Change the unreadable fragment, then deny the read.
+        unreadable.write_text(
+            '---\ntitle: "changed"\ndate: "2026-03-04"\ntopic: [life]\n---\n\nchanged body\n',
+            encoding="utf-8",
+        )
+        real_read_bytes = self._deny_reads(monkeypatch, unreadable)
+        result = build_all(incremental=True)
+        monkeypatch.setattr(Path, "read_bytes", real_read_bytes)
+
+        assert result["success"] is True
+        fts = result["fts"]
+        assert fts["unreadable"] == 1
+        assert fts["unreadable_paths"] == [unreadable_rel]
+        assert fts["total"] == 2
+
+        # The earlier row survives; the file stays not-current for a later retry.
+        from tools.lib.search_index import init_fts_db
+
+        conn = init_fts_db()
+        try:
+            row = conn.execute(
+                "SELECT content FROM journals WHERE path = ?", (unreadable_rel,)
+            ).fetchone()
+            stat_row = conn.execute(
+                "SELECT mtime FROM fts_file_stats WHERE path = ?", (unreadable_rel,)
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None and "keepthisrow" in row[0]
+        assert stat_row is not None
+        assert readable_rel  # the other fragment is untouched
+
+    def test_json_result_is_serializable(self, isolated_data_dir, monkeypatch):
+        import json
+
+        unreadable = self._write(isolated_data_dir, "2026-03-04", "wontexist")
+        real_read_bytes = self._deny_reads(monkeypatch, unreadable)
+        result = build_all(incremental=False)
+        monkeypatch.setattr(Path, "read_bytes", real_read_bytes)
+
+        json.dumps(result)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

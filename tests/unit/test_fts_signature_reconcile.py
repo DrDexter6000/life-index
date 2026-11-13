@@ -171,20 +171,30 @@ class TestScanReconcilesRowsAndSignatures:
             conn.close()
         assert row == ("2024", "2026-03-04", "42", "True", "3.5", "life")
 
-    def test_mapping_in_a_scalar_field_is_indexed_as_text(self, isolated_data_dir):
-        """A mapping where a scalar belongs cannot be read as a value: raw-text row."""
+    def test_mapping_in_a_scalar_field_keeps_the_metadata(self, isolated_data_dir):
+        """A mapping where a scalar belongs is flattened, not a raw-text row."""
         from tools.lib.search_index import update_index
 
         journal = _write_journal(isolated_data_dir, body="mappingword")
         journal.write_text(
-            "---\ntitle:\n  nested: value\ndate: 2026-03-04\n---\n\nmappingword\n",
+            "---\ntitle:\n  nested: value\ndate: 2026-03-04\ntopic: [life]\n"
+            "---\n\nmappingword\n",
             encoding="utf-8",
         )
 
         result = update_index(incremental=False)
 
         assert result["success"] is True
-        assert result["unparsable"] == 1
+        assert result["unparsable"] == 0
+        conn = _fts_conn(isolated_data_dir)
+        try:
+            title, date, topic = conn.execute(
+                "SELECT title, date, topic FROM journals WHERE path = ?",
+                (_rel(journal, isolated_data_dir),),
+            ).fetchone()
+        finally:
+            conn.close()
+        assert (title, date, topic) == ("nested: value", "2026-03-04", "life")
         assert "mappingword" in (_row_content(isolated_data_dir, journal) or "")
 
     def test_unparsable_source_is_indexed_as_text(self, isolated_data_dir):
@@ -340,6 +350,64 @@ class TestReadOnceConsistency:
         assert (
             _stats_row(isolated_data_dir, journal) is None
         ), "a file replaced during the read must not get a signature row"
+
+    def test_queued_path_replaced_during_the_scan_read_gets_no_signature(
+        self, isolated_data_dir, monkeypatch
+    ):
+        """D6: the same rule applies to a queued path read by the incremental scan.
+
+        A queued path is force-read even though its (mtime, size) signature still
+        matches, so the read is the only place the replacement can be noticed.
+        The replacement keeps the same mtime and size but has a new inode, so no
+        signature may be recorded and the next scan must re-read the file.
+        """
+        from tools.build_index import build_all
+        from tools.lib.pending_writes import get_pending, mark_pending
+
+        journal = _write_journal(isolated_data_dir, body="scanoldcontent")
+        assert build_all(incremental=False)["success"] is True
+        rel_path = _rel(journal, isolated_data_dir)
+        original = journal.read_bytes()
+        original_stat = journal.stat()
+        replacement = original[:-1] + (b"Z" if original[-1:] != b"Z" else b"Q")
+        assert len(replacement) == len(original)
+
+        mark_pending(rel_path)
+        real_read_bytes = Path.read_bytes
+
+        def replacing_read(self):
+            raw = real_read_bytes(self)
+            if Path(self) == journal:
+                staged = journal.with_name(journal.name + ".replacement")
+                staged.write_bytes(replacement)
+                os.utime(
+                    staged,
+                    ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns),
+                )
+                os.replace(staged, journal)
+            return raw
+
+        monkeypatch.setattr(Path, "read_bytes", replacing_read)
+        scanned = build_all(incremental=True)
+        monkeypatch.setattr(Path, "read_bytes", real_read_bytes)
+
+        assert scanned["success"] is True
+        assert rel_path in scanned["fts"]["pending_repaired"]
+        assert get_pending() == []
+        replaced_stat = journal.stat()
+        assert replaced_stat.st_size == original_stat.st_size
+        assert replaced_stat.st_mtime_ns == original_stat.st_mtime_ns
+        assert replaced_stat.st_ino != original_stat.st_ino, "the test needs a new file identity"
+        assert (
+            _stats_row(isolated_data_dir, journal) is None
+        ), "a file replaced during the scan read must not get a signature row"
+
+        # The next scan notices the missing signature and re-reads the file.
+        from tools.lib.search_index import update_index
+
+        assert update_index(incremental=True)["success"] is True
+        assert _stats_row(isolated_data_dir, journal) is not None
+        assert (journal.read_bytes()) == replacement
 
 
 class TestLiveFragmentAdmission:

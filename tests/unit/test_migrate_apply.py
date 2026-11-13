@@ -1,6 +1,5 @@
 """Tests for migrate --apply execution."""
 
-import json
 import pytest
 from pathlib import Path
 
@@ -134,3 +133,144 @@ class TestMigrateApply:
         assert result["failed_count"] == 1
         assert journal.exists(), "original file should still exist after replacement failure"
         assert journal.read_text(encoding="utf-8") == original_content
+
+
+class TestUnreadableFrontmatterIsLeftUntouched:
+    """D3: migrate never rewrites a file whose frontmatter it could not read."""
+
+    UNREADABLE = {
+        "list_root": "---\n- token\n---\n\nbody\n",
+        "scalar_root": "---\njust a scalar\n---\n\nbody\n",
+        "recursive_alias": "---\ntitle: T\ncustom: &a [*a]\n---\n\nbody\n",
+        "invalid_yaml": "---\ntitle: [unterminated\ndate: 2026-03-04\n---\n\nbody\n",
+        "false_root": "---\nfalse\n---\n\nbody\n",
+        "zero_root": "---\n0\n---\n\nbody\n",
+        "empty_list_root": "---\n[]\n---\n\nbody\n",
+        "pairs_cycle": "---\ntitle: T\ncustom: &a !!pairs [x: *a]\n---\n\nbody\n",
+    }
+
+    @staticmethod
+    def _journal(tmp_path: Path) -> Path:
+        journal = tmp_path / "Journals" / "2025" / "06" / "life-index_2025-06-15_001.md"
+        journal.parent.mkdir(parents=True, exist_ok=True)
+        return journal
+
+    @pytest.mark.parametrize("shape", sorted(UNREADABLE))
+    def test_apply_leaves_the_bytes_unchanged(self, tmp_path: Path, shape):
+        from tools.migrate import apply_migrations
+
+        journal = self._journal(tmp_path)
+        original = self.UNREADABLE[shape].encode()
+        journal.write_bytes(original)
+
+        result = apply_migrations(tmp_path / "Journals")
+
+        assert result["migrated_count"] == 0
+        assert result["failed_count"] == 1
+        assert result["failed_files"][0]["path"] == str(journal)
+        assert "unreadable" in result["failed_files"][0]["error"]
+        assert journal.read_bytes() == original
+
+    @pytest.mark.parametrize("shape", sorted(UNREADABLE))
+    def test_scan_reports_the_file_as_unparseable(self, tmp_path: Path, shape):
+        from tools.migrate import scan_journals
+
+        journal = self._journal(tmp_path)
+        journal.write_bytes(self.UNREADABLE[shape].encode())
+
+        report = scan_journals(tmp_path / "Journals")
+
+        assert report["total_scanned"] == 1
+        assert report["version_distribution"] == {"unparseable": 1}
+        assert report["needs_migration"] == 0
+
+    def test_a_legacy_recoverable_file_still_migrates(self, tmp_path: Path):
+        from tools.lib.frontmatter import parse_frontmatter
+        from tools.lib.schema import SCHEMA_VERSION
+        from tools.migrate import apply_migrations
+
+        journal = self._journal(tmp_path)
+        journal.write_text(
+            '---\ntitle: "Legacy"\ndate: 2025-06-15\ncontent: "line one\nline two"\n'
+            "---\n\n# body\n",
+            encoding="utf-8",
+        )
+
+        result = apply_migrations(tmp_path / "Journals")
+
+        assert result["migrated_count"] == 1
+        assert result["failed_count"] == 0
+        metadata, body = parse_frontmatter(journal.read_text(encoding="utf-8"))
+        assert metadata["schema_version"] == SCHEMA_VERSION
+        assert metadata["title"] == "Legacy"
+        assert "line one" in body
+
+
+class TestOneFileNeverAbortsTheRun:
+    """A file the migration cannot compute fails alone; the run goes on."""
+
+    BROKEN = {
+        "non_string_key": "---\ntitle: T\ndate: 2025-06-14\n2024: x\n---\n\nbody\n",
+        "schema_version_text": (
+            "---\nschema_version: abc\ntitle: T\ndate: 2025-06-14\n---\n\nbody\n"
+        ),
+    }
+
+    @staticmethod
+    def _month(tmp_path: Path) -> Path:
+        month = tmp_path / "Journals" / "2025" / "06"
+        month.mkdir(parents=True, exist_ok=True)
+        return month
+
+    @pytest.mark.parametrize("shape", sorted(BROKEN))
+    def test_apply_fails_that_file_and_migrates_the_next(self, tmp_path: Path, shape):
+        from tools.lib.frontmatter import parse_frontmatter
+        from tools.lib.schema import SCHEMA_VERSION
+        from tools.migrate import apply_migrations
+
+        month = self._month(tmp_path)
+        broken = month / "life-index_2025-06-14_001.md"
+        original = self.BROKEN[shape].encode()
+        broken.write_bytes(original)
+        good = month / "life-index_2025-06-15_001.md"
+        good.write_text(
+            "---\nschema_version: 1\ntitle: Good\ndate: 2025-06-15\n---\n\nbody\n",
+            encoding="utf-8",
+        )
+
+        result = apply_migrations(tmp_path / "Journals")
+
+        assert [item["path"] for item in result["failed_files"]] == [str(broken)]
+        assert broken.read_bytes() == original
+        assert result["migrated_count"] == 1
+        metadata, _body = parse_frontmatter(good.read_text(encoding="utf-8"))
+        assert metadata["schema_version"] == SCHEMA_VERSION
+
+    @pytest.mark.parametrize("shape", sorted(BROKEN))
+    def test_scan_does_not_raise(self, tmp_path: Path, shape):
+        from tools.migrate import scan_journals
+
+        (self._month(tmp_path) / "life-index_2025-06-14_001.md").write_bytes(
+            self.BROKEN[shape].encode()
+        )
+
+        report = scan_journals(tmp_path / "Journals")
+
+        assert report["total_scanned"] == 1
+
+
+class TestRewriteKeepsWhatItRead:
+    def test_a_content_key_that_is_not_text_survives_the_rewrite(self, tmp_path: Path):
+        from tools.migrate import apply_migrations
+
+        journal = tmp_path / "Journals" / "2025" / "06" / "life-index_2025-06-15_001.md"
+        journal.parent.mkdir(parents=True, exist_ok=True)
+        journal.write_text(
+            "---\ntitle: T\ndate: 2025-06-15\ncontent: [irreplaceabletoken]\n---\n\nbody\n",
+            encoding="utf-8",
+        )
+
+        result = apply_migrations(tmp_path / "Journals")
+
+        assert result["migrated_count"] == 1
+        assert "irreplaceabletoken" in journal.read_text(encoding="utf-8")

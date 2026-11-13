@@ -79,14 +79,20 @@ def test_edit_result_matches_golden_snapshot(tmp_path: Path) -> None:
     assert normalized == _load_golden("edit_result.json")
 
 
-def test_edit_of_unparsable_frontmatter_reports_complete_raw_row(
+def test_edit_of_a_malformed_scalar_field_keeps_the_other_metadata(
     isolated_data_dir: Path,
 ) -> None:
-    """D1: an edit whose committed file still has unparsable frontmatter is complete."""
+    """D1: a list where a scalar belongs costs only that field.
+
+    The edit commits a parsable fragment: the list title is flattened to text,
+    topic and date survive, the FTS row is complete (not queued, not raw text)
+    and the metadata cache stores the same values. The fragment must stay
+    searchable by a token that only occurs in its body.
+    """
     journal_path = isolated_data_dir / "Journals" / "2026" / "03" / "life-index_2026-03-04_001.md"
     journal_path.parent.mkdir(parents=True, exist_ok=True)
     journal_path.write_text(
-        "---\ntitle: [not, a, string]\ndate: 2026-03-04\n---\n\nraw body token\n",
+        "---\ntitle: [not, a, string]\ndate: 2026-03-04\ntopic: [life]\n---\n\nraw body token\n",
         encoding="utf-8",
     )
 
@@ -101,7 +107,31 @@ def test_edit_of_unparsable_frontmatter_reports_complete_raw_row(
     assert result["pending_marked"] is False
     assert result["fts_row"] == {
         "status": "complete",
-        "reason": "unparsable_frontmatter_indexed_as_text",
+        "reason": None,
         "recovery": None,
     }
-    assert result["metadata_cache_updated"] in (True, False)
+    assert result["metadata_cache_updated"] is True
+
+    import sqlite3
+
+    conn = sqlite3.connect(str(isolated_data_dir / ".index" / "journals_fts.db"))
+    try:
+        row = conn.execute(
+            "SELECT title, date, topic FROM journals WHERE path = ?",
+            ("Journals/2026/03/life-index_2026-03-04_001.md",),
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row == ("not, a, string", "2026-03-04", "life")
+
+    # The fragment is still reachable from its FTS row after the edit.
+    from tools.search_journals.core import hierarchical_search
+
+    response = hierarchical_search(query="raw body token", level=3)
+
+    assert response["success"] is True, response.get("error")
+    hits = {
+        str(item.get("path") or "").replace("\\", "/")
+        for item in (response.get("merged_results") or [])
+    }
+    assert str(journal_path).replace("\\", "/") in hits

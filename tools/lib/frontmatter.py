@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 # --- Re-exports from attachment.py (backward compat) ---
 from tools.lib.attachment import normalize_attachment_entries  # noqa: F401
+from tools.lib.journal_files import fragment_date_from_filename
 
 # --- Re-exports from schema.py (backward compat) ---
 from tools.lib.schema import (  # noqa: F401
@@ -83,6 +84,10 @@ _NOT_A_PLAIN_SCALAR = object()
 _MAPPING_INDENT = "  "
 
 
+class _RecursiveFrontmatterError(ValueError):
+    """A frontmatter collection refers to itself (a recursive YAML alias)."""
+
+
 def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
     """
     解析 YAML frontmatter
@@ -92,30 +97,256 @@ def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
 
     Returns:
         (metadata_dict, body_content)
+
+    The root of the YAML document must be a mapping. A document whose root is a
+    list or a scalar carries no metadata fields, so it reads exactly like a file
+    without frontmatter: ``({}, body)``. A recursive structure (``&a [*a]``) is
+    unreadable in the same way. Every reader may therefore assume a dict without
+    guarding the type itself.
     """
+    metadata, body, _unreadable = _read_frontmatter(content)
+    return metadata, body
+
+
+def frontmatter_is_unreadable(content: str) -> bool:
+    """Whether a present ``---`` block holds no readable mapping.
+
+    True for a list or scalar root, a YAML error the legacy-content recovery
+    cannot turn into a mapping, and a recursive structure. A file without a
+    ``---`` block and an empty block (``---\\n---``) are readable (they simply
+    carry no fields). ``migrate`` uses this to leave such a file untouched
+    instead of rewriting it as schema version 1.
+    """
+    _metadata, _body, unreadable = _read_frontmatter(content)
+    return unreadable
+
+
+def _read_frontmatter(content: str) -> Tuple[Dict[str, Any], str, bool]:
+    """The one parser behind ``parse_frontmatter`` and ``frontmatter_is_unreadable``."""
     if not content.startswith("---"):
-        return {}, content
+        return {}, content, False
 
     sections = _split_frontmatter_sections(content)
     if sections is None:
-        return {}, content
+        return {}, content, False
 
     fm_content = sections[0].strip()
     body = sections[1].strip()
 
     try:
-        metadata: Dict[str, Any] = yaml.safe_load(fm_content) or {}
-    except yaml.YAMLError:
-        metadata, body = _recover_legacy_content_frontmatter(fm_content, body)
+        # Only an absent document (``None``) reads as an empty mapping. A
+        # falsy root that is not a mapping (``false``, ``0``, ``[]``, ``""``)
+        # is text the user wrote: it is unreadable, never "no fields".
+        metadata: Any = yaml.safe_load(fm_content)
+        if metadata is None:
+            metadata = {}
+    except (yaml.YAMLError, ValueError):
+        # PyYAML raises a plain ValueError (not a YAMLError) for an impossible
+        # timestamp such as ``date: 2026-99-99``.
+        recovered, body = _recover_legacy_content_frontmatter(fm_content, body)
+        if recovered is None:
+            return {}, body, True
+        metadata = recovered
+    except RecursionError:
+        return {}, body, True
+
+    if not isinstance(metadata, dict):
+        return {}, body, True
 
     metadata, body = _merge_legacy_content_into_body(metadata, body)
 
     # yaml.safe_load 会将 ISO 8601 时间戳解析为 datetime 对象。
     # 整个代码库以字符串形式处理日期，递归转回字符串以保持接口稳定
-    # （顶层与嵌套 mapping/list 都不能向调用方泄漏 datetime）。
-    metadata = {key: _normalize_temporal_values(value) for key, value in metadata.items()}
+    # （顶层与嵌套 mapping/list 都不能向调用方泄漏 datetime）。同一次遍历
+    # 还替换 lone surrogate（SQLite/UTF-8 无法编码）并拒绝递归结构。
+    try:
+        metadata = {
+            _normalize_string_key(key): _normalize_temporal_values(value)
+            for key, value in metadata.items()
+        }
+    except (_RecursiveFrontmatterError, RecursionError):
+        return {}, body, True
 
-    return metadata, body
+    return metadata, body, False
+
+
+# The fields every derived per-fragment store (FTS row, metadata cache) may
+# index. ``normalize_indexable_metadata`` guarantees the type of each one.
+INDEXABLE_SCALAR_FIELDS = (
+    "title",
+    "date",
+    "location",
+    "weather",
+    "project",
+    "abstract",
+)
+INDEXABLE_LIST_FIELDS = (
+    "topic",
+    "tags",
+    "mood",
+    "people",
+    "links",
+    "related_entries",
+)
+
+
+# ASCII digits and hyphens only; no calendar check.
+_DATE_TEXT_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+
+# Every collection type ``yaml.safe_load`` can build: mappings, sequences,
+# ``!!pairs`` / ``!!omap`` (lists of tuples) and ``!!set``.
+_COLLECTION_TYPES = (dict, list, tuple, set, frozenset)
+
+
+def _leaf_text(value: Any) -> str:
+    """Text of one scalar leaf: never raises, always UTF-8 encodable."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return _replace_lone_surrogates(value)
+    if isinstance(value, datetime):
+        return value.isoformat(timespec="seconds")
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    try:
+        return _replace_lone_surrogates(str(value))
+    except ValueError:
+        # An integer too long for decimal conversion (``0xfff...``).
+        return hex(value) if isinstance(value, int) else ""
+    except Exception:  # noqa: BLE001 - a leaf must never raise
+        return ""
+
+
+def _collection_children(value: Any) -> List[Tuple[str, Any]]:
+    """``(prefix, child)`` pairs of one collection, in a deterministic order."""
+    if isinstance(value, dict):
+        return [(f"{_leaf_text(key)}: ", item) for key, item in value.items()]
+    if isinstance(value, (set, frozenset)):
+        # A set has no order of its own, and its iteration order changes with
+        # the process hash seed: sort by type name and text.
+        keyed = [((type(item).__name__, _leaf_text(item)), item) for item in value]
+        return [("", item) for _key, item in sorted(keyed, key=lambda pair: pair[0])]
+    return [("", item) for item in value]
+
+
+def _flatten_indexable_text(value: Any) -> str:
+    """Deterministic depth-first text of a collection value.
+
+    A mapping renders as ``key: value`` pairs, any other collection as its
+    items, joined with ``", "``; every scalar leaf stays searchable at any
+    depth. The walk is iterative, so depth cannot exhaust the stack, and a
+    collection that contains itself renders as nothing at the point of the
+    recursive reference. Never raises.
+    """
+    if not isinstance(value, _COLLECTION_TYPES):
+        return _leaf_text(value)
+
+    pieces: List[str] = []
+    on_path = {id(value)}
+    # One frame per open collection: [children iterator, id, is_first_child].
+    stack: List[List[Any]] = [[iter(_collection_children(value)), id(value), True]]
+    while stack:
+        frame = stack[-1]
+        try:
+            prefix, child = next(frame[0])
+        except StopIteration:
+            on_path.discard(frame[1])
+            stack.pop()
+            continue
+        if not frame[2]:
+            pieces.append(", ")
+        frame[2] = False
+        pieces.append(prefix)
+        if isinstance(child, _COLLECTION_TYPES):
+            if id(child) in on_path:
+                continue
+            on_path.add(id(child))
+            stack.append([iter(_collection_children(child)), id(child), True])
+        else:
+            pieces.append(_leaf_text(child))
+    return "".join(pieces)
+
+
+def _indexable_scalar_text(value: Any) -> str:
+    """Text of a scalar field: a mapping or list becomes its flattened text."""
+    return _flatten_indexable_text(value)
+
+
+def _indexable_list(value: Any) -> List[str]:
+    """Normalize a list field to ``list[str]``.
+
+    A list keeps one text per item; a mapping/list item becomes its flattened
+    text. A scalar becomes a one-item list, and a mapping at field level becomes
+    a one-item list holding its flattened text.
+    """
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return [_indexable_scalar_text(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        return sorted(_indexable_scalar_text(item) for item in value)
+    return [_indexable_scalar_text(value)]
+
+
+def empty_indexable_metadata() -> Dict[str, Any]:
+    """The indexable fields of a fragment whose frontmatter did not parse."""
+    indexable: Dict[str, Any] = {key: "" for key in INDEXABLE_SCALAR_FIELDS}
+    indexable.update({key: [] for key in INDEXABLE_LIST_FIELDS})
+    return indexable
+
+
+def normalize_indexable_metadata(metadata: Any) -> Optional[Dict[str, Any]]:
+    """Return the indexable fields of ``metadata`` with guaranteed types.
+
+    ``metadata`` is whatever :func:`parse_frontmatter` returned. A derived
+    store may index only what this function returns:
+
+    - the root must be a mapping, and not empty; that is the *only* reason this
+      function returns ``None``;
+    - scalar fields (:data:`INDEXABLE_SCALAR_FIELDS`) are text: ``None`` reads
+      as ``""``, a string stays, a number or boolean becomes its text; a
+      mapping or list becomes its flattened text;
+    - list fields (:data:`INDEXABLE_LIST_FIELDS`) are ``list[str]``: ``None``
+      becomes ``[]``, a scalar becomes a one-item list, a list keeps one text
+      per item; a mapping/list item becomes its flattened text, and a mapping
+      at field level becomes a one-item list holding its flattened text;
+    - every other key is ignored.
+
+    Flattened text is deterministic and never raises: depth-first, a mapping
+    renders as ``key: value`` pairs, a list as its items, joined with ``", "``;
+    non-string keys use ``str()``. Returns ``None`` only when the frontmatter
+    is unparsable; the caller then treats the fragment like one without
+    frontmatter (FTS: raw-text row; metadata cache: empty row). This is one rule
+    for both stores — never duplicate it.
+    """
+    if not isinstance(metadata, dict) or not metadata:
+        return None
+
+    indexable: Dict[str, Any] = {}
+    for key in INDEXABLE_SCALAR_FIELDS:
+        indexable[key] = _indexable_scalar_text(metadata.get(key))
+
+    for key in INDEXABLE_LIST_FIELDS:
+        indexable[key] = _indexable_list(metadata.get(key))
+
+    return indexable
+
+
+def indexable_date(indexable: Dict[str, Any], file_path: Path) -> str:
+    """The one date rule for every fragment reader (FTS, cache, fallback, timeline).
+
+    The first 10 characters of the normalized ``date`` text when they have the
+    shape ``YYYY-MM-DD`` (digits and hyphens; no calendar check), otherwise the
+    date carried by the canonical fragment filename, otherwise ``""``. Values
+    such as ``20260311`` or ``[2026]`` therefore never occupy the date column
+    with text no date-range query can match.
+    """
+    date_text = str(indexable.get("date") or "")[:10]
+    if _DATE_TEXT_RE.match(date_text):
+        return date_text
+    return fragment_date_from_filename(file_path) or ""
 
 
 def _split_frontmatter_sections(content: str) -> Optional[Tuple[str, str]]:
@@ -138,24 +369,75 @@ def _split_frontmatter_sections(content: str) -> Optional[Tuple[str, str]]:
     return parts[1], parts[2]
 
 
-def _normalize_temporal_values(value: Any) -> Any:
-    """Recursively convert YAML dates/timestamps to ISO strings."""
+_LONE_SURROGATE_RE = re.compile("[\ud800-\udfff]")
+
+
+def _replace_lone_surrogates(text: str) -> str:
+    """Replace lone surrogates with U+FFFD; cheap fast path for ordinary text."""
+    if text.isascii():
+        return text
+    return _LONE_SURROGATE_RE.sub("\ufffd", text)
+
+
+def _normalize_string_key(key: Any) -> Any:
+    """Replace lone surrogates in a string mapping key; other keys stay as-is."""
+    if isinstance(key, str):
+        return _replace_lone_surrogates(key)
+    return key
+
+
+def _normalize_temporal_values(value: Any, seen: Optional[set] = None) -> Any:
+    """Recursively convert YAML dates to ISO strings, make strings UTF-8 safe.
+
+    A recursive collection raises :class:`_RecursiveFrontmatterError`, which
+    ``_read_frontmatter`` turns into "unreadable" instead of letting the YAML
+    alias recurse forever.
+    """
     if isinstance(value, datetime):
         return value.isoformat(timespec="seconds")
     if isinstance(value, date):
         return value.isoformat()
+    if isinstance(value, str):
+        return _replace_lone_surrogates(value)
     if isinstance(value, dict):
-        return {key: _normalize_temporal_values(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_normalize_temporal_values(item) for item in value]
+        if seen is None:
+            seen = set()
+        if id(value) in seen:
+            raise _RecursiveFrontmatterError("recursive frontmatter mapping")
+        seen.add(id(value))
+        try:
+            return {
+                _normalize_string_key(key): _normalize_temporal_values(item, seen)
+                for key, item in value.items()
+            }
+        finally:
+            seen.discard(id(value))
+    if isinstance(value, (list, tuple, set, frozenset)):
+        # ``!!pairs`` / ``!!omap`` build tuples and ``!!set`` builds a set; a
+        # string or a recursive reference can hide inside any of them.
+        if seen is None:
+            seen = set()
+        if id(value) in seen:
+            raise _RecursiveFrontmatterError("recursive frontmatter collection")
+        seen.add(id(value))
+        try:
+            return type(value)(_normalize_temporal_values(item, seen) for item in value)
+        finally:
+            seen.discard(id(value))
     return value
 
 
-def _recover_legacy_content_frontmatter(fm_content: str, body: str) -> Tuple[Dict[str, Any], str]:
-    """Recover metadata/body from legacy malformed `content: "..."` frontmatter."""
+def _recover_legacy_content_frontmatter(
+    fm_content: str, body: str
+) -> Tuple[Optional[Dict[str, Any]], str]:
+    """Recover metadata/body from legacy malformed `content: "..."` frontmatter.
+
+    Returns ``None`` as the metadata when no mapping can be recovered; the
+    caller then treats the frontmatter as unreadable.
+    """
     content_match = re.search(r'^content:\s*"', fm_content, re.MULTILINE)
     if not content_match:
-        return {}, body
+        return None, body
 
     metadata_prefix = fm_content[: content_match.start()].strip()
     content_block = fm_content[content_match.end() :]
@@ -164,9 +446,13 @@ def _recover_legacy_content_frontmatter(fm_content: str, body: str) -> Tuple[Dic
         content_block = content_block[:-1]
 
     try:
-        metadata: Dict[str, Any] = yaml.safe_load(metadata_prefix) or {}
-    except yaml.YAMLError:
-        return {}, body
+        metadata: Any = yaml.safe_load(metadata_prefix)
+        if metadata is None:
+            metadata = {}
+    except (yaml.YAMLError, ValueError):
+        return None, body
+    if not isinstance(metadata, dict):
+        return None, body
 
     recovered_body = content_block.strip()
     trailing_body = body.strip()
@@ -179,11 +465,17 @@ def _recover_legacy_content_frontmatter(fm_content: str, body: str) -> Tuple[Dic
 def _merge_legacy_content_into_body(
     metadata: Dict[str, Any], body: str
 ) -> Tuple[Dict[str, Any], str]:
-    legacy_content = metadata.pop("content", None)
-    if not isinstance(legacy_content, str) or not legacy_content.strip():
+    legacy_content = metadata.get("content")
+    if not isinstance(legacy_content, str):
+        # Not the legacy shape: ``content`` stays an ordinary key, so a tool
+        # that rewrites the frontmatter writes it back instead of dropping it.
+        return metadata, body
+    del metadata["content"]
+    if not legacy_content.strip():
         return metadata, body
 
-    merged_body = legacy_content.strip()
+    # The text came through YAML and may hold an escaped lone surrogate.
+    merged_body = _replace_lone_surrogates(legacy_content.strip())
     trailing_body = body.strip()
     if trailing_body:
         merged_body = f"{merged_body}\n\n{trailing_body}"

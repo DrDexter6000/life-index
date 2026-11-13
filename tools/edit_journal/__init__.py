@@ -681,7 +681,11 @@ def edit_journal(
         result["success"] = True
         logger.info(f"编辑完成：{journal_path.name}")
 
-    except (IOError, OSError) as e:
+    except (IOError, OSError, UnicodeDecodeError) as e:
+        # A file whose bytes are not valid UTF-8 cannot be rewritten without
+        # corrupting it; refuse with the standard error envelope instead of
+        # letting UnicodeDecodeError escape. Whether edit should refuse such
+        # files at all is decided elsewhere.
         logger.error(f"文件操作失败：{e}")
         return create_error_response(
             ErrorCode.WRITE_FAILED,

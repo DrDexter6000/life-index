@@ -148,12 +148,21 @@ def _collect_min_hits_signal(result: dict[str, Any]) -> tuple[list[str], list[st
 def _collect_index_freshness_signal(result: dict[str, Any]) -> list[str]:
     """Extract the index-not-fresh reason for an un-refreshed stale index.
 
-    A self-healed index (``auto_updated is True``) is fresh at retrieval time:
-    the preceding ``index_stale:`` warning is a process note, not a completeness
-    defect. Only an index that stayed stale (no auto-update happened, or the
-    update failed) makes the retrieval partial.
+    The search preflight records the verdict of its read-only signature check in
+    ``index_status.signature_current`` (D4). A ``false`` verdict means the index
+    was still not current when retrieval ran — a path whose read failed keeps
+    its path not-current no matter how often the repair retries — so the
+    retrieval cannot prove completeness even though a repair ran
+    (``auto_updated is True``).
+
+    When the key is absent no real signature check ran; the previous behaviour
+    applies: a self-healed index (``auto_updated is True``) is fresh at
+    retrieval time, and only an index that stayed stale (no auto-update
+    happened, or the update failed) makes the retrieval partial.
     """
     index_status = result.get("index_status") or {}
+    if index_status.get("signature_current") is False:
+        return [REASON_INDEX_NOT_FRESH]
     if index_status.get("auto_updated") is True:
         return []
     warnings = result.get("warnings") or []
