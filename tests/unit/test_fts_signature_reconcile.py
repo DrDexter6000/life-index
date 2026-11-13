@@ -145,6 +145,48 @@ class TestScanReconcilesRowsAndSignatures:
         assert "rawbytesword" in (_row_content(isolated_data_dir, journal) or "")
         assert _stats_row(isolated_data_dir, journal) is not None
 
+    def test_scalar_values_that_are_not_strings_keep_their_metadata(self, isolated_data_dir):
+        """Hand-written ``title: 2024`` is a readable value, not broken frontmatter."""
+        from tools.lib.search_index import update_index
+
+        journal = _write_journal(isolated_data_dir, body="scalarword")
+        journal.write_text(
+            "---\ntitle: 2024\ndate: 2026-03-04\nlocation: 42\nweather: true\n"
+            "project: 3.5\ntopic: [life]\n---\n\nscalarword\n",
+            encoding="utf-8",
+        )
+
+        result = update_index(incremental=False)
+
+        assert result["success"] is True
+        assert result["unparsable"] == 0
+        conn = _fts_conn(isolated_data_dir)
+        try:
+            row = conn.execute(
+                "SELECT title, date, location, weather, project, topic FROM journals "
+                "WHERE path = ?",
+                (_rel(journal, isolated_data_dir),),
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row == ("2024", "2026-03-04", "42", "True", "3.5", "life")
+
+    def test_mapping_in_a_scalar_field_is_indexed_as_text(self, isolated_data_dir):
+        """A mapping where a scalar belongs cannot be read as a value: raw-text row."""
+        from tools.lib.search_index import update_index
+
+        journal = _write_journal(isolated_data_dir, body="mappingword")
+        journal.write_text(
+            "---\ntitle:\n  nested: value\ndate: 2026-03-04\n---\n\nmappingword\n",
+            encoding="utf-8",
+        )
+
+        result = update_index(incremental=False)
+
+        assert result["success"] is True
+        assert result["unparsable"] == 1
+        assert "mappingword" in (_row_content(isolated_data_dir, journal) or "")
+
     def test_unparsable_source_is_indexed_as_text(self, isolated_data_dir):
         """D1: an unparsable live fragment keeps a row built from its full text."""
         from tools.lib.search_index import update_index

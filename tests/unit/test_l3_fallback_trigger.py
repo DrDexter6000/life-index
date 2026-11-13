@@ -289,3 +289,48 @@ class TestL3FallbackTrigger:
         names = {Path(str(item.get("path", ""))).name for item in result["merged_results"]}
         assert a.name in names
         assert b.name in names, "the fallback scan must recover the skipped fragment"
+
+    def test_preflight_verdict_is_not_current_while_a_path_is_still_queued(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """A path queued during the repair keeps the verdict "not current".
+
+        Its signature can match while its row is stale (the write-through that
+        queued it never refreshed the row), so matching signatures alone must
+        not switch the fallback off.
+        """
+        import tools.build_index as build_index_mod
+        from tools.lib.pending_writes import get_pending, mark_pending
+        from tools.search_journals import core as search_core
+        from tools.search_journals.keyword_pipeline import run_keyword_pipeline
+
+        a = _journal(tmp_path, "life-index_2026-03-01_001.md", body="alpha needle")
+        b = _journal(tmp_path, "life-index_2026-03-02_002.md", body="beta plain")
+        assert build_index_mod.build_all(incremental=False)["success"] is True
+        rel_a = "Journals/2026/03/" + a.name
+        rel_b = "Journals/2026/03/" + b.name
+        mark_pending(rel_a)
+
+        real_build_all = build_index_mod.build_all
+
+        def build_then_queue(**kwargs):
+            result = real_build_all(**kwargs)
+            mark_pending(rel_b)  # a write whose write-through failed meanwhile
+            return result
+
+        monkeypatch.setattr(build_index_mod, "build_all", build_then_queue)
+
+        captured: dict = {}
+        real_pipeline = run_keyword_pipeline
+
+        def recording_pipeline(**kwargs):
+            captured.update(kwargs)
+            return real_pipeline(**kwargs)
+
+        monkeypatch.setattr(search_core, "run_keyword_pipeline", recording_pipeline)
+
+        result = search_core.hierarchical_search(query="needle", level=3)
+
+        assert result.get("success") is True
+        assert get_pending() == [rel_b]
+        assert captured.get("index_signature_current") is False

@@ -1241,7 +1241,10 @@ def hierarchical_search(
             _index_fallback_verdict = False
             return
         if getattr(_post_build, "signature_checked", False):
-            _index_fallback_verdict = _post_build.fts_fresh
+            # A path still queued has a row the write-through could not
+            # refresh; its signature may match all the same, so the queue
+            # must be empty too.
+            _index_fallback_verdict = _post_build.fts_fresh and not _has_pending()
 
     # Step 1: If pending writes, trigger build and acknowledge the snapshot
     if _has_pending():

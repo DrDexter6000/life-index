@@ -87,25 +87,38 @@ def _read_identity(
     return identity, (stat.st_mtime, stat.st_size)
 
 
-def _require_str(metadata: dict[str, Any], key: str) -> str:
-    """Return a metadata scalar as ``str``; an unexpected type is unparsable."""
-    value = metadata.get(key, "")
-    if value is None:
-        return ""
-    if not isinstance(value, str):
-        raise TypeError(f"field {key!r} must be a string, got {type(value).__name__}")
-    return value
+def _scalar_text(value: Any) -> str | None:
+    """Text of a YAML scalar, or ``None`` when the value is not a scalar.
 
-
-def _metadata_text(value: Any) -> str:
-    """Normalize an indexed list-or-string field; other types are unparsable."""
+    Hand-written frontmatter such as ``title: 2024`` or ``weather: true``
+    parses to a number or a boolean. That is still a readable value: it is
+    indexed as its text instead of costing the journal its metadata.
+    """
     if value is None:
         return ""
     if isinstance(value, str):
         return value
+    if isinstance(value, (bool, int, float)):
+        return str(value)
+    return None
+
+
+def _require_str(metadata: dict[str, Any], key: str) -> str:
+    """Return a metadata scalar as text; a mapping or list here is unparsable."""
+    text = _scalar_text(metadata.get(key, ""))
+    if text is None:
+        raise TypeError(f"field {key!r} must be a scalar, got {type(metadata[key]).__name__}")
+    return text
+
+
+def _metadata_text(value: Any) -> str:
+    """Normalize an indexed list-or-scalar field; a mapping is unparsable."""
     if isinstance(value, list):
         return ", ".join(str(item) for item in value)
-    raise TypeError(f"field must be a string or list, got {type(value).__name__}")
+    text = _scalar_text(value)
+    if text is None:
+        raise TypeError(f"field must be a scalar or list, got {type(value).__name__}")
+    return text
 
 
 def _parse_content(
