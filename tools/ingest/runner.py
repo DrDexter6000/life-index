@@ -39,6 +39,7 @@ from tools.ingest.schemas import (
     STATUS_SCHEMA_VERSION,
 )
 from tools.lib.config import FILE_LOCK_TIMEOUT_DEFAULT
+from tools.lib.frontmatter import format_frontmatter
 from tools.lib.pending_writes import mark_pending
 from tools.lib.file_lock import FileLock, LockTimeoutError, get_journals_lock_path
 
@@ -134,6 +135,32 @@ def _ledger_serialized(func: _F) -> _F:
 # ---------------------------------------------------------------------------
 # execute_run
 # ---------------------------------------------------------------------------
+
+
+def _build_journal_text(journal_spec: dict[str, Any]) -> str:
+    """Render one imported journal through the shared frontmatter serializer.
+
+    ``format_frontmatter`` is the single writer for journal metadata: it
+    escapes values YAML would otherwise reinterpret and always emits the
+    current ``schema_version`` (the same helper the write tool reaches through
+    ``format_journal_content``).  The plan carries ``topic`` as one scalar while
+    the canonical journal field is a string array, so it is wrapped as a
+    one-item array: this preserves the scalar's exact text (including commas
+    and surrounding spaces) instead of letting the serializer's comma-splitting
+    path normalise it.
+    """
+    topic = journal_spec.get("topic", "")
+    topic_value: Any = topic if isinstance(topic, list) else [topic]
+    frontmatter = format_frontmatter(
+        {
+            "title": journal_spec.get("title", ""),
+            "date": journal_spec.get("date", ""),
+            "topic": topic_value,
+            "tags": journal_spec.get("tags", []),
+        }
+    )
+    content = journal_spec.get("content", "")
+    return f"{frontmatter}\n\n{content}\n"
 
 
 @_ledger_serialized
@@ -527,24 +554,9 @@ def execute_run(  # noqa: C901
                     raise RuntimeError(f"Unsafe target path: {journal_rel}")
                 journal_abs.parent.mkdir(parents=True, exist_ok=True)
 
-                # Build journal content with YAML frontmatter
-                title = journal_spec.get("title", "")
-                date = journal_spec.get("date", "")
-                topic = journal_spec.get("topic", "")
-                tags = journal_spec.get("tags", [])
-
-                tags_yaml = json.dumps(tags)  # produces ["tag1","tag2"]
-                content = journal_spec.get("content", "")
-
-                journal_text = (
-                    "---\n"
-                    f'title: "{title}"\n'
-                    f"date: {date}\n"
-                    f"topic: {topic}\n"
-                    f"tags: {tags_yaml}\n"
-                    "---\n\n"
-                    f"{content}\n"
-                )
+                # Build journal content with the shared YAML frontmatter
+                # serializer; never hand-format metadata here.
+                journal_text = _build_journal_text(journal_spec)
                 journal_abs.write_text(journal_text, encoding="utf-8")
 
                 sha256 = _file_sha256(journal_abs)
