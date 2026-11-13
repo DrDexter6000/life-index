@@ -76,7 +76,14 @@ class TestSearchFreshnessGuard:
 
         def mock_build_all(**kwargs):
             build_calls.append(kwargs)
-            return {"success": True, "fts": {"success": True}, "vector": {"success": True}}
+            return {
+                "success": True,
+                "fts": {
+                    "success": True,
+                    "pending_repaired": ["Journals/2026/03/test.md"],
+                },
+                "vector": {"success": True},
+            }
 
         monkeypatch.setattr(bi, "build_all", mock_build_all)
         _mock_search_deps(monkeypatch)

@@ -1,7 +1,6 @@
 """Tests for enhanced index --check (Round 12 Phase 3 Task 3.3)."""
 
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -74,30 +73,33 @@ class TestEnhancedCheckIndex:
         assert "overall_fresh" in freshness
 
     def test_check_healthy_when_all_good(self, tmp_path: Path):
-        """Everything normal → healthy=true."""
+        """Everything normal (matching rows + signatures) → healthy=true."""
         from tools.build_index import check_index
+        from tools.lib.search_index import update_index
 
         data_dir = tmp_path / "Life-Index"
         index_dir = data_dir / ".index"
+        journal = data_dir / "Journals" / "2026" / "03" / "life-index_2026-03-01_001.md"
+        journal.write_text(
+            "---\ntitle: test\ndate: 2026-03-01\ntopic: [life]\n---\n\nBody\n",
+            encoding="utf-8",
+        )
+        assert update_index(incremental=False)["success"] is True
 
         write_manifest(
             IndexManifest(
-                fts_count=5,
-                vector_count=5,
-                file_count=5,
+                fts_count=1,
+                vector_count=0,
+                file_count=1,
                 fts_checksum="a",
-                vector_checksum="b",
+                vector_checksum="",
                 build_timestamp="2026-04-18T12:00:00",
-                build_version="1.0.0",
+                build_version="2.0.0",
             ),
             index_dir,
         )
 
-        with (
-            patch("tools.lib.index_freshness.get_fts_count", return_value=5),
-            patch("tools.lib.index_freshness.get_vector_count", return_value=5),
-        ):
-            result = check_index()
+        result = check_index()
 
         assert result["healthy"] is True
         assert result["issues"] == []

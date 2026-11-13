@@ -5,11 +5,13 @@ import pytest
 from pathlib import Path
 
 from tools.lib.pending_writes import (
+    ack_pending,
     mark_pending,
     get_pending,
+    get_pending_generations,
     clear_pending,
     has_pending,
-    _pending_file,
+    remove_pending,
 )
 
 
@@ -25,6 +27,7 @@ def index_dir(tmp_path: Path) -> Path:
 def _override_index_dir(index_dir: Path, monkeypatch):
     """Override the get_index_dir getter for all tests."""
     import tools.lib.pending_writes as mod
+
     monkeypatch.setattr(mod, "get_index_dir", lambda: index_dir)
 
 
@@ -104,3 +107,259 @@ class TestAtomicWrite:
         data = json.loads(pfile.read_text(encoding="utf-8"))
         assert "pending" in data
         assert isinstance(data["pending"], list)
+
+
+class TestRemovePending:
+    def test_removes_only_listed_paths(self, index_dir: Path):
+        mark_pending("Journals/2026/03/a.md")
+        mark_pending("Journals/2026/03/b.md")
+        mark_pending("Journals/2026/03/c.md")
+
+        removed = remove_pending(["Journals/2026/03/a.md", "Journals/2026/03/c.md"])
+
+        assert removed == ["Journals/2026/03/a.md", "Journals/2026/03/c.md"]
+        assert get_pending() == ["Journals/2026/03/b.md"]
+
+    def test_absent_paths_are_noop(self, index_dir: Path):
+        mark_pending("Journals/2026/03/a.md")
+
+        removed = remove_pending(["Journals/2026/03/missing.md"])
+
+        assert removed == []
+        assert get_pending() == ["Journals/2026/03/a.md"]
+
+    def test_remove_from_empty_queue(self, index_dir: Path):
+        removed = remove_pending(["Journals/2026/03/a.md"])
+
+        assert removed == []
+        assert get_pending() == []
+
+    def test_no_temp_file_left(self, index_dir: Path):
+        mark_pending("Journals/2026/03/a.md")
+        remove_pending(["Journals/2026/03/a.md"])
+        temp_files = list(index_dir.glob("pending_writes.json.tmp*"))
+        assert len(temp_files) == 0
+
+    def test_interleaved_mark_and_remove_never_lose_a_path(self, index_dir, monkeypatch):
+        """Concurrent mark_pending / remove_pending must serialize.
+
+        Both mutate the queue with a read-modify-write of the same JSON file;
+        interleaved reads lose whichever write lands first. The write window
+        is widened with a short pause inside _atomic_write so the race is
+        deterministic on an unserialized implementation.
+        """
+        import threading
+        import time as _time
+
+        import tools.lib.pending_writes as mod
+
+        real_atomic_write = mod._atomic_write
+
+        def slow_atomic_write(*args):
+            _time.sleep(0.05)
+            real_atomic_write(*args)
+
+        monkeypatch.setattr(mod, "_atomic_write", slow_atomic_write)
+
+        outcomes = []
+
+        def marker():
+            mod.mark_pending("Journals/2026/03/added.md")
+            outcomes.append("marked")
+
+        def remover():
+            mod.remove_pending(["Journals/2026/03/removed.md"])
+            outcomes.append("removed")
+
+        for _round in range(3):
+            mark_pending("Journals/2026/03/removed.md")
+            outcomes.clear()
+            t1 = threading.Thread(target=marker)
+            t2 = threading.Thread(target=remover)
+            t1.start()
+            t2.start()
+            t1.join(timeout=30)
+            t2.join(timeout=30)
+            assert not t1.is_alive() and not t2.is_alive()
+            assert sorted(outcomes) == ["marked", "removed"]
+            # The remover's target is gone, and the marker's path survives.
+            assert get_pending() == ["Journals/2026/03/added.md"], (
+                f"round {_round}: interleaved queue mutation lost a path, " f"queue={get_pending()}"
+            )
+            clear_pending()
+
+
+class TestMalformedState:
+    """D6: unusable generations/counters never raise out of a read or a write."""
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            '{"pending": ["x"], "generations": {"x": "3"}}',
+            '{"pending": ["x"], "generations": {"x": 1.5}}',
+            '{"pending": ["x"], "generations": {"x": 1e999}}',
+            '{"pending": ["x"], "generations": {"x": -4}}',
+            '{"pending": ["x"], "generations": {"x": {"nested": 1}}}',
+            '{"pending": ["x"], "generations": "not-a-map"}',
+            '{"pending": ["x"], "counter": 1e999}',
+            '{"pending": ["x"], "counter": -2}',
+            '{"pending": "not-a-list"}',
+            '["x"]',
+        ],
+        ids=[
+            "string",
+            "float",
+            "infinity",
+            "negative",
+            "nested",
+            "generations-wrong-type",
+            "counter-infinity",
+            "counter-negative",
+            "pending-wrong-type",
+            "top-level-wrong-type",
+        ],
+    )
+    def test_malformed_shapes_read_as_legacy_generation(self, index_dir: Path, payload: str):
+        (index_dir / "pending_writes.json").write_text(payload, encoding="utf-8")
+
+        pending = get_pending()  # must not raise
+        generations = get_pending_generations()
+
+        assert pending in ([], ["x"])
+        if pending:
+            assert generations == {"x": 0}
+        else:
+            assert generations == {}
+
+        # A write after the malformed state must also succeed.
+        mark_pending("Journals/2026/03/after.md")
+        assert "Journals/2026/03/after.md" in get_pending()
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            '{"pending":["x"],"counter":' + "9" * 5000 + "}",
+            '{"pending":["x"],"generations":{"x":' + "9" * 5000 + "}}",
+            '{"pending":' + "[" * 100000 + "]" * 100000 + "}",
+        ],
+        ids=["huge_counter", "huge_generation", "deep_nesting"],
+    )
+    def test_values_the_json_parser_rejects_do_not_raise(self, index_dir: Path, payload: str):
+        """A queue file the JSON parser itself refuses reads as an empty queue."""
+        (index_dir / "pending_writes.json").write_text(payload, encoding="utf-8")
+
+        assert get_pending() == []
+        assert has_pending() is False
+        mark_pending("Journals/2026/03/a.md")
+        assert get_pending() == ["Journals/2026/03/a.md"]
+
+    def test_malformed_generation_ack_does_not_raise(self, index_dir: Path):
+        (index_dir / "pending_writes.json").write_text(
+            '{"pending": ["x", "y"], "generations": {"x": 1e999, "y": -1}}',
+            encoding="utf-8",
+        )
+        snapshot = get_pending_generations()
+
+        assert snapshot == {"x": 0, "y": 0}
+        assert ack_pending(snapshot, only=["x"]) == ["x"]
+        assert get_pending() == ["y"]
+
+
+class TestGenerations:
+    """Generation tokens: a re-queued path survives an older acknowledgement."""
+
+    def test_mark_bumps_generation(self, index_dir: Path):
+        mark_pending("Journals/2026/03/a.md")
+        first = get_pending_generations()
+        mark_pending("Journals/2026/03/a.md")
+        second = get_pending_generations()
+
+        assert first == {"Journals/2026/03/a.md": 1}
+        assert second == {"Journals/2026/03/a.md": 2}
+        assert get_pending() == ["Journals/2026/03/a.md"]
+
+    def test_ack_keeps_path_requeued_after_snapshot(self, index_dir: Path):
+        """The same path queued again during a scan must not be acknowledged."""
+        mark_pending("Journals/2026/03/a.md")
+        snapshot = get_pending_generations()
+        mark_pending("Journals/2026/03/a.md")  # newer event, same path
+
+        removed = ack_pending(snapshot, only=["Journals/2026/03/a.md"])
+
+        assert removed == []
+        assert get_pending() == ["Journals/2026/03/a.md"]
+
+    def test_ack_removes_unchanged_repaired_path(self, index_dir: Path):
+        mark_pending("Journals/2026/03/a.md")
+        mark_pending("Journals/2026/03/b.md")
+        snapshot = get_pending_generations()
+
+        removed = ack_pending(snapshot, only=["Journals/2026/03/a.md"])
+
+        assert removed == ["Journals/2026/03/a.md"]
+        assert get_pending() == ["Journals/2026/03/b.md"]
+
+    def test_ack_requires_a_repaired_list(self, index_dir: Path):
+        """D6: there is no permissive mode; a missing only list acknowledges nothing."""
+        mark_pending("Journals/2026/03/a.md")
+        snapshot = get_pending_generations()
+
+        with pytest.raises(TypeError):
+            ack_pending(snapshot)  # type: ignore[call-arg]
+
+        assert get_pending() == ["Journals/2026/03/a.md"]
+
+    def test_legacy_list_format_reads_as_generation_zero(self, index_dir: Path):
+        """A pre-generation pending_writes.json stays readable."""
+        (index_dir / "pending_writes.json").write_text(
+            json.dumps({"pending": ["Journals/2026/03/a.md"]}),
+            encoding="utf-8",
+        )
+
+        assert get_pending() == ["Journals/2026/03/a.md"]
+        assert get_pending_generations() == {"Journals/2026/03/a.md": 0}
+
+        snapshot = get_pending_generations()
+        mark_pending("Journals/2026/03/a.md")
+        assert ack_pending(snapshot, only=["Journals/2026/03/a.md"]) == []
+        assert get_pending() == ["Journals/2026/03/a.md"]
+
+    def test_legacy_snapshot_ack_removes_when_not_requeued(self, index_dir: Path):
+        (index_dir / "pending_writes.json").write_text(
+            json.dumps({"pending": ["Journals/2026/03/a.md"]}),
+            encoding="utf-8",
+        )
+        snapshot = get_pending_generations()
+
+        assert ack_pending(snapshot, only=["Journals/2026/03/a.md"]) == ["Journals/2026/03/a.md"]
+        assert get_pending() == []
+
+    def test_generation_is_not_reused_after_the_path_left_the_queue(self, index_dir: Path):
+        """A snapshot taken before a path left the queue must not match its next event."""
+        path = "Journals/2026/03/a.md"
+        mark_pending(path)
+        old_snapshot = get_pending_generations()
+        assert ack_pending(old_snapshot, only=[path]) == [path]
+
+        mark_pending(path)  # a later event for the same path
+
+        assert get_pending_generations()[path] > old_snapshot[path]
+        assert ack_pending(old_snapshot, only=[path]) == []
+        assert get_pending() == [path]
+
+    def test_generation_is_not_reused_after_clear(self, index_dir: Path):
+        path = "Journals/2026/03/a.md"
+        mark_pending(path)
+        old_snapshot = get_pending_generations()
+        clear_pending()
+
+        mark_pending(path)
+
+        assert ack_pending(old_snapshot, only=[path]) == []
+        assert get_pending() == [path]
+
+    def test_clear_pending_drops_generations(self, index_dir: Path):
+        mark_pending("Journals/2026/03/a.md")
+        clear_pending()
+
+        assert get_pending_generations() == {}

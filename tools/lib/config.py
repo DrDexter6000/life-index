@@ -68,6 +68,7 @@ from .search_config import (
     save_search_mode,
     FILE_LOCK_TIMEOUT_DEFAULT,
     FILE_LOCK_TIMEOUT_REBUILD,
+    FILE_LOCK_TIMEOUT_FTS_ROW,
     EMBEDDING_MODEL,
     get_model_cache_dir,
 )
@@ -293,6 +294,7 @@ __all__ = [
     "save_search_mode",
     "FILE_LOCK_TIMEOUT_DEFAULT",
     "FILE_LOCK_TIMEOUT_REBUILD",
+    "FILE_LOCK_TIMEOUT_FTS_ROW",
     "EMBEDDING_MODEL",
     "get_model_cache_dir",
 ]

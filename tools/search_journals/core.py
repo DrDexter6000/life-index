@@ -1212,14 +1212,41 @@ def hierarchical_search(
     _topic_hints = _plan.topic_hints if _plan else None
     _date_range = _date_range_dict_from_plan(_plan)
 
-    # Round 12 Phase 3: Unified freshness guard + pending consumption
-    from ..lib.pending_writes import has_pending as _has_pending, clear_pending as _clear_pending
+    # Round 12 Phase 3: Unified freshness guard + pending consumption.
+    # Freshness is decided by per-fragment (mtime, size) signatures (one
+    # read-only directory scan + two indexed DB reads), never by timestamps or
+    # manifest row counts. A non-empty pending queue always repairs.
+    from ..lib.pending_writes import (
+        ack_pending as _ack_pending,
+        has_pending as _has_pending,
+        get_pending_generations as _get_pending_generations,
+    )
     from ..lib.index_freshness import check_full_freshness as _check_full_freshness
     from ..lib.paths import get_user_data_dir as _get_user_data_dir
 
     _index_dir = _get_user_data_dir() / ".index"
+    # Verdict forwarded to the L3 fallback gate. It is only known after the
+    # read-only signature check (preflight or the check run again after a
+    # repair build); a test-double report without a real signature check
+    # leaves it None.
+    _index_fallback_verdict: bool | None = None
 
-    # Step 1: If pending writes, trigger build and consume
+    def _refresh_fallback_verdict() -> None:
+        """Re-run the read-only signature check; never trust a build result."""
+        nonlocal _index_fallback_verdict
+        try:
+            _post_build = _check_full_freshness(_index_dir)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Post-repair signature check failed: %s", exc)
+            _index_fallback_verdict = False
+            return
+        if getattr(_post_build, "signature_checked", False):
+            # A path still queued has a row the write-through could not
+            # refresh; its signature may match all the same, so the queue
+            # must be empty too.
+            _index_fallback_verdict = _post_build.fts_fresh and not _has_pending()
+
+    # Step 1: If pending writes, trigger build and acknowledge the snapshot
     if _has_pending():
         result["index_status"] = {
             "pending_before_search": True,
@@ -1230,6 +1257,11 @@ def hierarchical_search(
             from ..build_index import build_all as _build_all
 
             logger.info("Pending writes detected, triggering incremental index update")
+            # Snapshot with generations: only a path whose generation is
+            # still the one read and whose file was actually repaired may
+            # leave the queue. A path re-queued during the build keeps its
+            # newer generation and survives for the next search.
+            _pending_snapshot = _get_pending_generations()
             build_kwargs: dict[str, Any] = {"incremental": True, "fts_only": True}
             if derived_index_only:
                 build_kwargs["derived_index_only"] = True
@@ -1238,10 +1270,20 @@ def hierarchical_search(
                 build_result.get("success", True) if isinstance(build_result, dict) else True
             )
             if build_success:
-                _clear_pending()
-                result["pending_consumed"] = True
+                _fts_result = build_result.get("fts") if isinstance(build_result, dict) else None
+                _repaired = (
+                    _fts_result.get("pending_repaired") if isinstance(_fts_result, dict) else None
+                )
+                # D6: a build result without a repaired list acknowledges
+                # nothing; there is no permissive "trust the scan" mode.
+                _ack_pending(
+                    _pending_snapshot,
+                    only=_repaired if isinstance(_repaired, list) else [],
+                )
+                _queue_empty = not _has_pending()
+                result["pending_consumed"] = _queue_empty
                 result["index_status"]["auto_updated"] = True
-                result["index_status"]["pending_consumed"] = True
+                result["index_status"]["pending_consumed"] = _queue_empty
             else:
                 error = _index_update_failure_reason(build_result)
                 logger.warning("Pending index update returned unsuccessful: %s", error)
@@ -1251,12 +1293,19 @@ def hierarchical_search(
             logger.warning("Pending index update failed, continuing with stale index: %s", exc)
             result["warnings"].append(f"pending_index_update_failed: {exc}")
             result["pending_consumed"] = False
+        finally:
+            # D2: the L3 fallback verdict always comes from the read-only
+            # signature check run again after the build, never from the
+            # build's own success flag.
+            _refresh_fallback_verdict()
     else:
-        # Step 2: Check full freshness (FTS + vector + manifest)
+        # Step 2: signature check (read-only) + repair only when not current
         _freshness = _check_full_freshness(_index_dir)
         result["index_status"] = {
             "freshness": _freshness.to_dict(),
         }
+        if getattr(_freshness, "signature_checked", False):
+            _index_fallback_verdict = _freshness.fts_fresh
         if not _freshness.overall_fresh:
             for issue in _freshness.issues:
                 result["warnings"].append(f"index_stale: {issue}")
@@ -1288,6 +1337,8 @@ def hierarchical_search(
             except Exception as exc:
                 logger.warning("Auto index update failed: %s", exc)
                 result.setdefault("index_status", {})["auto_updated"] = False
+            finally:
+                _refresh_fallback_verdict()
 
     # Round 19 Phase 1-C Track B: Time expression parsing
     # Sub-PRD-2.C: Prefer query_preprocessor date_range (broader pattern coverage)
@@ -1401,6 +1452,7 @@ def hierarchical_search(
             candidate_paths=candidate_paths,
             entity_expanded=_entity_expanded,
             use_metadata_cache=use_metadata_cache,
+            index_signature_current=_index_fallback_verdict,
         )
 
         # R1-Prep: Structured metadata retrieval (shared helper)

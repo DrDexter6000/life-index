@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Shared journal path normalization helpers."""
 
+import os
 from pathlib import Path
 from typing import Any, Dict
 
@@ -10,7 +11,24 @@ def _normalize_slashes(path: Path | str) -> str:
 
 
 def safe_relative_path(path: Path | str, base: Path | str) -> str:
-    """Return a normalized relative path when possible, else normalized absolute path."""
+    """Return a normalized relative path when possible, else normalized absolute path.
+
+    The fast path is a string-prefix comparison. It may only be used when its
+    result is guaranteed identical to the lexical ``Path.relative_to`` rule:
+    both arguments must already be ``Path`` objects, whose string form is
+    normalized (separators collapsed, ``.`` removed). A raw string such as
+    ``"foo//bar"`` keeps doubled separators, and the prefix fast path would
+    then return a different relative string. Anything else falls back.
+
+    The strings are compared as ``Path`` renders them, without rewriting
+    separators: on POSIX a backslash is an ordinary filename character, not a
+    separator, so ``Path("a\\b")`` is one component and is not under ``a``.
+    """
+    if isinstance(path, Path) and isinstance(base, Path):
+        prefix = str(base).rstrip(os.sep) + os.sep
+        path_str = str(path)
+        if path_str.startswith(prefix):
+            return _normalize_slashes(path_str[len(prefix) :])
     path_obj = Path(path)
     base_obj = Path(base)
     try:

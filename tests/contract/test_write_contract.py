@@ -270,6 +270,7 @@ class TestWriteJournalResponseShape:
             "legacy_indices",
             "metadata_relations",
             "metadata_cache_row",
+            "fts_row",
             "mark_pending",
             "index_b",
             "entity_candidates",
@@ -334,8 +335,12 @@ class TestWriteJournalStatusEnums:
         result = _run_write(data, writable_env)
         assert result["write_outcome"] in VALID_WRITE_OUTCOME
 
-    def test_pending_index_queue_takes_degraded_precedence(self, writable_env):
-        """A durable pending queue is honest degraded freshness, not complete."""
+    def test_fts_write_through_keeps_normal_write_undegraded(self, writable_env):
+        """A completed FTS write-through leaves nothing pending, so no degradation.
+
+        The pending queue is now the failure-repair path only: mark_pending is
+        recorded as skipped when the journal's FTS row was written through.
+        """
         data = {
             "date": "2026-03-14",
             "title": "Pending Test",
@@ -348,8 +353,13 @@ class TestWriteJournalStatusEnums:
         result = _run_write(data, writable_env)
         if result["success"]:
             assert result["needs_confirmation"] is True
-            assert result["write_outcome"] == "success_degraded"
-            assert result["index_status"] == "degraded"
+            fts_records = [r for r in result["side_effects"] if r["name"] == "fts_row"]
+            assert [r["status"] for r in fts_records] == ["complete"]
+            pending_records = [r for r in result["side_effects"] if r["name"] == "mark_pending"]
+            assert [r["status"] for r in pending_records] == ["skipped"]
+            assert result["write_outcome"] == "success_pending_confirmation"
+            assert result["index_status"] == "complete"
+            assert result["side_effects_status"] == "complete"
 
     def test_failed_write_outcome_is_failed(self, writable_env):
         """Failed write → write_outcome is 'failed'."""

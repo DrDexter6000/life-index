@@ -33,7 +33,7 @@ def _create_journal(journals_dir: Path, name: str, title: str = "Test") -> Path:
 
 
 def _create_fts_db(index_dir: Path, paths: list[str]) -> Path:
-    """Create a minimal FTS database with given paths."""
+    """Create a minimal FTS database with given paths and signatures."""
     db_path = index_dir / "journals_fts.db"
     conn = sqlite3.connect(str(db_path))
     conn.execute("""
@@ -44,6 +44,24 @@ def _create_fts_db(index_dir: Path, paths: list[str]) -> Path:
             file_hash TEXT, modified_time TEXT, title_segmented TEXT
         )
     """)
+    # Signature side table: freshness is decided by (mtime, size) per path.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS fts_file_stats (
+            path TEXT PRIMARY KEY, mtime REAL NOT NULL, size INTEGER NOT NULL
+        )
+    """)
+    # Current version keys: an old/missing meta still triggers a rebuild.
+    from tools.lib.chinese_tokenizer import get_dict_hash
+    from tools.lib.search_constants import TOKENIZER_VERSION
+    from tools.lib.search_index import FTS_SCHEMA_VERSION
+
+    conn.execute("CREATE TABLE IF NOT EXISTS index_meta (key TEXT PRIMARY KEY, value TEXT)")
+    for key, value in (
+        ("tokenizer_version", str(TOKENIZER_VERSION)),
+        ("schema_version", str(FTS_SCHEMA_VERSION)),
+        ("dict_hash", get_dict_hash()),
+    ):
+        conn.execute("INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)", (key, value))
     # Create FTS virtual table so get_fts_count() can query it
     conn.execute("""
         CREATE VIRTUAL TABLE IF NOT EXISTS journals_fts
@@ -59,6 +77,13 @@ def _create_fts_db(index_dir: Path, paths: list[str]) -> Path:
             "INSERT OR REPLACE INTO journals_fts (title) VALUES (?)",
             ("Test",),
         )
+        journal_file = index_dir.parent / p
+        if journal_file.exists():
+            stat = journal_file.stat()
+            conn.execute(
+                "INSERT OR REPLACE INTO fts_file_stats (path, mtime, size) VALUES (?, ?, ?)",
+                (p, stat.st_mtime, stat.st_size),
+            )
     conn.commit()
     conn.close()
     return db_path

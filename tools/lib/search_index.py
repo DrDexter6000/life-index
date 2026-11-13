@@ -25,7 +25,12 @@ from .search_constants import FTS_LIMIT, FTS_MIN_RELEVANCE, TOKENIZER_VERSION
 
 # Bump this whenever the FTS table schema changes (columns added/removed).
 # Ensures incremental updates auto-trigger a full rebuild when needed.
-FTS_SCHEMA_VERSION: int = 2  # v2: title split into raw (UNINDEXED) + title_segmented (indexed)
+FTS_SCHEMA_VERSION: int = 3
+# v3: adds the fts_file_stats side table ((mtime, size) signatures) so the
+# incremental scan decides "unchanged" from stat instead of hashing every
+# file. Existing v2 installations rebuild once automatically on the version
+# mismatch, populating the stats table.
+# v2: title split into raw (UNINDEXED) + title_segmented (indexed)
 
 # 索引存储目录 (deprecated: use get_index_dir() / get_fts_db_path())
 INDEX_DIR = get_index_dir()  # deprecated: use get_index_dir()
@@ -83,6 +88,22 @@ def init_fts_db(*, force_recreate: bool = False) -> sqlite3.Connection:
         )
     """)
 
+    # 文件签名侧表：(mtime, size)，供增量扫描做 stat-only 判定。
+    # 普通表（非 FTS 列）；随 journals 一起由重建/写穿/增量扫描重建。
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS fts_file_stats (
+            path TEXT PRIMARY KEY,
+            mtime REAL NOT NULL,
+            size INTEGER NOT NULL
+        )
+    """)
+
+    if force_recreate:
+        # The signatures describe rows in the journals table. Recreating (or
+        # emptying) the table invalidates every one of them; keeping them
+        # would make the next scan skip files whose row no longer exists.
+        cursor.execute("DELETE FROM fts_file_stats")
+
     conn.commit()
     return conn
 
@@ -107,59 +128,68 @@ def ensure_fts_schema() -> Dict[str, Any]:
     if not get_fts_db_path().exists():
         return result
 
+    from .config import FILE_LOCK_TIMEOUT_REBUILD
+    from .file_lock import FileLock, LockTimeoutError, get_index_lock_path
+
     try:
-        conn = sqlite3.connect(str(get_fts_db_path()))
-        cursor = conn.cursor()
+        with FileLock(get_index_lock_path(), timeout=FILE_LOCK_TIMEOUT_REBUILD):
+            conn = sqlite3.connect(str(get_fts_db_path()))
+            cursor = conn.cursor()
 
-        # Check if title_segmented column exists
-        cursor.execute("PRAGMA table_info(journals)")
-        columns = {row[1] for row in cursor.fetchall()}
+            # Check if title_segmented column exists
+            cursor.execute("PRAGMA table_info(journals)")
+            columns = {row[1] for row in cursor.fetchall()}
 
-        if "title_segmented" in columns:
-            # Already v2 schema, no migration needed
+            if "title_segmented" in columns:
+                # Already v2 schema, no migration needed
+                conn.close()
+                return result
+
+            # v1 schema detected — need migration
+            import logging
+            from datetime import datetime, timezone
+
+            logger = logging.getLogger(__name__)
+            logger.info("[migration] FTS schema upgrade: title column split (v1 → v2)")
+
+            # Record migration log before destructive operation
+            migration_log = {
+                "from": "v1_title_only",
+                "to": "v2_title_split",
+                "ts": datetime.now(timezone.utc).isoformat(),
+            }
+            cursor.execute(
+                "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
+                ("migration_log", json.dumps(migration_log, ensure_ascii=False)),
+            )
+            conn.commit()
+
+            # Drop old table and recreate with v2 schema
+            cursor.execute("DROP TABLE IF EXISTS journals")
+            conn.commit()
             conn.close()
-            return result
 
-        # v1 schema detected — need migration
+            # Re-init with v2 schema + rebuild from files
+            conn = init_fts_db(force_recreate=True)
+            conn.close()
+
+            # Rebuild index from journal files (the lock is already held).
+            rebuild_result = update_index(incremental=False, lock_held=True)
+            logger.info(
+                "[migration] FTS rebuild complete: added=%d, total=%d",
+                rebuild_result.get("added", 0),
+                rebuild_result.get("total", 0),
+            )
+
+            result["migrated"] = True
+            result["migration_log"] = migration_log
+            result["rebuild_result"] = rebuild_result
+
+    except LockTimeoutError as e:
         import logging
-        from datetime import datetime, timezone
 
-        logger = logging.getLogger(__name__)
-        logger.info("[migration] FTS schema upgrade: title column split (v1 → v2)")
-
-        # Record migration log before destructive operation
-        migration_log = {
-            "from": "v1_title_only",
-            "to": "v2_title_split",
-            "ts": datetime.now(timezone.utc).isoformat(),
-        }
-        cursor.execute(
-            "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
-            ("migration_log", json.dumps(migration_log, ensure_ascii=False)),
-        )
-        conn.commit()
-
-        # Drop old table and recreate with v2 schema
-        cursor.execute("DROP TABLE IF EXISTS journals")
-        conn.commit()
-        conn.close()
-
-        # Re-init with v2 schema + rebuild from files
-        conn = init_fts_db(force_recreate=True)
-        conn.close()
-
-        # Rebuild index from journal files
-        rebuild_result = update_index(incremental=False)
-        logger.info(
-            "[migration] FTS rebuild complete: added=%d, total=%d",
-            rebuild_result.get("added", 0),
-            rebuild_result.get("total", 0),
-        )
-
-        result["migrated"] = True
-        result["migration_log"] = migration_log
-        result["rebuild_result"] = rebuild_result
-
+        logging.getLogger(__name__).error("[migration] FTS schema migration lock timeout: %s", e)
+        result["error"] = str(e)
     except (sqlite3.Error, OSError) as e:
         import logging
 
@@ -195,6 +225,66 @@ def write_index_meta(conn: sqlite3.Connection) -> None:
         ("last_updated", datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
+
+
+def upsert_fts_row(
+    file_path: Path, journals_dir: Optional[Path] = None
+) -> Optional[Dict[str, Any]]:
+    """Upsert exactly one journal's FTS row (write/edit post-commit step).
+
+    Builds the row from **one read** of the committed file through the same
+    parse path a full rebuild uses, so the stored row is identical to a
+    rebuilt one (real ``file_hash``, the file's real mtime in
+    ``modified_time``). The file's ``(mtime, size)`` signature is recorded
+    only when ``(st_mtime_ns, st_size, st_ino)`` is unchanged across that
+    read; otherwise the row is stored without a signature so the next scan
+    re-reads the file.
+
+    Holds the index ``FileLock`` (the one ``build_all`` holds for a whole
+    build) with a short timeout, so a write-through can never interleave
+    inside a rebuild's enumerate → delete/insert window and be wiped. When
+    the lock is busy (typically: a rebuild is running), the write-through
+    fails fast into the caller's pending-queue fallback instead. Lock order
+    is journals lock → index lock; nothing acquires them in the reverse
+    order.
+
+    ``index_meta.last_updated`` is deliberately not touched: only a completed
+    archive scan (rebuild or incremental) may advance it. Version keys stay
+    untouched so a database that still needs a version-triggered rebuild
+    keeps signalling it.
+
+    Returns the stored row dict, or ``None`` when the path is not a live
+    fragment of this journals tree. A live fragment whose frontmatter does not
+    parse still gets a row (raw text, empty metadata); the returned dict then
+    carries ``unparsable: True``. Infrastructural failures raise. A failure
+    never loses or blocks the journal; recovery is ``life-index index`` or the
+    queued pending repair.
+    """
+    from . import fts_update
+    from .config import FILE_LOCK_TIMEOUT_FTS_ROW
+    from .file_lock import FileLock, get_index_lock_path
+    from .journal_files import is_live_fragment_path
+
+    resolved_journals_dir = journals_dir if journals_dir is not None else get_journals_dir()
+    if not is_live_fragment_path(file_path, resolved_journals_dir):
+        return None
+
+    with FileLock(get_index_lock_path(), timeout=FILE_LOCK_TIMEOUT_FTS_ROW):
+        conn = init_fts_db()
+        try:
+            doc, signature, unparsable = fts_update.read_journal_document(
+                file_path, resolved_journals_dir, get_user_data_dir()
+            )
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM journals WHERE path = ?", (doc["path"],))
+            fts_update.insert_fts_doc(cursor, doc)
+            fts_update.record_file_signature(cursor, doc["path"], signature)
+            conn.commit()
+            if unparsable:
+                doc["unparsable"] = True
+            return doc
+        finally:
+            conn.close()
 
 
 def check_index_freshness() -> Dict[str, Any]:
@@ -357,12 +447,19 @@ def parse_journal(file_path: Path) -> Optional[Dict[str, Any]]:
     return _parse_journal(file_path, get_journals_dir(), get_user_data_dir())
 
 
-def update_index(incremental: bool = True) -> Dict[str, Any]:
+def update_index(
+    incremental: bool = True,
+    force_paths: Optional[List[str]] = None,
+    lock_held: bool = False,
+) -> Dict[str, Any]:
     """
     更新搜索索引
 
     Args:
         incremental: True=仅更新变更，False=全量重建
+        force_paths: 无论签名是否变化都必须重读的路径（pending 队列快照）
+        lock_held: True 表示调用方已持有共享 index lock（例如 build_all）；
+            默认本函数自己获取锁。
 
     Returns:
         {
@@ -371,10 +468,28 @@ def update_index(incremental: bool = True) -> Dict[str, Any]:
             "updated": int,
             "removed": int,
             "total": int,
+            "unparsable": int,
+            "unparsable_paths": [str],
+            "pending_repaired": [str],
             "needs_rebuild": bool (if version mismatch detected),
             "error": str (optional)
         }
     """
+    if lock_held:
+        return _run_update_index(incremental, force_paths)
+
+    from .config import FILE_LOCK_TIMEOUT_REBUILD
+    from .file_lock import FileLock, get_index_lock_path
+
+    with FileLock(get_index_lock_path(), timeout=FILE_LOCK_TIMEOUT_REBUILD):
+        return _run_update_index(incremental, force_paths)
+
+
+def _run_update_index(
+    incremental: bool,
+    force_paths: Optional[List[str]],
+) -> Dict[str, Any]:
+    """Run one index update while the shared index lock is held."""
     from .fts_update import update_index as _update_index
 
     # Check if index needs rebuild due to tokenizer/dict changes (T1.4)
@@ -399,7 +514,13 @@ def update_index(incremental: bool = True) -> Dict[str, Any]:
     init_func: Callable[[], sqlite3.Connection] = init_fts_db if incremental else _recreate
 
     result = _update_index(
-        init_func, get_fts_db_path(), get_journals_dir(), get_user_data_dir(), incremental
+        init_func,
+        get_fts_db_path(),
+        get_journals_dir(),
+        get_user_data_dir(),
+        incremental,
+        force_paths=force_paths,
+        lock_held=True,
     )
 
     # After successful update, write version metadata (T1.4)

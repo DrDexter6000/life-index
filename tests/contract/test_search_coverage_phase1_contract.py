@@ -1084,10 +1084,14 @@ def test_o_min_hits_recovery_by_fallback_reports_no_gap(
             return_value={"results": [], "truncated": False, "total_available": 0},
         ),
         patch("tools.lib.search_index.search_fts", return_value=_min_hits_fts_items()),
-        patch("tools.search_journals.keyword_pipeline.search_l3_content", return_value=recovered),
+        patch(
+            "tools.search_journals.keyword_pipeline.search_l3_content",
+            return_value=recovered,
+        ) as mock_scan,
     ):
         result = hierarchical_search(query="苹果香蕉", use_index=True, emit_metrics=False)
 
+    assert mock_scan.called, "the recall fallback must run when FTS recall is low"
     coverage = find_coverage(result)
     assert coverage is not None
     assert (
@@ -1299,7 +1303,8 @@ _COVERAGE_CONSUMPTION_RULES: dict[str, dict[str, tuple[str, ...]]] = {
     "r4_resource_bound_is_not_zero_results": {
         "SKILL.md": (
             "`success:false` + `E0301` + `reason=retrieval_resource_bound` 不是零结果",
-            "先收窄 date/topic/person/project/entity/facet，或走 `index-tree ensure` → `discover` → `navigate`，再重试",
+            "先收窄 date/topic/person/project/entity/facet，或走 `index-tree ensure` → "
+            "`discover` → `navigate`，再重试",
             "仍超界则如实报告 `observed`/`bound` 与未完成状态，不猜结论",
         ),
         "PLAYBOOK": (

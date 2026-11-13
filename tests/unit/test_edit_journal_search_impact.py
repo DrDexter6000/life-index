@@ -43,6 +43,12 @@ def test_search_keeps_edit_pending_when_auto_index_returns_unsuccessful(
     )
 
     assert edit_result["success"] is True
+    assert edit_result["fts_row_updated"] is True
+    assert pending_writes.get_pending() == []
+
+    # A failed FTS write-through is what queues a path now; simulate that
+    # repair state and verify the search side keeps it when the build fails.
+    pending_writes.mark_pending("Journals/2026/03/life-index_2026-03-14_001.md")
     assert pending_writes.get_pending() == ["Journals/2026/03/life-index_2026-03-14_001.md"]
 
     monkeypatch.setattr(

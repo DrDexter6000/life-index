@@ -354,14 +354,16 @@ def get_journals_lock_path() -> Path:
 
 def get_index_lock_path() -> Path:
     """
-    Get the lock file path for index operations.
+    Get the lock file path shared by every FTS database writer.
 
     Returns:
-        Path to the index.lock file in the Life-Index data directory.
+        Path to ``.index/index.lock`` in the Life-Index data directory. The
+        lock lives in the rebuildable ``.index/`` tree because source-safe
+        builds (``derived_index_only``) may create state only there.
     """
     from .paths import get_user_data_dir
 
-    return get_user_data_dir() / ".cache" / "index.lock"
+    return get_user_data_dir() / ".index" / "index.lock"
 
 
 # Convenience functions for common use cases

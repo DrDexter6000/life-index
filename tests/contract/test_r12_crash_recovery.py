@@ -74,6 +74,7 @@ class TestCrashRecovery:
             "FR",
             (),
             {
+                "fts_fresh": False,
                 "overall_fresh": False,
                 "issues": ["fts_stale: FTS index missing"],
                 "to_dict": lambda self: {
@@ -115,12 +116,20 @@ class TestCrashRecovery:
 
         def mock_build_all(**kwargs):
             build_calls.append(kwargs)
-            return {"success": True, "fts": {"success": True}, "vector": {"success": True}}
+            return {
+                "success": True,
+                "fts": {
+                    "success": True,
+                    "pending_repaired": ["Journals/2026/03/test.md"],
+                },
+                "vector": {"success": True},
+            }
 
         _fresh_report = type(
             "FR",
             (),
             {
+                "fts_fresh": True,
                 "overall_fresh": True,
                 "issues": [],
                 "to_dict": lambda self: {

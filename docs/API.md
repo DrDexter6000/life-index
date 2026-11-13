@@ -697,11 +697,11 @@ python -m tools.write_journal --data '<json>'
 ```json
 {
   "success": true,
-  "write_outcome": "success_degraded",
+  "write_outcome": "success_pending_confirmation",
   "journal_path": "C:/Users/.../Documents/Life-Index/Journals/2026/03/life-index_2026-03-10_001.md",
   "updated_indices": ["C:/Users/.../Documents/Life-Index/by-topic/主题_work.md"],
-  "index_status": "degraded",
-  "side_effects_status": "degraded",
+  "index_status": "complete",
+  "side_effects_status": "complete",
   "side_effects": [
     {"name": "attachments", "phase": "pre_commit", "status": "complete", "blocking": true},
     {"name": "journal_stage", "phase": "pre_commit", "status": "complete", "blocking": true},
@@ -710,7 +710,8 @@ python -m tools.write_journal --data '<json>'
     {"name": "legacy_indices", "phase": "post_commit", "status": "complete", "blocking": false},
     {"name": "metadata_relations", "phase": "post_commit", "status": "complete", "blocking": false},
     {"name": "metadata_cache_row", "phase": "post_commit", "status": "complete", "blocking": false},
-    {"name": "mark_pending", "phase": "post_commit", "status": "queued", "blocking": false},
+    {"name": "fts_row", "phase": "post_commit", "status": "complete", "blocking": false},
+    {"name": "mark_pending", "phase": "post_commit", "status": "skipped", "blocking": false},
     {"name": "index_b", "phase": "post_commit", "status": "complete", "blocking": false},
     {"name": "entity_candidates", "phase": "post_commit", "status": "complete", "blocking": false},
     {"name": "confirmation_snapshot", "phase": "post_commit", "status": "complete", "blocking": false}
@@ -814,10 +815,22 @@ staging 清理失败则以具体残留路径报告 `failed`。
 ```
 
 `side_effects[*].status` 只允许 `complete / queued / skipped / failed / compensated`。
-`queued` 只表示 pending queue 已原子落盘；搜索 preflight 尚需消费它，因此 freshness 仍为 degraded。
+`skipped`（如 `mark_pending`）表示本次操作没有入队任何内容；队列里可能仍有更早的条目。
+`queued` 只出现在写穿失败的降级路径上（包括索引构建锁被长时间占用、写穿短超时）：
+pending queue 已原子落盘，等待搜索 preflight 消费修复，因此 freshness 仍为 degraded。
 `compensated` 表示 pre-commit 操作曾发生但已完成补偿，journal 未提交，可在解决原始错误后重试。
 `metadata_cache_row/post_commit` 表示该日志的元数据缓存行已在提交后即时 upsert（失败时
 `recovery_strategy` 为 `life-index index --rebuild`；下一次搜索的 reconcile 也会自愈该行）。
+`fts_row/post_commit` 表示该日志的 FTS 行已在提交后即时写穿——行由提交后的文件经与全量重建
+同一条 "file → FTS row" 路径构建（真实 `file_hash`、文件真实 mtime）。文件只读取一次：
+行内容、`file_hash` 与 `(mtime, size)` 签名都来自这一次读取；只有读取前后的
+`(st_mtime_ns, st_size, st_ino)` 一致时才记录签名，否则行照常写入但不记录签名，下一次扫描
+会重新读取该文件。写穿不修改 `index_meta.last_updated`（只有一次完成的 archive scan 才能
+推进它），因此正常写入即刻可被全文检索，且 `index_status: complete`。写穿持有索引构建的
+同一把 index lock（`docs/ARCHITECTURE.md` §5.7；短超时），因此不会与全量重建交错而丢行；
+拿不到锁（典型场景：重建正在进行）同样计为写穿失败，`recovery_strategy` 为
+`life-index index`，`mark_pending` 退回 `queued`，由下一次搜索 preflight 或
+`life-index index` 修复。
 `write --auto-index` 在 journal 已提交时追加 `auto_index/post_commit` 记录，并从完整
 记录序列重新投影兼容摘要；未提交 journal 时不会运行 auto-index。
 Dry-run 记录 `write_preview=complete`，但不伪造 `journal_commit`；其 `index_status` 仍为 `not_started`。
@@ -2987,9 +3000,16 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 }
 ```
 
-- `freshness`：`check_full_freshness()` 的完整报告
+- `freshness`：`check_full_freshness()` 的完整报告。新鲜度由**每篇 live fragment 的
+  `(mtime, size)` 签名**判定：一次只读目录扫描（`scan_journal_files()`）对比
+  `fts_file_stats` 与 `journals` 表中的 path 集合；live fragment 必须同时有 FTS 行与匹配的
+  签名行，且不得存在指向已消失文件的行/签名。该检查不打开任何日志文件；全部 current 时
+  搜索 preflight 不写任何东西。manifest 只表示上一次 archive scan 是否完成（缺失/partial
+  仍会触发一次构建），其行数不再参与新鲜度判定。
+- `fts_fresh`：上述签名检查通过且 tokenizer/dictionary/schema 版本键匹配时为 `true`。
 - `vector_fresh` 是 legacy compatibility 字段；当前始终为 `true`，不代表存在向量索引。
-- `auto_updated`：若索引 stale 触发了增量构建，为 `true`；否则为 `false`（仅 stale 时出现）
+- `auto_updated`：若签名检查/版本检查判为 stale 触发了增量构建，为 `true`；否则为 `false`
+  （仅 stale 时出现）。增量构建只读取新增/变更/待修复的文件，并删除已消失文件的 FTS 行。
 
 #### Pending-writes 路径（有待消费写入）
 
@@ -3010,9 +3030,16 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 |--------|------|--------|--------|------|
 | `pending_before_search` | bool | `true` | `true` | 搜索开始时 pending 队列非空。此字段仅在该路径存在，值**始终为 `true`**（成功/失败均不变） |
 | `auto_updated` | bool | `true` | `false` | 增量索引构建是否成功执行 |
-| `pending_consumed` | bool | `true` | `false` | pending 队列是否已清空 |
+| `pending_consumed` | bool | `true` | `false` | 本次消费开始时在队列中的路径是否已全部处理并移除、且队列已空。构建期间新入队的路径会保留到下一次搜索，此字段为 `false` |
 
 - 顶层 `pending_consumed`（bool）同时保留，作为向后兼容的快速判断字段
+- 消费使用队列的 generation 快照（`ack_pending`）：只有“构建开始时读到的 generation 仍未被
+  `mark_pending` 提升”且“该 path 实际被修复”时才移除。同一 path 在构建期间再次入队会保留，
+  构建期间新入队的 path 也原样保留
+- 队列中的 path 无论其 `(mtime, size)` 签名是否匹配都会被强制重读（签名无法证明写穿已成功）；
+  不可解析的 live fragment 仍会按原始文本建行并记录签名，计入 `fts.unparsable`，不会留在队列中
+- 队列为空时搜索先做只读签名检查；队列非空时 preflight 直接进入修复，并在修复后重新运行同一
+  只读比较。L3 fallback 使用的 `index_signature_current` 结论只来自这次比较，不来自构建返回值
 - 构建失败时，`warnings` 数组中追加 `pending_index_update_failed: {error}` 条目，pending 队列保留以供下次搜索重试
 
 ### 错误码
@@ -4931,13 +4958,33 @@ python -m tools.edit_journal --journal "<path>" [options]
   },
   "content_modified": false,
   "indices_updated": [],
+  "fts_row_updated": true,
+  "pending_marked": false,
+  "fts_row": {
+    "status": "complete",
+    "reason": null,
+    "recovery": null
+  },
   "metadata_cache_updated": true,
   "error": null
 }
 ```
 
-`metadata_cache_updated` 表示编辑提交后已即时 upsert 该日志的元数据缓存行（additive，
-布尔值）。`false` 仅表示该派生步骤失败（编辑本身成功）；下次搜索的 reconcile 或
+`fts_row_updated` 表示编辑提交后已即时写穿该日志的 FTS 行（additive，布尔值；行由提交后
+的文件经与全量重建同一条 "file → FTS row" 路径重建，旧词即刻不再命中、新词即刻可检索）。
+`false` 不必然表示失败：它也可能是该 path 不是 journals 树的 live fragment 而被正常跳过。
+调用方应读取 additive 的 `fts_row` 对象判断派生步骤真实结果：
+
+| 字段 | 值 | 含义 |
+|------|----|------|
+| `fts_row.status` | `complete` / `skipped` / `failed` | 写穿结果 |
+| `fts_row.reason` | string / null | `skipped` 时为 `not_a_live_fragment`；`complete` 时为 null，若 frontmatter 不可解析而按原始文本建行则为 `unparsable_frontmatter_indexed_as_text`；`failed` 时为写穿错误（若队列写入也失败，reason 追加 `pending_queue_failed: ...`） |
+| `fts_row.recovery` | string / null | 需要修复时给调用方的命令：写穿失败且已入队为 `life-index index`；写穿失败且入队也失败为 `life-index index --rebuild`；`skipped`/`complete` 为 null |
+
+只有 `fts_row.status == "failed"` 且 `pending_marked == true` 时，该 path 才已进入 pending
+queue，由下次搜索 preflight 或 `life-index index` 修复；`skipped` 不入队。
+`metadata_cache_updated` 始终出现在编辑结果中（布尔值；只对 journals 树的 live fragment
+生效）：`false` 表示该派生步骤失败或被跳过（编辑本身成功），下次搜索的 reconcile 或
 `life-index index --rebuild` 会恢复。
 
 ### 错误码
@@ -5183,13 +5230,31 @@ python -m tools.build_index [options]
     "success": true,
     "added": 45,
     "updated": 0,
-    "removed": 0
+    "removed": 0,
+    "total": 45,
+    "unparsable": 0,
+    "unparsable_paths": [],
+    "pending_repaired": []
   },
   "semantic_status": "disabled",
   "warnings": [],
   "duration_seconds": 1.2
 }
 ```
+
+增量模式（`life-index index`，无 `--rebuild`）以每个 live fragment 的 `(mtime, size)` 签名
+判定是否读取：新文件、签名变化、缺 FTS 行、缺签名行的文件才被读取；已消失文件删除其 FTS 行
+与签名行；pending queue 中的 path 无论签名是否匹配都会重读，修复后按 generation 快照确认移除。
+`unparsable`/`unparsable_paths` 是 additive 字段：frontmatter 不可解析的 live fragment 会按
+整篇原始文本建行（包括 frontmatter 区块里的文字；`title`/元数据列为空，`date` 回退到文件名
+日期）并记录签名；它在全量重建和每次被重读时计数，但不会再重试或留在队列中（不会触发全库
+rebuild）。这条保证只针对 FTS 行；其他派生存储对这类文件的处理见
+`docs/ARCHITECTURE.md` 的增量扫描一节。完全无法读取（`OSError`）的文件不写任何东西并保持
+not-current：增量模式下已有行与签名保持不变；全量重建先清空再写入，该文件此时没有行，
+由之后的扫描重试。`pending_repaired`
+是本次实际修复的队列 path。全量重建（`--rebuild`）读取全部 live fragment，并清空签名表；
+持锁后发现遗留的 `.rebuilding` marker 会视为创建者已死而删除并继续。一次成功的 archive scan
+（增量或全量）会推进 `index_meta.last_updated`；写穿不会。
 
 **`--check` 模式**：
 
@@ -5205,7 +5270,7 @@ python -m tools.build_index [options]
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| healthy | bool | FTS 与实际日志文件一致时为 true |
+| healthy | bool | FTS path 集合与实际日志文件一致、manifest 存在且非 partial、且逐 fragment `(mtime, size)` 签名新鲜时为 true |
 | fts_count | int | FTS 索引中的条目数 |
 | vector_count | int | Legacy compatibility 字段；当前恒为 `0` |
 | file_count | int | Journals/ 下实际日志文件数 |

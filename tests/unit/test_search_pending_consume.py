@@ -27,7 +27,14 @@ class TestSearchPendingConsume:
         def mock_build_all(**kwargs):
             built["called"] = True
             built["kwargs"] = kwargs
-            return {"success": True, "fts": {"success": True}, "vector": {"success": True}}
+            return {
+                "success": True,
+                "fts": {
+                    "success": True,
+                    "pending_repaired": ["Journals/2026/03/test.md"],
+                },
+                "vector": {"success": True},
+            }
 
         import tools.build_index as bi
         import tools.lib.search_index as si
@@ -102,7 +109,14 @@ class TestSearchPendingConsume:
         mark_pending("Journals/2026/03/test.md")
 
         def mock_build_all(**kwargs):
-            return {"success": True, "fts": {"success": True}, "vector": {"success": True}}
+            return {
+                "success": True,
+                "fts": {
+                    "success": True,
+                    "pending_repaired": ["Journals/2026/03/test.md"],
+                },
+                "vector": {"success": True},
+            }
 
         import tools.build_index as bi
         import tools.lib.search_index as si

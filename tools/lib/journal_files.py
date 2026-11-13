@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-JOURNAL_FILENAME_RE = re.compile(r"^life-index_\d{4}-\d{2}-\d{2}_\d+\.md$")
+JOURNAL_FILENAME_RE = re.compile(r"^life-index_(\d{4}-\d{2}-\d{2})_\d+\.md$")
 
 DIGEST_FILENAME_PREFIX = "digest_"
 DERIVED_INDEX_FILENAME_PREFIXES = ("index_", "monthly_", "yearly_")
@@ -49,6 +49,39 @@ def classify_journal_path(path: Path) -> JournalFileKind:
 def is_journal_file(path: Path) -> bool:
     """Return whether path name matches the canonical journal filename contract."""
     return path.is_file() and JOURNAL_FILENAME_RE.match(path.name) is not None
+
+
+def fragment_date_from_filename(path: Path) -> str | None:
+    """Return the ``YYYY-MM-DD`` date carried by a fragment filename, else None.
+
+    Uses the one canonical filename rule (``JOURNAL_FILENAME_RE``) so callers
+    that need a fallback date for an unparsable fragment never add a second
+    filename regex.
+    """
+    match = JOURNAL_FILENAME_RE.match(Path(path).name)
+    return match.group(1) if match else None
+
+
+def is_live_fragment_path(path: Path, journals_dir: Path) -> bool:
+    """Return whether one path is a live fragment of this journals tree.
+
+    The single admission rule for a derived store that keeps per-fragment
+    rows (FTS index, metadata cache): the path must live under ``journals_dir``,
+    no component of its relative path may be a dot-directory (for example
+    ``.revisions/``), and the filename must classify as a fragment.
+
+    Path-only: never opens or stats the file, so callers can use it before
+    writing to a derived store without touching the journals tree.
+    """
+    try:
+        relative = Path(path).relative_to(Path(journals_dir))
+    except ValueError:
+        return False
+    if not relative.parts:
+        return False
+    if any(part.startswith(".") for part in relative.parts[:-1]):
+        return False
+    return classify_journal_path(path) is JournalFileKind.FRAGMENT
 
 
 @dataclass(frozen=True, slots=True)
