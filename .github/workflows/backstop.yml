@@ -1,0 +1,96 @@
+name: Backstop
+
+# The online backstop: one job, never a required check. It covers what a
+# local gate run cannot — a clean hosted Linux with Python 3.11 and a clean
+# wheel install. Failures must be triaged (docs/CI_HARD_CHECKS.md).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backstop:
+    runs-on: ubuntu-latest
+    name: Backstop (ubuntu-latest, Python 3.11)
+    env:
+      LIFE_INDEX_INDEX_FTS_ONLY: "1"
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # the gate's per-commit scans need the history
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov pytest-timeout build bandit
+          pip install -e ".[dev]"
+
+      - name: Gate fast checks (the push's outgoing commits)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+          fi
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            BASE="$(git rev-parse "${HEAD}^")"
+            echo "No usable range base (new branch history or manual dispatch);"
+            echo "the gate scans only the head commit (base = its first parent)."
+          fi
+          # One inventory in one place: the gate runs the static checks and
+          # the per-commit public-diff scans for every outgoing commit.
+          python scripts/gate.py --fast --base "$BASE" --head "$HEAD"
+
+      - name: Public Core sentinel
+        if: ${{ !cancelled() }}
+        run: python .github/scripts/run_public_core_assertions.py
+
+      - name: Full test suite
+        if: ${{ !cancelled() }}
+        run: pytest tests -v --timeout=600
+
+      - name: Build wheel and sdist
+        if: ${{ !cancelled() }}
+        run: python -m build
+
+      - name: Install built wheel in clean venv
+        if: ${{ !cancelled() }}
+        run: |
+          python -m venv .venv-wheel-smoke
+          .venv-wheel-smoke/bin/python -m pip install --upgrade pip
+          .venv-wheel-smoke/bin/python -m pip install dist/*.whl
+
+      - name: Run package onboarding smoke
+        if: ${{ !cancelled() }}
+        run: |
+          export LIFE_INDEX_DATA_DIR="$RUNNER_TEMP/life-index-smoke-data"
+          mkdir -p "$LIFE_INDEX_DATA_DIR"
+          .venv-wheel-smoke/bin/life-index version --json
+          .venv-wheel-smoke/bin/life-index bootstrap --json
+          .venv-wheel-smoke/bin/life-index health --json

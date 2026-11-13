@@ -6,8 +6,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 def test_private_corpus_runner_is_excluded_from_blocking_inventories() -> None:
     blocking_paths = (
         PROJECT_ROOT / "scripts" / "run_eval_gate.sh",
-        PROJECT_ROOT / "scripts" / "pre-push-gate.sh",
-        PROJECT_ROOT / ".github" / "workflows" / "tests.yml",
+        PROJECT_ROOT / "scripts" / "gate.py",
+        PROJECT_ROOT / ".github" / "workflows" / "backstop.yml",
     )
 
     leaks = [

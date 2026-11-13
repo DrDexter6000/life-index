@@ -13,7 +13,7 @@
 </div>
 
 <p align="center">
-  <a href="https://github.com/DrDexter6000/life-index/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/DrDexter6000/life-index/tests.yml?branch=main&label=CI" alt="CI"></a>
+  <a href="https://github.com/DrDexter6000/life-index/actions/workflows/backstop.yml"><img src="https://img.shields.io/github/actions/workflow/status/DrDexter6000/life-index/backstop.yml?branch=main&label=CI" alt="CI"></a>
   <img src="https://img.shields.io/badge/Retrieval-Keyword_+_Index_Tree_+_Entity_Graph-78206E" alt="Retrieval: Keyword + Index Tree + Entity Graph, no Vector RAG">
   <img src="https://img.shields.io/badge/python-≥3.11-3776AB?logo=python&logoColor=white" alt="Python ≥3.11">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License"></a>

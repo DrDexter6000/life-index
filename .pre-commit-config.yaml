@@ -2,6 +2,11 @@
 # Install: pip install pre-commit && pre-commit install
 # Run manually: pre-commit run --all-files
 #
+# This file owns the pre-commit (commit-time) hooks only. The push gate is
+# NOT a pre-commit hook: it is a native Git pre-push hook that forwards
+# every pushed ref to the gate. Install it with:
+#   python scripts/gate.py --install-hook
+#
 # Pinned versions — bump intentionally, not blindly.
 # Exclude rationale documented in comments below.
 

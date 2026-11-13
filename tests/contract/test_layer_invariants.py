@@ -2,24 +2,21 @@
 
 These tests are intentionally static and dependency-light.  They guard the
 project structure that keeps L2 deterministic while allowing explicit L3 /
-developer-only LLM entry points.
+developer-only LLM entry points. They also pin the shape of the local gate
+and the online backstop (docs/CI_HARD_CHECKS.md).
 """
 
 from __future__ import annotations
 
 import ast
-import os
 from pathlib import Path
-import shutil
-import stat
-import subprocess
-from uuid import uuid4
 
 import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-COVERAGE_GATE_RUNNER = REPO_ROOT / "scripts" / "run_coverage_gate.sh"
+GATE_RUNNER = REPO_ROOT / "scripts" / "gate.py"
+PRE_COMMIT_CONFIG = REPO_ROOT / ".pre-commit-config.yaml"
 
 L2_PRODUCTION_ROOTS = (
     REPO_ROOT / "tools" / "aggregate",
@@ -104,15 +101,6 @@ def _imported_modules(path: Path) -> set[str]:
     return imports
 
 
-def test_contract_gate_is_hard_required_check() -> None:
-    workflow = yaml.safe_load(
-        (REPO_ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
-    )
-    contract_job = workflow["jobs"]["contract"]
-
-    assert contract_job.get("continue-on-error") is not True
-
-
 def _workflow(path: str) -> dict:
     return yaml.safe_load((REPO_ROOT / ".github" / "workflows" / path).read_text(encoding="utf-8"))
 
@@ -120,128 +108,6 @@ def _workflow(path: str) -> dict:
 def _workflow_on(workflow: dict) -> dict:
     # PyYAML follows YAML 1.1 and parses the GitHub Actions "on" key as True.
     return workflow.get("on") or workflow.get(True)
-
-
-def _coverage_gate_bash() -> str:
-    """Locate a real Bash without hard-coding an operator-specific Windows path."""
-    if os.name != "nt":
-        bash = shutil.which("bash")
-        if bash:
-            return bash
-        pytest.skip("bash is required for the coverage-gate subprocess seam")
-
-    git = shutil.which("git")
-    if git:
-        for root in Path(git).resolve().parents:
-            candidate = root / "bin" / "bash.exe"
-            if candidate.is_file():
-                return str(candidate)
-
-    bash = shutil.which("bash")
-    if bash and Path(bash).resolve().parent.name.lower() != "system32":
-        return bash
-    pytest.skip("Git Bash is required for the Windows coverage-gate subprocess seam")
-
-
-def _write_test_python_stub(tmp_path: Path) -> Path:
-    stub_dir = tmp_path / "coverage-gate-stub-bin"
-    stub_dir.mkdir()
-    stub = stub_dir / "python"
-    stub.write_text(
-        """#!/usr/bin/env bash
-set -eu
-
-if [ "${1:-}" = "-" ]; then
-    cat >/dev/null
-    printf '%s\n' '__GATE_PYTHON_DEPENDENCY_PROBE__'
-    exit 0
-fi
-
-if [ "${1:-}" = "-m" ] && [ "${2:-}" = "pytest" ]; then
-    printf '%s\\n' '__COVERAGE_GATE_STUB_ARGS__'
-    printf '%s\\n' "$@"
-    printf '%s\\n' '__COVERAGE_GATE_STUB_ENV__'
-    printf 'LIFE_INDEX_DATA_DIR=%s\\n' "${LIFE_INDEX_DATA_DIR:-}"
-    printf 'COVERAGE_FILE=%s\\n' "${COVERAGE_FILE:-}"
-    exit 0
-fi
-
-printf 'unexpected stub python invocation: %s\\n' "$*" >&2
-exit 64
-""",
-        encoding="utf-8",
-    )
-    stub.chmod(stub.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    return stub_dir
-
-
-def _coverage_gate_env(stub_dir: Path, basetemp: str) -> dict[str, str]:
-    env = os.environ.copy()
-    env["PATH"] = str(stub_dir) + os.pathsep + env.get("PATH", "")
-    # If a platform cannot resolve the stub, fail before test collection rather
-    # than accidentally executing the real coverage inventory.
-    env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
-    env["COVERAGE_GATE_BASETEMP"] = basetemp
-    return env
-
-
-def _run_coverage_gate(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [_coverage_gate_bash(), "scripts/run_coverage_gate.sh"],
-        cwd=REPO_ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-        encoding="utf-8",
-    )
-
-
-def _run_pre_push_env_check(env: dict[str, str]) -> subprocess.Popen[str]:
-    return subprocess.Popen(
-        [_coverage_gate_bash(), "scripts/pre-push-gate.sh", "--check-env"],
-        cwd=REPO_ROOT,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-    )
-
-
-def _reported_coverage_basetemp(output: str) -> str:
-    prefix = "Using pytest basetemp: "
-    for line in output.splitlines():
-        if line.startswith(prefix):
-            return line.removeprefix(prefix)
-    raise AssertionError(f"coverage runner did not report a pytest basetemp:\n{output}")
-
-
-def _stubbed_pytest_capture(output: str) -> tuple[list[str], dict[str, str]]:
-    lines = output.splitlines()
-    args_marker = lines.index("__COVERAGE_GATE_STUB_ARGS__")
-    env_marker = lines.index("__COVERAGE_GATE_STUB_ENV__")
-    args = lines[args_marker + 1 : env_marker]
-    environment = dict(line.split("=", 1) for line in lines[env_marker + 1 :] if "=" in line)
-    return args, environment
-
-
-def test_pr_test_gates_skip_draft_wip_pushes() -> None:
-    workflow = _workflow("tests.yml")
-    draft_guard = "github.event.pull_request.draft == false"
-
-    for job_name in ("blocker", "contract", "search-eval-gate"):
-        job_if = str(workflow["jobs"][job_name].get("if", ""))
-        assert draft_guard in job_if, f"{job_name} must skip draft/WIP PR pushes"
-
-
-def test_search_eval_gate_remains_tier1_blocking_smoke() -> None:
-    workflow = _workflow("tests.yml")
-    job = workflow["jobs"]["search-eval-gate"]
-
-    assert job.get("continue-on-error") is not True
-    assert "github.event.pull_request.draft == false" in str(job.get("if", ""))
 
 
 def _gate_markers_for(rel_path: str) -> tuple[str, ...]:
@@ -279,255 +145,102 @@ def test_contract_suite_is_split_between_the_contract_and_blocker_gates() -> Non
     assert _gate_markers_for("contract/test_error_contract.py") == ("blocker",)
 
 
-def test_quarantine_remains_tier2_post_merge_only() -> None:
-    workflow = _workflow("tests.yml")
-
-    job_if = str(workflow["jobs"]["quarantine"].get("if", ""))
-    assert "github.event_name == 'push'" in job_if
-    assert "github.ref == 'refs/heads/main'" in job_if
-    assert "pull_request" not in job_if
-
-
-def test_coverage_gate_is_tier1_for_ready_prs_and_main_pushes() -> None:
-    workflow = _workflow("tests.yml")
-    job_if = str(workflow["jobs"]["coverage"].get("if", ""))
-
-    assert "github.event_name == 'push'" in job_if
-    assert "github.ref == 'refs/heads/main'" in job_if
-    assert "github.event_name == 'pull_request'" in job_if
-    assert "github.event.pull_request.draft == false" in job_if
+def test_one_local_gate_runner_owns_the_check_inventory() -> None:
+    """scripts/gate.py is the single runner; the old gate scripts are gone."""
+    assert GATE_RUNNER.is_file()
+    for retired in (
+        "scripts/pre-push-gate.sh",
+        "scripts/tier1-gate.sh",
+        "scripts/run_coverage_gate.sh",
+        ".github/workflows/tests.yml",
+        ".github/workflows/quality.yml",
+        ".github/workflows/nightly.yml",
+    ):
+        assert not (REPO_ROOT / retired).exists(), f"{retired} was replaced by the gate"
+    for kept in ("scripts/run_eval_gate.sh", "scripts/run_eval_advisory.sh"):
+        assert (REPO_ROOT / kept).is_file(), f"{kept} is a maintenance tool and stays"
 
 
-def test_coverage_gate_ci_delegates_to_the_canonical_runner() -> None:
-    workflow = _workflow("tests.yml")
-    coverage_steps = workflow["jobs"]["coverage"]["steps"]
-    coverage_runs = [str(step.get("run", "")) for step in coverage_steps if "run" in step]
-    install_step = next(
-        step for step in coverage_steps if step.get("name") == "Install dependencies"
-    )
-    coverage_step = next(
-        step for step in coverage_steps if step.get("name") == "Enforce coverage gate"
-    )
+def test_pre_push_gate_is_a_native_hook_installed_by_the_gate() -> None:
+    """pre-commit owns commit-time hooks only; the push gate is a native Git
+    pre-push hook written by the gate itself (it must see every pushed ref)."""
+    config_text = PRE_COMMIT_CONFIG.read_text(encoding="utf-8")
+    config = yaml.safe_load(config_text)
+    assert "default_install_hook_types" not in config
+    local_hooks = [
+        hook for repo in config["repos"] if repo["repo"] == "local" for hook in repo["hooks"]
+    ]
+    assert local_hooks == [], "no pre-commit hook may run the gate"
+    assert "pre-push" not in {stage for hook in local_hooks for stage in hook.get("stages", [])}
 
-    assert "pytest-cov" in str(install_step["run"])
-    assert "${{ runner.temp }}" in str(
-        coverage_step.get("env", {}).get("COVERAGE_GATE_BASETEMP", "")
-    )
-    assert coverage_runs.count("bash scripts/run_coverage_gate.sh") == 1
-    assert not any("--cov=tools" in run for run in coverage_runs)
-
-
-def test_pre_push_gate_preflights_and_runs_the_canonical_coverage_runner() -> None:
-    source = (REPO_ROOT / "scripts" / "pre-push-gate.sh").read_text(encoding="utf-8")
-
-    assert "pytest_cov" in source
-    assert "COVERAGE_TIMEOUT_SECONDS" in source
-    assert "bash scripts/run_coverage_gate.sh" in source
-    assert "--cov=tools" not in source
+    runner = GATE_RUNNER.read_text(encoding="utf-8")
+    assert "install_hook" in runner and "HOOK_TEMPLATE" in runner
+    assert '--from-hook "$@"' in runner  # the native hook forwards Git's stdin records
+    assert "check_hook" in runner  # --check-hook verifies the hook by content
 
 
-def test_pre_push_gate_allocates_a_unique_run_without_shared_temp_cleanup() -> None:
-    source = (REPO_ROOT / "scripts" / "pre-push-gate.sh").read_text(encoding="utf-8")
-
-    assert 'mktemp -d "$PYTEST_TEMP_ROOT/prepush.XXXXXX"' in source
-    assert "rm -rf .pytest_tmp/*" not in source
-    assert 'PYTEST_BASETEMP=".pytest_tmp/prepush_${TIMESTAMP}"' not in source
-
-
-def test_pre_push_env_preflight_allocates_distinct_owned_run_directories(
-    tmp_path: Path,
-) -> None:
-    env = os.environ.copy()
-    if os.name != "nt":
-        env["ALLOW_NON_GIT_BASH"] = "1"
-    # This test covers only concurrent temp ownership. Its subprocess-local
-    # Python stub makes the unrelated optional developer-tool inventory
-    # deterministic without changing the production preflight.
-    stub_dir = _write_test_python_stub(tmp_path)
-    env["PATH"] = str(stub_dir) + os.pathsep + env.get("PATH", "")
-
-    processes = [_run_pre_push_env_check(env) for _ in range(2)]
-    outputs = [process.communicate(timeout=30) for process in processes]
-    combined_outputs = [stdout + stderr for stdout, stderr in outputs]
-    run_directories: list[Path] = []
-    prefix = "Run directory: "
-
-    try:
-        for process, output in zip(processes, combined_outputs, strict=True):
-            assert process.returncode == 0, output
-            assert "__GATE_PYTHON_DEPENDENCY_PROBE__" in output
-            run_directory = next(
-                line.removeprefix(prefix) for line in output.splitlines() if line.startswith(prefix)
-            )
-            path = REPO_ROOT / run_directory
-            assert path.parent == REPO_ROOT / ".pytest_tmp"
-            assert path.is_dir()
-            run_directories.append(path)
-
-        assert len({path.name for path in run_directories}) == 2
-    finally:
-        for path in run_directories:
-            shutil.rmtree(path, ignore_errors=True)
-
-
-def test_canonical_coverage_runner_forces_an_isolated_synthetic_data_root() -> None:
-    assert COVERAGE_GATE_RUNNER.is_file()
-    source = COVERAGE_GATE_RUNNER.read_text(encoding="utf-8")
-    assert "COVERAGE_GATE_BASETEMP" in source
-    assert "RUNNER_TEMP" in source
-    assert "parent resolves outside its allowed isolated root" in source
-    assert "pytest_cov" in source
-    assert "python -m pytest" in source
-    assert '"blocker or contract"' in source
-    assert "--cov=tools" in source
-    assert "--cov-report=term-missing" in source
-    assert '--basetemp="$PYTEST_BASETEMP"' in source
-    assert 'export LIFE_INDEX_DATA_DIR="$PYTEST_BASETEMP/data"' in source
-    assert 'export COVERAGE_FILE="$PYTEST_BASETEMP/.coverage"' in source
-    assert "pwd -P" in source
-    assert '*".."*' not in source
-    assert "--cov-fail-under" not in source
-
-
-def test_coverage_runner_forces_data_and_coverage_file_with_a_stubbed_python(
-    tmp_path: Path,
-) -> None:
-    run_root = REPO_ROOT / ".pytest_tmp" / f"coverage-runner-{uuid4().hex}"
-    run_root.mkdir(parents=True)
-    inherited_data = tmp_path / "inherited-life-index-data"
-    inherited_coverage = tmp_path / "inherited-coverage-file"
-    relative_basetemp = (Path(".pytest_tmp") / run_root.name / "coverage").as_posix()
-
-    env = _coverage_gate_env(_write_test_python_stub(tmp_path), relative_basetemp)
-    env["LIFE_INDEX_DATA_DIR"] = str(inherited_data)
-    env["COVERAGE_FILE"] = str(inherited_coverage)
-
-    try:
-        result = _run_coverage_gate(env)
-        assert result.returncode == 0, result.stdout + result.stderr
-        basetemp = _reported_coverage_basetemp(result.stdout)
-        pytest_args, captured_env = _stubbed_pytest_capture(result.stdout)
-
-        assert "-m" in pytest_args
-        assert "blocker or contract" in pytest_args
-        assert "--cov=tools" in pytest_args
-        assert "--cov-report=term-missing" in pytest_args
-        assert f"--basetemp={basetemp}" in pytest_args
-        assert captured_env["LIFE_INDEX_DATA_DIR"] == f"{basetemp}/data"
-        assert captured_env["COVERAGE_FILE"] == f"{basetemp}/.coverage"
-        assert captured_env["LIFE_INDEX_DATA_DIR"] != str(inherited_data)
-        assert captured_env["COVERAGE_FILE"] != str(inherited_coverage)
-        assert "Ignoring inherited LIFE_INDEX_DATA_DIR" in result.stdout
-        assert "Ignoring inherited COVERAGE_FILE" in result.stdout
-    finally:
-        shutil.rmtree(run_root, ignore_errors=True)
-
-
-def test_coverage_runner_accepts_a_physically_contained_dotdot_parent(tmp_path: Path) -> None:
-    run_root = REPO_ROOT / ".pytest_tmp" / f"coverage-dotdot-{uuid4().hex}"
-    (run_root / "normalizing-parent").mkdir(parents=True)
-    relative_basetemp = (
-        Path(".pytest_tmp") / run_root.name / "normalizing-parent" / ".." / "coverage"
-    ).as_posix()
-
-    try:
-        result = _run_coverage_gate(
-            _coverage_gate_env(_write_test_python_stub(tmp_path), relative_basetemp)
-        )
-        assert result.returncode == 0, result.stdout + result.stderr
-        assert _reported_coverage_basetemp(result.stdout).endswith(f"/{run_root.name}/coverage")
-    finally:
-        shutil.rmtree(run_root, ignore_errors=True)
-
-
-def test_coverage_runner_rejects_symlinked_parent_before_creating_external_child(
-    tmp_path: Path,
-) -> None:
-    run_root = REPO_ROOT / ".pytest_tmp" / f"coverage-symlink-{uuid4().hex}"
-    outside_parent = tmp_path / "outside-parent"
-    outside_parent.mkdir()
-    run_root.mkdir(parents=True)
-    linked_parent = run_root / "linked-parent"
-    try:
-        linked_parent.symlink_to(outside_parent, target_is_directory=True)
-    except OSError:
-        shutil.rmtree(run_root, ignore_errors=True)
-        pytest.skip("symlink creation is unavailable on this platform")
-
-    relative_basetemp = (
-        Path(".pytest_tmp") / run_root.name / "linked-parent" / "coverage"
-    ).as_posix()
-    try:
-        result = _run_coverage_gate(
-            _coverage_gate_env(_write_test_python_stub(tmp_path), relative_basetemp)
-        )
-        assert result.returncode != 0
-        assert "COVERAGE GATE FAIL" in result.stdout + result.stderr
-        assert not (outside_parent / "coverage").exists()
-    finally:
-        linked_parent.unlink(missing_ok=True)
-        shutil.rmtree(run_root, ignore_errors=True)
-
-
-def test_ci_inventory_promotes_coverage_and_keeps_quarantine_tier2() -> None:
-    inventory = (REPO_ROOT / "docs" / "CI_HARD_CHECKS.md").read_text(encoding="utf-8")
-
-    assert (
-        "| 4 | coverage gate | `bash scripts/run_coverage_gate.sh` | tests.yml | "
-        "`bash scripts/run_coverage_gate.sh` |"
-    ) in inventory
-    assert (
-        "coverage runs on ready/non-draft pull requests targeting main and on push to main"
-        in inventory.lower()
-    )
-    assert "| C | coverage |" not in inventory
-    assert (
-        "| Q | quarantine | `pytest -m quarantine --timeout=300` | tests.yml | push to main |"
-        in inventory
-    )
-
-
-def test_nightly_tier2_runs_on_schedule_manual_and_post_merge() -> None:
-    workflow = _workflow("nightly.yml")
+def test_backstop_is_one_non_blocking_ubuntu_py311_job() -> None:
+    workflow = _workflow("backstop.yml")
     triggers = _workflow_on(workflow)
 
-    assert "schedule" in triggers
-    assert "workflow_dispatch" in triggers
+    assert set(triggers) == {"push", "pull_request", "workflow_dispatch"}
     assert triggers["push"]["branches"] == ["main"]
-    assert "full-suite" in workflow["jobs"]
-    assert "package-onboarding" in workflow["jobs"]
+    assert triggers["pull_request"]["branches"] == ["main"]
 
+    assert list(workflow["jobs"]) == ["backstop"], "one job, no matrix of required checks"
+    job = workflow["jobs"]["backstop"]
+    assert job["runs-on"] == "ubuntu-latest"
 
-def test_nightly_package_smoke_uses_step_scoped_runner_temp() -> None:
-    workflow = _workflow("nightly.yml")
-    package_job = workflow["jobs"]["package-onboarding"]
+    text = (REPO_ROOT / ".github" / "workflows" / "backstop.yml").read_text(encoding="utf-8")
+    assert "draft" not in text, "the backstop has no draft/required-check gating logic"
+    assert "continue-on-error" not in text
 
-    assert "runner.temp" not in str(package_job.get("env", {}))
-    assert "$RUNNER_TEMP" in str(package_job["steps"])
+    steps = job["steps"]
+    python_step = next(
+        step for step in steps if step.get("uses", "").startswith("actions/setup-python")
+    )
+    assert python_step["with"]["python-version"] == "3.11"
 
-
-def test_nightly_full_suite_forces_utf8_subprocess_io() -> None:
-    workflow = _workflow("nightly.yml")
-    env = workflow["jobs"]["full-suite"]["env"]
-
+    env = job["env"]
+    assert env["LIFE_INDEX_INDEX_FTS_ONLY"] == "1"
     assert env["PYTHONUTF8"] == "1"
     assert env["PYTHONIOENCODING"] == "utf-8"
 
+    runs = "\n".join(str(step.get("run", "")) for step in steps)
+    # The static inventory is listed in one place: the gate itself runs it.
+    assert "scripts/gate.py --fast --base" in runs
+    # The sentinel, the full suite and the package smoke run even after an
+    # earlier step failed, so a red fast pass cannot hide the rest.
+    if_clauses = [str(step.get("if", "")) for step in steps if step.get("if")]
+    assert len(if_clauses) >= 4 and all("!cancelled()" in clause for clause in if_clauses)
+    assert "pytest tests" in runs and "--timeout=600" in runs
+    assert "run_public_core_assertions.py" in runs
+    assert "github.event.before" in runs and "github.event.pull_request.base.sha" in runs
+    assert "0000000000000000000000000000000000000000" in runs  # zero-SHA handling is explicit
+    assert 'rev-parse "${HEAD}^"' in runs  # fallback base is the head's first parent
+    assert "life-index bootstrap --json" in runs  # clean-wheel smoke the gate cannot do
 
-def test_fast_local_tier1_gate_script_is_documented() -> None:
-    script = REPO_ROOT / "scripts" / "tier1-gate.sh"
-    source = script.read_text(encoding="utf-8")
 
-    for expected in (
-        "Tier 1 fast gate",
-        "python -m black --check tools/",
-        "python -m flake8 tools/",
-        "python -m bandit -r tools/",
-        "python -m mypy tools/",
-        "python .github/scripts/check_doc_sync.py",
-        "python -m pytest -m blocker",
-    ):
-        assert expected in source
+def test_benchmark_workflow_is_manual_and_weekly_only() -> None:
+    triggers = _workflow_on(_workflow("benchmark.yml"))
+
+    assert set(triggers) == {"workflow_dispatch", "schedule"}
+    assert "push" not in triggers
+
+
+def test_ci_doc_describes_gate_and_backstop_and_keeps_the_ssot_block() -> None:
+    doc = (REPO_ROOT / "docs" / "CI_HARD_CHECKS.md").read_text(encoding="utf-8")
+
+    assert "scripts/gate.py" in doc
+    assert "backstop.yml" in doc
+    assert "--install-hook" in doc  # the native hook's install command is documented
+    assert "every outgoing commit" in doc  # the per-commit scan rule is stated
+    assert "--no-verify" in doc  # the documented not-covered list names it
+    assert "PLATFORM-SSOT:PUBLIC-BLOCKER-EXECUTION:START" in doc
+    assert "PLATFORM-SSOT:PUBLIC-BLOCKER-EXECUTION:END" in doc
+    assert "| 1 | blocker gate |" not in doc  # the inventory table is gone
+    assert "gate --list" in doc or "gate.py --list" in doc
+    assert "- v2.1-public" in doc  # version history records the change
 
 
 def test_l2_production_modules_do_not_import_llm_providers() -> None:

@@ -4,8 +4,10 @@
 Quality/noise metrics and private eval remain advisory. Public blocker truth is
 owned by the machine-readable synthetic Core assertion sentinel.
 
-This test IS the CI gate's meta-validation: if this test passes, the gate
+This test IS the gate's meta-validation: if this test passes, the gate
 mechanism is correctly wired. If the gate ever regresses, this test catches it.
+The local gate is ``scripts/gate.py`` (one runner owns the inventory); the
+online backstop is ``.github/workflows/backstop.yml``.
 """
 
 from __future__ import annotations
@@ -17,7 +19,8 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 GATE_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "run_eval_gate.sh"
-PRE_PUSH_GATE_PATH = PROJECT_ROOT / "scripts" / "pre-push-gate.sh"
+GATE_RUNNER_PATH = PROJECT_ROOT / "scripts" / "gate.py"
+BACKSTOP_PATH = PROJECT_ROOT / ".github" / "workflows" / "backstop.yml"
 ADVISORY_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "run_eval_advisory.sh"
 
 
@@ -87,7 +90,7 @@ class TestGateScriptStructure:
     def test_blocking_gate_inventory_references_only_existing_test_paths(self) -> None:
         sources = (
             GATE_SCRIPT_PATH.read_text(encoding="utf-8"),
-            PRE_PUSH_GATE_PATH.read_text(encoding="utf-8"),
+            GATE_RUNNER_PATH.read_text(encoding="utf-8"),
         )
         paths = {
             match
@@ -101,8 +104,8 @@ class TestGateScriptStructure:
     def test_blocking_gate_inventory_excludes_private_quality_eval(self) -> None:
         blocking_sources = (
             GATE_SCRIPT_PATH.read_text(encoding="utf-8"),
-            PRE_PUSH_GATE_PATH.read_text(encoding="utf-8"),
-            WORKFLOW_PATH.read_text(encoding="utf-8"),
+            GATE_RUNNER_PATH.read_text(encoding="utf-8"),
+            BACKSTOP_PATH.read_text(encoding="utf-8"),
         )
         advisory_paths = (
             "tests/unit/test_eval_gate.py",
@@ -123,7 +126,6 @@ class TestGateScriptStructure:
         assert "run_public_core_assertions.py" not in source
 
 
-WORKFLOW_PATH = PROJECT_ROOT / ".github" / "workflows" / "tests.yml"
 EXPECTED_DETERMINISTIC_TARGETS = frozenset(
     {
         "tests/unit/test_eval_provider_retirement.py",
@@ -153,24 +155,16 @@ def test_eval_runner_owns_exact_deterministic_inventory_and_public_sentinel() ->
     assert "|| true" not in source
 
 
-@pytest.mark.parametrize("surface", [WORKFLOW_PATH, PRE_PUSH_GATE_PATH])
+@pytest.mark.parametrize("surface", [GATE_RUNNER_PATH, BACKSTOP_PATH])
 def test_external_gate_surface_delegates_without_duplicate_inventory(
     surface: Path,
 ) -> None:
+    """The gate runner and the backstop run the whole ``pytest tests`` suite;
+    neither duplicates the eval gate's file-level inventory."""
     source = surface.read_text(encoding="utf-8")
 
-    assert re.search(r"(?:bash\s+)?scripts/run_eval_gate\.sh(?:\s|$)", source)
-    assert _normalized_test_targets(source) == frozenset()
-
-
-def test_pre_push_records_delegated_runner_failure() -> None:
-    source = PRE_PUSH_GATE_PATH.read_text(encoding="utf-8")
-
-    assert re.search(
-        r'run_check\s+"search-eval-gate"\s+timeout\s+"\$EVAL_TIMEOUT_SECONDS"\s+'
-        r"bash\s+scripts/run_eval_gate\.sh",
-        source,
+    runs_whole_suite = re.search(r"\bpytest tests\b", source) or (
+        '"-m", "pytest"' in source and '"tests"' in source
     )
-    assert "run_public_core_assertions.py" not in source
-    assert 'if [ "${#FAILED_CHECKS[@]}" -eq 0 ]; then' in source
-    assert "exit 1" in source
+    assert runs_whole_suite
+    assert _normalized_test_targets(source) == frozenset()

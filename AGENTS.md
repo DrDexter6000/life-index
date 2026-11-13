@@ -24,7 +24,8 @@ contracts and must not be copied into public docs.
 3. `docs/API.md` owns CLI and server API contracts.
 4. `docs/ARCHITECTURE.md` owns implementation architecture.
 5. `docs/ENTITY_GRAPH.md` and `docs/VERSIONING.md` own their named domains.
-6. `docs/CI_HARD_CHECKS.md` owns the public CI hard-check inventory.
+6. `docs/CI_HARD_CHECKS.md` owns the gate and backstop description;
+   `python scripts/gate.py --list` owns the check inventory.
 
 When documents conflict, stop and resolve the conflict instead of silently
 choosing the convenient rule.
@@ -55,7 +56,7 @@ system.
 | Version or release change | `docs/VERSIONING.md` and `CHANGELOG.md` |
 | Search behavior or ranking change | `CHARTER.md` search invariants and `docs/ARCHITECTURE.md` search sections |
 | Agent-facing behavior change (tools / retrieval / nav / entity) | `SKILL.md`, and dogfood the change as the host agent on real/authorized data |
-| CI hard-check or local gate change | `docs/CI_HARD_CHECKS.md` and the relevant workflow/script |
+| Local gate or online backstop change | `docs/CI_HARD_CHECKS.md`, `scripts/gate.py` (the check inventory), and `.github/workflows/backstop.yml` when CI mirrors the change |
 
 Do not read historical documents by default. Use them only for explicit
 historical research.
@@ -88,8 +89,11 @@ historical research.
   user's actual question is answered (GROUNDED) — following `SKILL.md` literally
   rather than relying on cleverness a weaker host agent lacks. CI is necessary,
   not sufficient.
-- Treat CI as the merge-readiness authority for required checks. Local tests are
-  useful diagnostics, not a substitute for required CI.
+- The local gate (`python scripts/gate.py`) is the authority for a push to
+  `main`. It is installed as a native pre-push hook
+  (`python scripts/gate.py --install-hook`) and gates every pushed ref. The
+  online backstop is advisory: it never blocks a push, and its failures must
+  be triaged.
 
 ## Tool Invocation
 
