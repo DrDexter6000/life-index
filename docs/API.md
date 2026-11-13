@@ -5574,6 +5574,7 @@ python -m tools.backup [options]
   "backup_path": "D:/backup/life-index-backup-20260325_120000",
   "files_backed_up": 42,
   "files_skipped": 10,
+  "files_excluded": 3,
   "errors": [],
   "manifest_path": "D:/backup/.life-index-backup-manifest.json",
   "recovery_manifest_path": "D:/backup/life-index-backup-20260325_120000/.life-index-recovery-manifest.json"
@@ -5583,6 +5584,18 @@ python -m tools.backup [options]
 ### 说明
 
 - `backup` 属于数据安全与 operator 工具，不改变 journal/frontmatter 契约
+- `files_excluded` 是 additive 计数：被内置排除规则（任一相对路径组件为
+  `.cache`、文件名为 `.life-index-backup-manifest.json`）或 caller
+  `exclude_patterns` 跳过的源文件数。排除规则只匹配源根相对路径，绝不匹配
+  数据目录的绝对路径。源根下名字以 `.tmp` 结尾的文件没有内置排除规则，照常
+  备份。
+- caller `exclude_patterns` 按相对路径匹配：glob（`fnmatch`，可匹配 slash
+  分隔的相对路径或文件名）或子串。full backup 的 canonical-source 拒绝
+  同样只看相对路径，因此数据目录的位置不会触发或漏掉该拒绝。
+- 发现源文件但全部被排除时（`files_backed_up == 0`、`files_skipped == 0`
+  且 `files_excluded > 0`），结果不是普通成功：`success: false`，
+  `errors[]` 说明被排除的文件数。没有任何源文件的空备份仍返回
+  `success: true`。
 - `--full` 成功时，timestamped backup 内的
   `.life-index-recovery-manifest.json` 是自包含恢复证据。它使用
   `schema_version: "life-index.backup-manifest.v1"`、`hash_algorithm: "sha256"`

@@ -20,6 +20,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime
+from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, cast
 
@@ -44,6 +45,17 @@ _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 BACKUP_CATALOG_NAME = ".life-index-backup-manifest.json"
 BACKUP_CATALOG_LOCK_NAME = ".life-index-backup-manifest.lock"
 BACKUP_CATALOG_LOCK_TIMEOUT = 30.0
+
+# Built-in exclusions are matched against the path relative to the source root
+# being walked: one path component and one exact file name.
+#
+# There is deliberately no "*.tmp" rule. The old list carried one, but it was
+# compared as literal text and never matched, so `.tmp` files under a source
+# root have always been backed up. A file under Journals/ or attachments/ is
+# canonical source whatever its name; dropping it by a name pattern would lose
+# user data and would make a full backup disagree with its own inventory.
+BUILTIN_EXCLUDED_PATH_COMPONENTS = frozenset({".cache"})
+BUILTIN_EXCLUDED_NAMES = frozenset({BACKUP_CATALOG_NAME})
 
 
 @dataclass(frozen=True)
@@ -373,6 +385,47 @@ def _canonical_source_inventory(data_root: Path) -> Dict[str, Path]:
     return dict(sorted(inventory.items()))
 
 
+def _relative_path_matches_pattern(relative_path: Path, pattern: str) -> bool:
+    """Match a caller exclusion pattern against a relative path only.
+
+    Caller patterns keep their documented "pattern" meaning: a glob over the
+    slash-separated relative path or its file name, plus the historical
+    substring test. The absolute path is deliberately not considered, because
+    where the data directory lives must not change what a backup copies.
+    """
+    posix_path = relative_path.as_posix()
+    return (
+        pattern in posix_path
+        or fnmatch(posix_path, pattern)
+        or fnmatch(relative_path.name, pattern)
+    )
+
+
+def _is_excluded_relative_path(relative_path: Path, caller_patterns: List[str]) -> bool:
+    """Decide exclusion from a path relative to the source root being walked."""
+    if any(part in BUILTIN_EXCLUDED_PATH_COMPONENTS for part in relative_path.parts):
+        return True
+    if relative_path.name in BUILTIN_EXCLUDED_NAMES:
+        return True
+    return any(
+        _relative_path_matches_pattern(relative_path, pattern) for pattern in caller_patterns
+    )
+
+
+def _canonical_relative_path_views(relative_path: str) -> List[Path]:
+    """Relative views of one canonical artifact, never its absolute path.
+
+    The inventory names an artifact relative to the data root; the copy walk
+    sees a file relative to its own source root. The full-backup refusal checks
+    both views so a caller pattern cannot be missed because of either base.
+    """
+    parts = PurePosixPath(relative_path).parts
+    views = [Path(*parts)]
+    if len(parts) > 1 and parts[0] in {"Journals", "attachments"}:
+        views.append(Path(*parts[1:]))
+    return views
+
+
 def _artifact_record(
     *,
     path: str,
@@ -491,6 +544,7 @@ def create_backup(
             "backup_path": str,
             "files_backed_up": int,
             "files_skipped": int,
+            "files_excluded": int,
             "errors": List[str],
             "manifest_path": str,
             "recovery_manifest_path": str,
@@ -501,6 +555,7 @@ def create_backup(
         "backup_path": "",
         "files_backed_up": 0,
         "files_skipped": 0,
+        "files_excluded": 0,
         "errors": [],
         "manifest_path": "",
         "recovery_manifest_path": "",
@@ -522,29 +577,19 @@ def create_backup(
         pending_file_entries: Dict[str, Dict[str, Any]] = {}
         recovery_artifacts: List[Dict[str, Any]] = []
 
-        # 默认排除模式
         caller_exclude_patterns = list(exclude_patterns or [])
-        active_exclude_patterns = caller_exclude_patterns + [
-            ".life-index-backup-manifest.json",
-            "*.tmp",
-            ".cache",
-        ]
-
-        def should_exclude(file_path: Path) -> bool:
-            """检查文件是否应该被排除"""
-            for pattern in active_exclude_patterns:
-                if pattern in str(file_path):
-                    return True
-            return False
 
         canonical_inventory = _canonical_source_inventory(data_root)
         if full:
-            for relative_path, file_path in canonical_inventory.items():
+            for relative_path in canonical_inventory:
                 matched_pattern = next(
                     (
                         pattern
                         for pattern in caller_exclude_patterns
-                        if pattern in str(file_path) or pattern in relative_path
+                        if any(
+                            _relative_path_matches_pattern(view, pattern)
+                            for view in _canonical_relative_path_views(relative_path)
+                        )
                     ),
                     None,
                 )
@@ -570,49 +615,53 @@ def create_backup(
                 backup_dest.mkdir(parents=True, exist_ok=True)
 
             for file_path in src_dir.rglob("*"):
-                if file_path.is_file() and not should_exclude(file_path):
-                    try:
-                        _assert_contained_without_reparse(src_dir, file_path)
-                        # 计算相对路径
-                        rel_path = file_path.relative_to(src_dir)
-                        dest_file = backup_dest / rel_path
+                if not file_path.is_file():
+                    continue
+                # 计算相对路径；排除规则只看相对路径，不看绝对位置
+                rel_path = file_path.relative_to(src_dir)
+                if _is_excluded_relative_path(rel_path, caller_exclude_patterns):
+                    result["files_excluded"] += 1
+                    continue
+                try:
+                    _assert_contained_without_reparse(src_dir, file_path)
+                    dest_file = backup_dest / rel_path
 
-                        # 增量备份：检查文件是否已更改
-                        file_hash = calculate_file_hash(file_path)
-                        file_key = f"{dest_subdir}/{rel_path}"
+                    # 增量备份：检查文件是否已更改
+                    file_hash = calculate_file_hash(file_path)
+                    file_key = f"{dest_subdir}/{rel_path}"
 
-                        if not full and file_key in manifest.get("files", {}):
-                            old_hash = manifest["files"][file_key].get("hash", "")
-                            if old_hash == file_hash:
-                                result["files_skipped"] += 1
-                                continue
+                    if not full and file_key in manifest.get("files", {}):
+                        old_hash = manifest["files"][file_key].get("hash", "")
+                        if old_hash == file_hash:
+                            result["files_skipped"] += 1
+                            continue
 
-                        if not dry_run:
-                            dest_file.parent.mkdir(parents=True, exist_ok=True)
-                            shutil.copy2(file_path, dest_file)
+                    if not dry_run:
+                        dest_file.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(file_path, dest_file)
 
-                        result["files_backed_up"] += 1
+                    result["files_backed_up"] += 1
 
-                        # 更新清单
-                        file_entry = {
-                            "hash": file_hash,
-                            "mtime": file_path.stat().st_mtime,
-                            "size": file_path.stat().st_size,
-                        }
-                        manifest["files"][file_key] = file_entry
-                        pending_file_entries[file_key] = file_entry
-                        if not dry_run:
-                            recovery_artifacts.append(
-                                _artifact_record(
-                                    path=file_key,
-                                    file_path=dest_file,
-                                )
+                    # 更新清单
+                    file_entry = {
+                        "hash": file_hash,
+                        "mtime": file_path.stat().st_mtime,
+                        "size": file_path.stat().st_size,
+                    }
+                    manifest["files"][file_key] = file_entry
+                    pending_file_entries[file_key] = file_entry
+                    if not dry_run:
+                        recovery_artifacts.append(
+                            _artifact_record(
+                                path=file_key,
+                                file_path=dest_file,
                             )
+                        )
 
-                    except (IOError, OSError, ValueError) as e:
-                        error_msg = f"备份失败 {file_path}: {e}"
-                        logger.error(error_msg)
-                        result["errors"].append(error_msg)
+                except (IOError, OSError, ValueError) as e:
+                    error_msg = f"备份失败 {file_path}: {e}"
+                    logger.error(error_msg)
+                    result["errors"].append(error_msg)
 
         # 备份各个目录
         logger.info("备份日志文件...")
@@ -625,30 +674,33 @@ def create_backup(
         backup_directory(get_attachments_dir(), "attachments")
 
         entity_graph = get_user_data_dir() / "entity_graph.yaml"
-        if entity_graph.is_file() and not should_exclude(entity_graph):
-            try:
-                _assert_contained_without_reparse(data_root, entity_graph)
-                destination = backup_subdir / "entity_graph.yaml"
-                if not dry_run:
-                    shutil.copy2(entity_graph, destination)
-                    recovery_artifacts.append(
-                        _artifact_record(
-                            path="entity_graph.yaml",
-                            file_path=destination,
+        if entity_graph.is_file():
+            if _is_excluded_relative_path(Path("entity_graph.yaml"), caller_exclude_patterns):
+                result["files_excluded"] += 1
+            else:
+                try:
+                    _assert_contained_without_reparse(data_root, entity_graph)
+                    destination = backup_subdir / "entity_graph.yaml"
+                    if not dry_run:
+                        shutil.copy2(entity_graph, destination)
+                        recovery_artifacts.append(
+                            _artifact_record(
+                                path="entity_graph.yaml",
+                                file_path=destination,
+                            )
                         )
-                    )
-                result["files_backed_up"] += 1
-                file_entry = {
-                    "hash": calculate_file_hash(entity_graph),
-                    "mtime": entity_graph.stat().st_mtime,
-                    "size": entity_graph.stat().st_size,
-                }
-                manifest["files"]["entity_graph.yaml"] = file_entry
-                pending_file_entries["entity_graph.yaml"] = file_entry
-            except (IOError, OSError, ValueError) as e:
-                error_msg = f"备份失败 {entity_graph}: {e}"
-                logger.error(error_msg)
-                result["errors"].append(error_msg)
+                    result["files_backed_up"] += 1
+                    file_entry = {
+                        "hash": calculate_file_hash(entity_graph),
+                        "mtime": entity_graph.stat().st_mtime,
+                        "size": entity_graph.stat().st_size,
+                    }
+                    manifest["files"]["entity_graph.yaml"] = file_entry
+                    pending_file_entries["entity_graph.yaml"] = file_entry
+                except (IOError, OSError, ValueError) as e:
+                    error_msg = f"备份失败 {entity_graph}: {e}"
+                    logger.error(error_msg)
+                    result["errors"].append(error_msg)
 
         index_dir = get_user_data_dir() / ".index"
         if index_dir.exists():
@@ -666,6 +718,17 @@ def create_backup(
                         error_msg = f"备份源路径校验失败 {file_path}: {e}"
                         logger.error(error_msg)
                         result["errors"].append(error_msg)
+
+        if (
+            result["files_excluded"] > 0
+            and result["files_backed_up"] == 0
+            and result["files_skipped"] == 0
+            and not result["errors"]
+        ):
+            result["errors"].append(
+                "No source files were backed up: "
+                f"{result['files_excluded']} source file(s) were excluded by pattern"
+            )
 
         # 保存备份清单
         if not dry_run and not result["errors"]:
@@ -725,7 +788,8 @@ def create_backup(
 
         logger.info(
             f"备份完成: {result['files_backed_up']} 个文件已备份, "
-            f"{result['files_skipped']} 个文件已跳过"
+            f"{result['files_skipped']} 个文件已跳过, "
+            f"{result['files_excluded']} 个文件已排除"
         )
 
     except (OSError, IOError, RuntimeError) as e:
