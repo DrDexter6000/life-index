@@ -111,8 +111,9 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run quarantine tests
-        # Exit code 5 (nothing collected) is the normal state: no suite is
-        # quarantined unless tests/conftest.py does not know its directory.
+        # Exit code 5 (nothing collected) is the normal state: a suite is
+        # quarantined only when the gate-marker mapping does not know its
+        # directory (docs/CI_HARD_CHECKS.md, Scope Notes).
         run: pytest -m quarantine -v --timeout=300 || [ "$?" -eq 5 ]
 
   coverage:
