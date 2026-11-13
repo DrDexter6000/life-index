@@ -235,3 +235,57 @@ class TestL3FallbackTrigger:
             run_keyword_pipeline(query="needle", index_signature_current=False)
 
         mock_scan.assert_called_once()
+
+    def test_preflight_verdict_is_not_current_after_a_skipped_read(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """D2: a build can "succeed" while a file was skipped; the check decides.
+
+        B's signature changes, the repair scan's read of B raises ``OSError``
+        once, and A already matches the query. The post-build signature check
+        must still say "not current" so the L3 fallback runs and finds B.
+        """
+        from tools.build_index import build_all
+        from tools.search_journals import core as search_core
+        from tools.search_journals.keyword_pipeline import run_keyword_pipeline
+
+        a = _journal(tmp_path, "life-index_2026-03-01_001.md", body="alpha needle")
+        b = _journal(tmp_path, "life-index_2026-03-02_002.md", body="beta plain")
+        assert build_all(incremental=False)["success"] is True
+
+        b.write_text(
+            b.read_text(encoding="utf-8") + "\noutside append needle\nsecond needle line\n",
+            encoding="utf-8",
+        )
+
+        real_read_bytes = Path.read_bytes
+        armed = {"value": True}
+
+        def flaky_read_bytes(self):
+            if armed["value"] and Path(self) == b:
+                armed["value"] = False
+                raise OSError("synthetic read failure during the repair scan")
+            return real_read_bytes(self)
+
+        monkeypatch.setattr(Path, "read_bytes", flaky_read_bytes)
+
+        captured: dict = {}
+        real_pipeline = run_keyword_pipeline
+
+        def recording_pipeline(**kwargs):
+            captured.update(kwargs)
+            return real_pipeline(**kwargs)
+
+        monkeypatch.setattr(search_core, "run_keyword_pipeline", recording_pipeline)
+
+        result = search_core.hierarchical_search(query="needle", level=3)
+
+        assert result.get("success") is True
+        assert captured.get("index_signature_current") is False, (
+            "the fallback verdict must come from the post-build signature check, "
+            "not from the build's success flag"
+        )
+        assert result["index_status"].get("auto_updated") is True
+        names = {Path(str(item.get("path", ""))).name for item in result["merged_results"]}
+        assert a.name in names
+        assert b.name in names, "the fallback scan must recover the skipped fragment"

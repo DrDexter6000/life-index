@@ -540,8 +540,8 @@ Content {i + 1}.
                         assert result2["success"] is True
                         assert result2["total"] == 2
 
-    def test_invalid_journal_skipped(self, tmp_path):
-        """Invalid journal files are skipped"""
+    def test_unparsable_journal_is_indexed_as_raw_text(self, tmp_path):
+        """D1: invalid journal files still get an FTS row built from raw text."""
         from tools.lib import search_index
 
         # Setup: tmp_path/Journals/2026/03/
@@ -575,7 +575,11 @@ Valid content.
                         result = search_index.update_index(incremental=True)
 
                         assert result["success"] is True
-                        assert result["added"] == 1  # Only valid file indexed
+                        assert result["added"] == 2
+                        assert result["unparsable"] == 1
+                        assert result["unparsable_paths"] == [
+                            "Journals/2026/03/life-index_2026-03-14_002.md"
+                        ]
 
     def test_non_year_directories_skipped(self, tmp_path):
         """Non-year directories are skipped during scan"""
@@ -615,8 +619,8 @@ Content.
                         assert result["success"] is True
                         assert result["total"] == 1
 
-    def test_full_rebuild_reports_active_marker(self, tmp_path):
-        """Active rebuild marker should block concurrent full rebuilds."""
+    def test_full_rebuild_removes_orphaned_marker_and_continues(self, tmp_path):
+        """D5: under the index lock, an existing marker belongs to a dead builder."""
         from tools.lib import search_index
 
         journals_dir = tmp_path / "Journals"
@@ -636,10 +640,9 @@ Content.
                         with patch.object(search_index, "get_index_dir", lambda: index_dir):
                             result = search_index.update_index(incremental=False)
 
-        assert result["success"] is False
-        assert result["rebuild_in_progress"] is True
-        assert result["error"] == "rebuild already in progress"
-        assert marker.exists()
+        assert result["success"] is True, result.get("error")
+        assert "rebuild_in_progress" not in result
+        assert marker.exists() is False
 
     def test_full_rebuild_removes_stale_marker(self, tmp_path):
         """Stale rebuild marker should be cleaned before rebuild proceeds."""

@@ -267,8 +267,8 @@ def test_unified_confirm_updates_existing_journal_in_place(tmp_path: Path) -> No
         ".index",
         # edit commits now write the journal's FTS row through (replacing the
         # old always-queued pending_writes.json touch); the write-through holds
-        # the index lock, whose lock file is created on first use
-        ".cache/index.lock",
+        # the shared index lock under the rebuildable .index tree
+        ".index/index.lock",
         ".index/journals_fts.db",
         ".life-index/index-b",
         ".life-index/index-b/INDEX.md",

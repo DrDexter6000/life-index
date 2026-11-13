@@ -9,10 +9,11 @@ matching signature row, and any vanished row keeps the index stale.
 import json
 import sqlite3
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
-from tools.lib.index_freshness import check_full_freshness
+from tools.lib.index_freshness import FreshnessReport, check_full_freshness
 from tools.lib.index_manifest import IndexManifest, write_manifest
 from tools.lib.pending_writes import mark_pending
 
@@ -69,6 +70,45 @@ def _db(index_dir: Path) -> sqlite3.Connection:
 
 
 class TestSignatureFreshness:
+    def test_returns_freshness_report_structure(self, tmp_path: Path):
+        """check_full_freshness returns a FreshnessReport with all fields."""
+        _write_journal(tmp_path)
+        index_dir = _seed_index(tmp_path)
+        _write_manifest(index_dir)
+
+        report = check_full_freshness(index_dir)
+
+        assert isinstance(report, FreshnessReport)
+        assert hasattr(report, "fts_fresh")
+        assert hasattr(report, "vector_fresh")
+        assert hasattr(report, "overall_fresh")
+        assert hasattr(report, "issues")
+
+    def test_vector_count_mismatch_is_ignored(self, tmp_path: Path):
+        """Vector counts are legacy fields and no longer affect freshness."""
+        _write_journal(tmp_path)
+        index_dir = _seed_index(tmp_path)
+        write_manifest(
+            IndexManifest(
+                fts_count=1,
+                vector_count=10,
+                file_count=1,
+                fts_checksum="",
+                vector_checksum="",
+                build_timestamp="2026-04-18T12:00:00",
+                build_version="2.0.0",
+                partial=False,
+            ),
+            index_dir,
+        )
+
+        with patch("tools.lib.index_freshness.get_vector_count", return_value=3):
+            report = check_full_freshness(index_dir)
+
+        assert report.fts_fresh is True
+        assert report.vector_fresh is True
+        assert report.overall_fresh is True
+
     def test_signature_current_index_is_fresh(self, tmp_path: Path):
         _write_journal(tmp_path)
         index_dir = _seed_index(tmp_path)

@@ -230,7 +230,6 @@ class TestR2WriteThroughDoesNotHideOutsideChanges:
 class TestR3QueuedPathIsAlwaysReread:
     def test_same_size_same_mtime_edit_is_repaired_from_the_queue(self, isolated_data_dir):
         from tools.edit_journal import edit_journal
-        from tools.lib.pending_writes import mark_pending
 
         old_word = "queueoldword"
         new_word = "queuenewword"  # same byte length
@@ -405,6 +404,81 @@ class TestR5R6EditAdmissionAndReport:
         assert result["fts_row"]["status"] == "failed"
         assert "boom2" in result["fts_row"]["reason"]
         assert result["fts_row"]["recovery"] == "life-index index"
+
+
+class TestD1UnparsableFragmentIsReachable:
+    def test_token_only_in_broken_frontmatter_is_found(self, isolated_data_dir):
+        """D1: the raw-text row makes a token in broken frontmatter reachable.
+
+        The L3 fallback scans only the body, so on the old "drop the row"
+        behaviour this token was unreachable even though a user could describe
+        the fragment with it.
+        """
+        journal = _write_journal(_payload("2026-06-03", "A", "body without the token"))
+        journal_path = Path(journal["journal_path"])
+        journal_path.write_text(
+            "---\ntitle: [unterminated\ndate: d1rawtoken\n---\n\nbody without the token\n",
+            encoding="utf-8",
+        )
+        _build_rebuild()
+
+        response = _search("d1rawtoken")
+
+        assert response.get("success") is True
+        names = _merged_names(response)
+        assert journal_path.name in names, (
+            "a fragment whose only token is in unparsable frontmatter must still "
+            "be returned from its raw-text FTS row"
+        )
+        hit = next(
+            item
+            for item in response["merged_results"]
+            if journal_path.name in str(item.get("path", ""))
+        )
+        assert hit.get("date") == "2026-06-03"  # filename fallback
+
+
+class TestD5OrphanedRebuildMarker:
+    def test_dead_schema_upgrade_marker_does_not_block_the_next_search(self, isolated_data_dir):
+        """D5: a marker left by a dead builder must not block the repair.
+
+        Reproduction: a schema-version-2 database without ``fts_file_stats``,
+        a child that exits right after writing ``.index/.rebuilding``, then a
+        fragment is deleted. The next search must remove the deleted row
+        instead of answering "rebuild already in progress".
+        """
+        from tools.lib.paths import get_fts_db_path
+
+        word = "d5-marker-word"
+        kept = _write_journal(_payload("2026-06-01", "A", f"alpha {word}"))
+        deleted = _write_journal(_payload("2026-06-02", "B", f"beta {word}"))
+        _build_rebuild()
+
+        db_path = get_fts_db_path()
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.execute("DROP TABLE IF EXISTS fts_file_stats")
+            conn.execute("UPDATE index_meta SET value = '2' WHERE key = 'schema_version'")
+            conn.commit()
+        finally:
+            conn.close()
+
+        from tools.lib.paths import get_user_data_dir
+
+        marker = get_user_data_dir() / ".index" / ".rebuilding"
+        marker.write_text("dead builder", encoding="utf-8")
+
+        Path(deleted["journal_path"]).unlink()
+
+        response = _search(word)
+
+        names = _merged_names(response)
+        assert Path(kept["journal_path"]).name in names
+        assert Path(deleted["journal_path"]).name not in names, (
+            "a deleted fragment must not be returned by the search that repairs "
+            "the index after an orphaned rebuild marker"
+        )
+        assert not marker.exists(), "the orphaned marker must be removed and the rebuild proceed"
 
 
 class TestPreflightReadCost:

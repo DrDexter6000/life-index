@@ -1225,9 +1225,24 @@ def hierarchical_search(
     from ..lib.paths import get_user_data_dir as _get_user_data_dir
 
     _index_dir = _get_user_data_dir() / ".index"
-    # Verdict forwarded to the L3 fallback gate: True/False when this preflight
-    # really knows the answer, None when a test double supplied the report.
+    # Verdict forwarded to the L3 fallback gate. It is only known after the
+    # read-only signature check (preflight or the check run again after a
+    # repair build); a test-double report without a real signature check
+    # leaves it None.
     _index_fallback_verdict: bool | None = None
+
+    def _refresh_fallback_verdict() -> None:
+        """Re-run the read-only signature check; never trust a build result."""
+        nonlocal _index_fallback_verdict
+        try:
+            _post_build = _check_full_freshness(_index_dir)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Post-repair signature check failed: %s", exc)
+            _index_fallback_verdict = False
+            return
+        if getattr(_post_build, "signature_checked", False):
+            _index_fallback_verdict = _post_build.fts_fresh
+
     # Step 1: If pending writes, trigger build and acknowledge the snapshot
     if _has_pending():
         result["index_status"] = {
@@ -1256,29 +1271,30 @@ def hierarchical_search(
                 _repaired = (
                     _fts_result.get("pending_repaired") if isinstance(_fts_result, dict) else None
                 )
+                # D6: a build result without a repaired list acknowledges
+                # nothing; there is no permissive "trust the scan" mode.
                 _ack_pending(
                     _pending_snapshot,
-                    only=_repaired if isinstance(_repaired, list) else None,
+                    only=_repaired if isinstance(_repaired, list) else [],
                 )
                 _queue_empty = not _has_pending()
                 result["pending_consumed"] = _queue_empty
                 result["index_status"]["auto_updated"] = True
                 result["index_status"]["pending_consumed"] = _queue_empty
-                _unparsable = (
-                    _fts_result.get("unparsable", 0) if isinstance(_fts_result, dict) else 0
-                )
-                _index_fallback_verdict = _queue_empty and not _unparsable
             else:
                 error = _index_update_failure_reason(build_result)
                 logger.warning("Pending index update returned unsuccessful: %s", error)
                 result["warnings"].append(f"pending_index_update_failed: {error}")
                 result["pending_consumed"] = False
-                _index_fallback_verdict = False
         except Exception as exc:
             logger.warning("Pending index update failed, continuing with stale index: %s", exc)
             result["warnings"].append(f"pending_index_update_failed: {exc}")
             result["pending_consumed"] = False
-            _index_fallback_verdict = False
+        finally:
+            # D2: the L3 fallback verdict always comes from the read-only
+            # signature check run again after the build, never from the
+            # build's own success flag.
+            _refresh_fallback_verdict()
     else:
         # Step 2: signature check (read-only) + repair only when not current
         _freshness = _check_full_freshness(_index_dir)
@@ -1306,13 +1322,6 @@ def hierarchical_search(
                 )
                 if build_success:
                     result.setdefault("index_status", {})["auto_updated"] = True
-                    _fts_result = (
-                        build_result.get("fts") if isinstance(build_result, dict) else None
-                    )
-                    _unparsable = (
-                        _fts_result.get("unparsable", 0) if isinstance(_fts_result, dict) else 0
-                    )
-                    _index_fallback_verdict = not _unparsable and not _has_pending()
                 else:
                     # A structured failure (e.g. LockTimeout error envelope with
                     # success=false) is NOT a self-healed index: keep
@@ -1322,11 +1331,11 @@ def hierarchical_search(
                     logger.warning("Auto index update returned unsuccessful: %s", failure)
                     result.setdefault("index_status", {})["auto_updated"] = False
                     result["warnings"].append(f"index_update_failed: {failure}")
-                    _index_fallback_verdict = False
             except Exception as exc:
                 logger.warning("Auto index update failed: %s", exc)
                 result.setdefault("index_status", {})["auto_updated"] = False
-                _index_fallback_verdict = False
+            finally:
+                _refresh_fallback_verdict()
 
     # Round 19 Phase 1-C Track B: Time expression parsing
     # Sub-PRD-2.C: Prefer query_preprocessor date_range (broader pattern coverage)

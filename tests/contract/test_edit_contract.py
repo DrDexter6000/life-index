@@ -17,6 +17,7 @@ REQUIRED_EDIT_FIELDS = {
     "fts_row_updated",
     "pending_marked",
     "index_b_updated",
+    "metadata_cache_updated",
     "error",
 }
 
@@ -76,3 +77,31 @@ def test_edit_result_matches_golden_snapshot(tmp_path: Path) -> None:
     normalized["journal_path"] = "JOURNAL_PATH"
 
     assert normalized == _load_golden("edit_result.json")
+
+
+def test_edit_of_unparsable_frontmatter_reports_complete_raw_row(
+    isolated_data_dir: Path,
+) -> None:
+    """D1: an edit whose committed file still has unparsable frontmatter is complete."""
+    journal_path = isolated_data_dir / "Journals" / "2026" / "03" / "life-index_2026-03-04_001.md"
+    journal_path.parent.mkdir(parents=True, exist_ok=True)
+    journal_path.write_text(
+        "---\ntitle: [not, a, string]\ndate: 2026-03-04\n---\n\nraw body token\n",
+        encoding="utf-8",
+    )
+
+    with patch("tools.edit_journal.refresh_index_b", return_value=_index_b_refresh_fixture()):
+        result = edit_journal(
+            journal_path=journal_path,
+            frontmatter_updates={"weather": "sunny"},
+        )
+
+    assert result["success"] is True, result.get("error")
+    assert result["fts_row_updated"] is True
+    assert result["pending_marked"] is False
+    assert result["fts_row"] == {
+        "status": "complete",
+        "reason": "unparsable_frontmatter_indexed_as_text",
+        "recovery": None,
+    }
+    assert result["metadata_cache_updated"] in (True, False)

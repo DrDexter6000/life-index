@@ -26,11 +26,14 @@ from typing import Any, Callable, Iterable
 logger = logging.getLogger(__name__)
 
 _REBUILD_MARKER_NAME = ".rebuilding"
-_STALE_MARKER_TIMEOUT_S = 300
 
 from .chinese_tokenizer import segment_for_fts
 from .frontmatter import parse_frontmatter
-from .journal_files import JournalFileStat, scan_journal_files
+from .journal_files import (
+    JournalFileStat,
+    fragment_date_from_filename,
+    scan_journal_files,
+)
 from .path_contract import build_journal_path_fields, safe_relative_path
 
 FileSignature = tuple[float, int]
@@ -67,6 +70,44 @@ def _path_signature(file_path: Path) -> FileSignature | None:
     return (stat.st_mtime, stat.st_size)
 
 
+def _read_identity(
+    file_path: Path,
+) -> tuple[tuple[int, int, int], FileSignature] | None:
+    """One stat for both the stability identity and the persistent signature.
+
+    Stability uses ``(st_mtime_ns, st_size, st_ino)``: a file replaced by
+    another one with the same mtime and size still has a different inode.
+    The persistent ``fts_file_stats`` signature stays ``(mtime, size)``.
+    """
+    try:
+        stat = file_path.stat()
+    except OSError:
+        return None
+    identity = (stat.st_mtime_ns, stat.st_size, stat.st_ino)
+    return identity, (stat.st_mtime, stat.st_size)
+
+
+def _require_str(metadata: dict[str, Any], key: str) -> str:
+    """Return a metadata scalar as ``str``; an unexpected type is unparsable."""
+    value = metadata.get(key, "")
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise TypeError(f"field {key!r} must be a string, got {type(value).__name__}")
+    return value
+
+
+def _metadata_text(value: Any) -> str:
+    """Normalize an indexed list-or-string field; other types are unparsable."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return ", ".join(str(item) for item in value)
+    raise TypeError(f"field must be a string or list, got {type(value).__name__}")
+
+
 def _parse_content(
     content: str,
     raw: bytes,
@@ -75,14 +116,13 @@ def _parse_content(
     user_data_dir: Path,
     modified_time_ts: float | None,
 ) -> dict[str, Any] | None:
-    """Build an index document from one read of the file."""
+    """Build an index document from parsed frontmatter; ``None`` when unparsable."""
     try:
         if not content.startswith("---"):
             return None
 
         # 使用 SSOT frontmatter 解析
         metadata, body = parse_frontmatter(content)
-
         if not metadata:
             return None
 
@@ -95,7 +135,7 @@ def _parse_content(
         # file_hash is computed from the same bytes the row content came from.
         # R11 fix: 'title' stores raw original text (for display),
         # 'title_segmented' stores jieba tokens (for FTS matching).
-        raw_title = metadata.get("title", "")
+        raw_title = _require_str(metadata, "title")
         segmented_title = segment_for_fts(raw_title, mode="index")
         segmented_content = segment_for_fts(body, mode="index")
 
@@ -104,14 +144,14 @@ def _parse_content(
             "title": raw_title,
             "title_segmented": segmented_title,
             "content": segmented_content,
-            "date": metadata.get("date", "")[:10],
-            "location": metadata.get("location", ""),
-            "weather": metadata.get("weather", ""),
-            "topic": _normalize_to_str(metadata.get("topic")),
-            "project": metadata.get("project", ""),
-            "tags": _normalize_to_str(metadata.get("tags")),
-            "mood": _normalize_to_str(metadata.get("mood")),
-            "people": _normalize_to_str(metadata.get("people")),
+            "date": _require_str(metadata, "date")[:10],
+            "location": _require_str(metadata, "location"),
+            "weather": _require_str(metadata, "weather"),
+            "topic": _metadata_text(metadata.get("topic")),
+            "project": _require_str(metadata, "project"),
+            "tags": _metadata_text(metadata.get("tags")),
+            "mood": _metadata_text(metadata.get("mood")),
+            "people": _metadata_text(metadata.get("people")),
             "file_hash": _content_hash(raw),
             "modified_time": (
                 datetime.fromtimestamp(modified_time_ts).isoformat()
@@ -120,50 +160,114 @@ def _parse_content(
             ),
         }
 
-    except (OSError, IOError, ValueError) as e:
+    except Exception as e:  # noqa: BLE001 - any parse/type failure means raw text
         logger.warning("Failed to parse %s: %s", file_path, e)
         return None
 
 
+def _raw_document(
+    content: str,
+    raw: bytes,
+    file_path: Path,
+    journals_dir: Path,
+    user_data_dir: Path,
+    modified_time_ts: float | None,
+) -> dict[str, Any]:
+    """Build a row for a live fragment whose frontmatter did not parse.
+
+    CHARTER §1.11 does not allow a fragment the user can describe with a token
+    to be unreachable: the whole file text is segmented into ``content``; every
+    metadata column stays empty except ``date``, which falls back to the date
+    carried by the canonical fragment filename.
+    """
+    path_fields = build_journal_path_fields(
+        file_path, journals_dir=journals_dir, user_data_dir=user_data_dir
+    )
+    return {
+        "path": path_fields["rel_path"],
+        "title": "",
+        "title_segmented": "",
+        "content": segment_for_fts(content, mode="index"),
+        "date": fragment_date_from_filename(file_path) or "",
+        "location": "",
+        "weather": "",
+        "topic": "",
+        "project": "",
+        "tags": "",
+        "mood": "",
+        "people": "",
+        "file_hash": _content_hash(raw),
+        "modified_time": (
+            datetime.fromtimestamp(modified_time_ts).isoformat()
+            if modified_time_ts is not None
+            else ""
+        ),
+        "unparsable": True,
+    }
+
+
 def read_journal_document(
     file_path: Path, journals_dir: Path, user_data_dir: Path
-) -> tuple[dict[str, Any] | None, FileSignature | None, FileSignature | None]:
+) -> tuple[dict[str, Any], FileSignature | None, bool]:
     """Read a journal once and derive its row and signature from those bytes.
 
-    Returns ``(document, signature_before, signature_after)``. The file is
-    read exactly once (``read_bytes``); the row content, ``file_hash`` and
+    Returns ``(document, recorded_signature, unparsable)``. The file is read
+    exactly once (``read_bytes``); the row content, ``file_hash`` and
     ``modified_time`` all come from that read. ``OSError`` propagates so the
     caller can treat a transient read failure as "not repaired" instead of
     deleting a valid row.
 
-    A caller records the signature in ``fts_file_stats`` only when
-    ``signature_before == signature_after``; when they differ the file changed
-    while it was read, so the row is stored without a signature and the next
-    scan re-reads the file.
+    Every readable live fragment yields a document. When the frontmatter does
+    not parse (no leading ``---``, empty/invalid YAML, a field of an unexpected
+    type, bytes that are not valid UTF-8) the document is the raw-text row from
+    :func:`_raw_document` and ``unparsable`` is True.
+
+    ``recorded_signature`` is ``None`` unless the stability identity
+    ``(st_mtime_ns, st_size, st_ino)`` is unchanged across the read; the next
+    scan then re-reads the file. The signature itself stays ``(mtime, size)``.
     """
-    before = _path_signature(file_path)
+    before = _read_identity(file_path)
     raw = file_path.read_bytes()
-    after = _path_signature(file_path)
-    modified_ts = before[0] if before is not None else (after[0] if after is not None else None)
+    after = _read_identity(file_path)
+    stable = before is not None and after is not None and before[0] == after[0]
+    before_signature = before[1] if before is not None else None
+    after_signature = after[1] if after is not None else None
+    modified_ts = (
+        before_signature[0]
+        if before_signature is not None
+        else (after_signature[0] if after_signature is not None else None)
+    )
+
     try:
         content = raw.decode("utf-8")
     except UnicodeDecodeError as e:
-        logger.warning("Failed to decode %s: %s", file_path, e)
-        return None, before, after
-    doc = _parse_content(content, raw, file_path, journals_dir, user_data_dir, modified_ts)
-    return doc, before, after
+        logger.warning("Failed to decode %s as UTF-8: %s", file_path, e)
+        content = raw.decode("utf-8", errors="replace")
+        doc = None
+    else:
+        doc = _parse_content(content, raw, file_path, journals_dir, user_data_dir, modified_ts)
+
+    unparsable = doc is None
+    if doc is None:
+        doc = _raw_document(content, raw, file_path, journals_dir, user_data_dir, modified_ts)
+
+    return doc, (before_signature if stable else None), unparsable
 
 
 def parse_journal(
     file_path: Path, journals_dir: Path, user_data_dir: Path
 ) -> dict[str, Any] | None:
-    """解析日志文件，提取可索引内容（单次读取）"""
+    """解析日志文件，提取可索引内容（单次读取）
+
+    Returns ``None`` only when the file cannot be read or its frontmatter does
+    not parse; the index itself no longer drops an unparsable live fragment.
+    """
     try:
-        doc, _before, _after = read_journal_document(file_path, journals_dir, user_data_dir)
+        doc, _signature, unparsable = read_journal_document(file_path, journals_dir, user_data_dir)
     except (OSError, IOError) as e:
         logger.warning("Failed to parse %s: %s", file_path, e)
         return None
-    return doc
+    return None if unparsable else doc
 
 
 def get_indexed_files(conn: sqlite3.Connection) -> dict[str, tuple[str, str]]:
@@ -368,17 +472,21 @@ def fts_index_is_current() -> bool:
 
 
 def _check_rebuild_marker(fts_db_path: Path) -> Path:
-    """Return marker path. Raise if active rebuild detected."""
+    """Remove an orphaned rebuild marker and return its path.
+
+    The caller holds the index lock, so an existing marker cannot belong to a
+    live builder for this data directory: whoever wrote it died before removing
+    it (including a process killed during the automatic schema-version
+    rebuild). Removing it and continuing is safe; the old 300-second age rule
+    blocked every repair for five minutes while searches kept stale rows.
+    """
     marker = fts_db_path.parent / _REBUILD_MARKER_NAME
     if marker.exists():
+        logger.warning("Removing orphaned rebuild marker (index lock held): %s", marker)
         try:
-            mtime = marker.stat().st_mtime
-            age = _time_module.time() - mtime
-            if age >= _STALE_MARKER_TIMEOUT_S:
-                logger.warning("Removing stale rebuild marker (age=%.0fs)", age)
-                marker.unlink(missing_ok=True)
+            marker.unlink(missing_ok=True)
         except OSError as exc:
-            logger.warning("Failed to inspect rebuild marker %s: %s", marker, exc)
+            logger.warning("Failed to remove orphaned rebuild marker %s: %s", marker, exc)
     return marker
 
 
@@ -401,6 +509,7 @@ def update_index(
     user_data_dir: Path,
     incremental: bool = True,
     force_paths: Iterable[str] | None = None,
+    lock_held: bool = False,
 ) -> dict[str, Any]:
     """
     更新搜索索引
@@ -412,6 +521,8 @@ def update_index(
         user_data_dir: 用户数据目录
         incremental: True=仅更新变更，False=全量重建
         force_paths: 无论签名是否变化都必须重读的路径（pending 队列快照）
+        lock_held: True 表示调用方已持有 index lock（例如 build_all）；默认
+            本函数自己获取同一把锁。
 
     Returns:
         {
@@ -420,12 +531,45 @@ def update_index(
             "updated": int,
             "removed": int,
             "total": int,
-            "unparsable": int,          # additive: live fragments with no parsable row
+            "unparsable": int,          # additive: read as raw text (frontmatter did not parse)
             "unparsable_paths": [str],  # additive
             "pending_repaired": [str],  # additive: force_paths actually repaired
             "error": str (optional)
         }
     """
+    if lock_held:
+        return _update_index_locked(
+            init_fts_db_func,
+            fts_db_path,
+            journals_dir,
+            user_data_dir,
+            incremental,
+            force_paths,
+        )
+
+    from .config import FILE_LOCK_TIMEOUT_REBUILD
+    from .file_lock import FileLock, get_index_lock_path
+
+    with FileLock(get_index_lock_path(), timeout=FILE_LOCK_TIMEOUT_REBUILD):
+        return _update_index_locked(
+            init_fts_db_func,
+            fts_db_path,
+            journals_dir,
+            user_data_dir,
+            incremental,
+            force_paths,
+        )
+
+
+def _update_index_locked(
+    init_fts_db_func: Callable[[], sqlite3.Connection],
+    fts_db_path: Path,
+    journals_dir: Path,
+    user_data_dir: Path,
+    incremental: bool,
+    force_paths: Iterable[str] | None,
+) -> dict[str, Any]:
+    """Run one scan while the shared index lock is held."""
     forced = set(force_paths or ())
     result: dict[str, Any] = {
         "success": False,
@@ -445,10 +589,6 @@ def update_index(
     try:
         if not incremental:
             marker = _check_rebuild_marker(fts_db_path)
-            if marker.exists():
-                result["error"] = "rebuild already in progress"
-                result["rebuild_in_progress"] = True
-                return result
             _write_rebuild_marker(marker)
             marker_written = True
 
@@ -530,24 +670,24 @@ def update_index(
             # 执行添加/更新
             for action, file_path, rel_path in files_to_update:
                 try:
-                    doc, before, after = read_journal_document(
+                    doc, signature, unparsable = read_journal_document(
                         file_path, journals_dir, user_data_dir
                     )
                 except (OSError, IOError) as e:
-                    # Transient read failure: keep whatever row exists; retry
-                    # on a later scan instead of destroying a valid row.
+                    # Transient read failure: keep whatever row and signature
+                    # exist; the file stays not-current and a later scan retries.
                     logger.warning("Failed to read %s: %s", rel_path, e)
                     continue
 
-                if doc is None:
-                    # N1: a live fragment that no longer parses keeps no row —
-                    # the obsolete row would otherwise keep answering searches.
-                    cursor.execute("DELETE FROM journals WHERE path = ?", (rel_path,))
-                    cursor.execute("DELETE FROM fts_file_stats WHERE path = ?", (rel_path,))
+                if unparsable:
+                    # D1: every live fragment has a row. The frontmatter did not
+                    # parse, so the row is the segmented full text with empty
+                    # metadata; it is current like any other row.
                     result["unparsable"] = (result["unparsable"] or 0) + 1
                     result["unparsable_paths"].append(rel_path)
-                    logger.warning("Journal is not parsable; removed its index row: %s", rel_path)
-                    continue
+                    logger.warning(
+                        "Journal frontmatter did not parse; indexed as raw text: %s", rel_path
+                    )
 
                 # 如果是更新，先删除旧记录
                 if not incremental:
@@ -564,11 +704,7 @@ def update_index(
 
                 insert_fts_doc(cursor, doc)
                 # R4: only a stable read may record a signature.
-                record_file_signature(
-                    cursor,
-                    rel_path,
-                    before if before is not None and before == after else None,
-                )
+                record_file_signature(cursor, rel_path, signature)
                 if rel_path in forced:
                     repaired.append(rel_path)
 

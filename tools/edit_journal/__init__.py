@@ -462,6 +462,7 @@ def edit_journal(
         "changes": {},
         "content_modified": False,
         "indices_updated": [],
+        "metadata_cache_updated": False,
         "error": None,
     }
 
@@ -624,17 +625,27 @@ def edit_journal(
                         _queue_fts_repair(f"write_through_failed: {e}")
                     else:
                         if upserted_fts_row is None:
-                            # The file is a live fragment but yields no row
-                            # (unparsable). It stays queued and is retried.
-                            logger.warning("FTS 行写穿未产出 row（不可解析），回退 pending queue")
-                            _queue_fts_repair("unparsable_source")
+                            # A live fragment always yields a row now; None here
+                            # means the write-through did not see a row at all.
+                            logger.warning("FTS 行写穿未产出 row，回退 pending queue")
+                            _queue_fts_repair("write_through_produced_no_row")
                         else:
                             result["fts_row_updated"] = True
-                            result["fts_row"] = {
-                                "status": "complete",
-                                "reason": None,
-                                "recovery": None,
-                            }
+                            if upserted_fts_row.get("unparsable"):
+                                # D1: frontmatter did not parse, so the file is
+                                # indexed as raw text; this is a complete row,
+                                # not a failure and not queued.
+                                result["fts_row"] = {
+                                    "status": "complete",
+                                    "reason": "unparsable_frontmatter_indexed_as_text",
+                                    "recovery": None,
+                                }
+                            else:
+                                result["fts_row"] = {
+                                    "status": "complete",
+                                    "reason": None,
+                                    "recovery": None,
+                                }
 
                 # 编辑提交后即时更新该日志的元数据缓存行（非阻塞；失败时
                 # 由下次搜索的 reconcile 或 index --rebuild 恢复）。缓存只覆盖

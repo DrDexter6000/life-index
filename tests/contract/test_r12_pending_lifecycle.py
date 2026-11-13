@@ -130,7 +130,14 @@ class TestPendingLifecycle:
 
         def mock_build_all(**kwargs):
             build_calls.append(kwargs)
-            return {"success": True, "fts": {"success": True}, "vector": {"success": True}}
+            return {
+                "success": True,
+                "fts": {
+                    "success": True,
+                    "pending_repaired": ["Journals/2026/03/life-index_2026-03-07_001.md"],
+                },
+                "vector": {"success": True},
+            }
 
         import tools.build_index as bi
         import tools.lib.search_index as si
@@ -204,7 +211,11 @@ class TestPendingLifecycle:
 
         def mock_build_all(**kwargs):
             build_calls.append(kwargs)
-            return {"success": True, "fts": {"success": True}, "vector": {"success": True}}
+            return {
+                "success": True,
+                "fts": {"success": True, "pending_repaired": list(get_pending())},
+                "vector": {"success": True},
+            }
 
         monkeypatch.setattr(bi, "build_all", mock_build_all)
         monkeypatch.setattr(si, "check_index_freshness", lambda: {"stale": False})
@@ -312,13 +323,18 @@ class TestPendingLifecycle:
 
         def mock_build_all(**kwargs):
             build_calls.append(kwargs)
+            repaired = list(get_pending())
             # Simulate a concurrent write whose FTS write-through could not
             # get the index lock (held by this very build) and queued itself.
             # Only the first build sees that event; a second re-mark would be
             # a *newer* generation that must survive (pinned elsewhere).
             if len(build_calls) == 1:
                 mark_pending(queued_during_build)
-            return {"success": True, "fts": {"success": True}, "vector": {"success": True}}
+            return {
+                "success": True,
+                "fts": {"success": True, "pending_repaired": repaired},
+                "vector": {"success": True},
+            }
 
         monkeypatch.setattr(bi, "build_all", mock_build_all)
         monkeypatch.setattr(search_core, "build_l0_candidate_set", lambda **kw: set())

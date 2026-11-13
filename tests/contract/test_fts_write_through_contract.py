@@ -602,6 +602,36 @@ class TestWriteThroughIndexLock:
             written_name in str(item.get("path", "")) for item in hits
         ), "the repairing search must find the journal after queue consumption"
 
+    def test_source_safe_lock_path_excludes_ordinary_build_and_write_through(
+        self, isolated_data_dir, monkeypatch
+    ):
+        """D4: every FTS writer shares ``.index/index.lock``.
+
+        A source-safe build may create state only under ``.index/``, so that is
+        where the shared lock lives. Holding it must exclude an ordinary build
+        and a write-through; before D4 both used ``.cache/index.lock`` and
+        proceeded concurrently.
+        """
+        from tools.lib.file_lock import FileLock, LockTimeoutError
+        from tools.lib.paths import get_user_data_dir
+        from tools.lib.search_index import upsert_fts_row
+
+        import tools.build_index as bi
+
+        journals = _make_synthetic_journals(isolated_data_dir, 1)
+        monkeypatch.setattr(bi, "FILE_LOCK_TIMEOUT_REBUILD", 0.2)
+
+        shared_lock_path = get_user_data_dir() / ".index" / "index.lock"
+        with FileLock(shared_lock_path, timeout=30.0):
+            build_result = bi.build_all(incremental=True)
+            assert (
+                build_result["success"] is False
+            ), "an ordinary build must not run while the shared .index lock is held"
+            assert build_result["error"]["details"]["lock_path"] == str(shared_lock_path)
+
+            with pytest.raises(LockTimeoutError):
+                upsert_fts_row(journals[0])
+
     def test_write_during_full_rebuild_is_not_lost(self, isolated_data_dir):
         """Deterministic enumeration/write/delete interleave: the row survives.
 

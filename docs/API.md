@@ -815,7 +815,7 @@ staging 清理失败则以具体残留路径报告 `failed`。
 ```
 
 `side_effects[*].status` 只允许 `complete / queued / skipped / failed / compensated`。
-`skipped`（如 `mark_pending`）表示该步骤无事可做：正常写入的 FTS 行已写穿，没有内容留在 pending queue。
+`skipped`（如 `mark_pending`）表示本次操作没有入队任何内容；队列里可能仍有更早的条目。
 `queued` 只出现在写穿失败的降级路径上（包括索引构建锁被长时间占用、写穿短超时）：
 pending queue 已原子落盘，等待搜索 preflight 消费修复，因此 freshness 仍为 degraded。
 `compensated` 表示 pre-commit 操作曾发生但已完成补偿，journal 未提交，可在解决原始错误后重试。
@@ -823,10 +823,11 @@ pending queue 已原子落盘，等待搜索 preflight 消费修复，因此 fre
 `recovery_strategy` 为 `life-index index --rebuild`；下一次搜索的 reconcile 也会自愈该行）。
 `fts_row/post_commit` 表示该日志的 FTS 行已在提交后即时写穿——行由提交后的文件经与全量重建
 同一条 "file → FTS row" 路径构建（真实 `file_hash`、文件真实 mtime）。文件只读取一次：
-行内容、`file_hash` 与 `(mtime, size)` 签名都来自这一次读取；只有读取前后的 stat 一致时才记录
-签名，否则行照常写入但不记录签名，下一次扫描会重新读取该文件。写穿不修改
-`index_meta.last_updated`（只有一次完成的 archive scan 才能推进它），因此正常写入即刻可被
-全文检索，且 `index_status: complete`。写穿持有与索引构建相同的 index lock（短超时），因此不会与全量重建交错而丢行；
+行内容、`file_hash` 与 `(mtime, size)` 签名都来自这一次读取；只有读取前后的
+`(st_mtime_ns, st_size, st_ino)` 一致时才记录签名，否则行照常写入但不记录签名，下一次扫描
+会重新读取该文件。写穿不修改 `index_meta.last_updated`（只有一次完成的 archive scan 才能
+推进它），因此正常写入即刻可被全文检索，且 `index_status: complete`。写穿持有索引构建的
+同一把 index lock（`docs/ARCHITECTURE.md` §5.7；短超时），因此不会与全量重建交错而丢行；
 拿不到锁（典型场景：重建正在进行）同样计为写穿失败，`recovery_strategy` 为
 `life-index index`，`mark_pending` 退回 `queued`，由下一次搜索 preflight 或
 `life-index index` 修复。
@@ -3033,7 +3034,9 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
   `mark_pending` 提升”且“该 path 实际被修复”时才移除。同一 path 在构建期间再次入队会保留，
   构建期间新入队的 path 也原样保留
 - 队列中的 path 无论其 `(mtime, size)` 签名是否匹配都会被强制重读（签名无法证明写穿已成功）；
-  不可解析的 live fragment 会移除旧行/签名、计入 `fts.unparsable` 并留在队列中，等待后续扫描重试
+  不可解析的 live fragment 仍会按原始文本建行并记录签名，计入 `fts.unparsable`，不会留在队列中
+- 队列为空时搜索先做只读签名检查；队列非空时 preflight 直接进入修复，并在修复后重新运行同一
+  只读比较。L3 fallback 使用的 `index_signature_current` 结论只来自这次比较，不来自构建返回值
 - 构建失败时，`warnings` 数组中追加 `pending_index_update_failed: {error}` 条目，pending 队列保留以供下次搜索重试
 
 ### 错误码
@@ -4972,14 +4975,14 @@ python -m tools.edit_journal --journal "<path>" [options]
 | 字段 | 值 | 含义 |
 |------|----|------|
 | `fts_row.status` | `complete` / `skipped` / `failed` | 写穿结果 |
-| `fts_row.reason` | string / null | `skipped` 时为 `not_a_live_fragment`；`failed` 时为写穿错误（若队列写入也失败，reason 追加 `pending_queue_failed: ...`）；`complete` 时为 null |
+| `fts_row.reason` | string / null | `skipped` 时为 `not_a_live_fragment`；`complete` 时为 null，若 frontmatter 不可解析而按原始文本建行则为 `unparsable_frontmatter_indexed_as_text`；`failed` 时为写穿错误（若队列写入也失败，reason 追加 `pending_queue_failed: ...`） |
 | `fts_row.recovery` | string / null | 需要修复时给调用方的命令：写穿失败且已入队为 `life-index index`；写穿失败且入队也失败为 `life-index index --rebuild`；`skipped`/`complete` 为 null |
 
 只有 `fts_row.status == "failed"` 且 `pending_marked == true` 时，该 path 才已进入 pending
 queue，由下次搜索 preflight 或 `life-index index` 修复；`skipped` 不入队。
-`metadata_cache_updated` 表示编辑提交后已即时 upsert 该日志的元数据缓存行（additive，
-布尔值；只对 journals 树的 live fragment 生效）。`false` 仅表示该派生步骤失败或被跳过
-（编辑本身成功）；下次搜索的 reconcile 或 `life-index index --rebuild` 会恢复。
+`metadata_cache_updated` 始终出现在编辑结果中（布尔值；只对 journals 树的 live fragment
+生效）：`false` 表示该派生步骤失败或被跳过（编辑本身成功），下次搜索的 reconcile 或
+`life-index index --rebuild` 会恢复。
 
 ### 错误码
 
@@ -5239,10 +5242,13 @@ python -m tools.build_index [options]
 增量模式（`life-index index`，无 `--rebuild`）以每个 live fragment 的 `(mtime, size)` 签名
 判定是否读取：新文件、签名变化、缺 FTS 行、缺签名行的文件才被读取；已消失文件删除其 FTS 行
 与签名行；pending queue 中的 path 无论签名是否匹配都会重读，修复后按 generation 快照确认移除。
-`unparsable`/`unparsable_paths` 是 additive 字段：不可解析的 live fragment 会移除旧行与签名行、
-计数并保留在队列中等待后续扫描重试（不会触发全库 rebuild）。`pending_repaired` 是本次实际修复
-的队列 path。全量重建（`--rebuild`）读取全部 live fragment，并清空签名表。一次成功的
-archive scan（增量或全量）会推进 `index_meta.last_updated`；写穿不会。
+`unparsable`/`unparsable_paths` 是 additive 字段：frontmatter 不可解析的 live fragment 会按
+整篇原始文本建行（`title`/元数据列为空，`date` 回退到文件名日期）并记录签名；它在全量重建和
+每次被重读时计数，但不会再重试或留在队列中（不会触发全库 rebuild）。完全无法读取
+（`OSError`）的文件不写任何东西，已有行与签名保持不变并保持 not-current。`pending_repaired`
+是本次实际修复的队列 path。全量重建（`--rebuild`）读取全部 live fragment，并清空签名表；
+持锁后发现遗留的 `.rebuilding` marker 会视为创建者已死而删除并继续。一次成功的 archive scan
+（增量或全量）会推进 `index_meta.last_updated`；写穿不会。
 
 **`--check` 模式**：
 

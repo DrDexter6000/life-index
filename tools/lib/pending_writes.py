@@ -27,7 +27,7 @@ the same JSON file, and unserialized interleavings would silently drop paths.
 import json
 import tempfile
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, Optional
+from typing import Dict, Iterable, List, Mapping
 
 from .file_lock import FileLock
 from .paths import get_index_dir
@@ -57,11 +57,28 @@ def _ensure_index_dir() -> None:
     get_index_dir().mkdir(parents=True, exist_ok=True)
 
 
+def _coerce_generation(value: object) -> int:
+    """Return a usable generation, else the legacy generation.
+
+    The queue file is user-writable state, so a hand-edited or truncated file
+    may carry anything: strings, floats (including ``inf`` from JSON ``1e999``),
+    negatives, nested objects. None of those may raise out of a search or a
+    write; every unusable value reads as the pre-generation format.
+    """
+    if isinstance(value, bool):
+        return LEGACY_GENERATION
+    if isinstance(value, int) and value >= LEGACY_GENERATION:
+        return value
+    return LEGACY_GENERATION
+
+
 def _read_state() -> tuple[List[str], Dict[str, int], int]:
     """Read the queue: (paths, path -> generation, highest generation issued).
 
     Missing or corrupt state reads as an empty queue, as before. Entries in
-    the legacy list-only format get ``LEGACY_GENERATION``.
+    the legacy list-only format get ``LEGACY_GENERATION``. Any unusable
+    generation or counter value is treated as the legacy generation instead of
+    raising.
     """
     pfile = _pending_file()
     if not pfile.exists():
@@ -79,13 +96,9 @@ def _read_state() -> tuple[List[str], Dict[str, int], int]:
     for path in paths:
         generation = LEGACY_GENERATION
         if isinstance(raw_generations, dict):
-            try:
-                generation = int(raw_generations.get(path, LEGACY_GENERATION))
-            except (TypeError, ValueError):
-                generation = LEGACY_GENERATION
+            generation = _coerce_generation(raw_generations.get(path, LEGACY_GENERATION))
         generations[path] = generation
-    raw_counter = data.get("counter")
-    counter = raw_counter if isinstance(raw_counter, int) else LEGACY_GENERATION
+    counter = _coerce_generation(data.get("counter"))
     return paths, generations, max([counter, *generations.values()])
 
 
@@ -129,7 +142,7 @@ def remove_pending(paths: List[str]) -> List[str]:
 
 def ack_pending(
     snapshot: Mapping[str, int],
-    only: Optional[Iterable[str]] = None,
+    only: Iterable[str],
 ) -> List[str]:
     """Acknowledge a snapshot read before a repair scan.
 
@@ -137,13 +150,14 @@ def ack_pending(
 
     - its current generation equals the generation in ``snapshot`` (a path
       re-queued during the scan keeps its newer generation and survives), and
-    - it was actually repaired (``only``; ``None`` means "trust the scan").
+    - it was actually repaired (``only``; there is no permissive mode — a
+      build result without a repaired list acknowledges nothing).
 
     Returns the paths removed, in queue order.
     """
     if not snapshot:
         return []
-    repaired = None if only is None else set(only)
+    repaired = set(only)
     _ensure_index_dir()
     with _queue_lock():
         current, generations, counter = _read_state()
@@ -154,7 +168,7 @@ def ack_pending(
             if (
                 expected_generation is not None
                 and generations.get(path, LEGACY_GENERATION) == expected_generation
-                and (repaired is None or path in repaired)
+                and path in repaired
             ):
                 removed.append(path)
             else:

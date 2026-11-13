@@ -7,7 +7,7 @@ Each case reproduces a defect where the index kept serving a wrong row:
 - R3: a queued path was skipped because its signature matched.
 - R4: the row and its signature could describe different file versions.
 - R5: a non-fragment path was admitted to the derived stores.
-- N1: an unparsable live fragment kept its obsolete row.
+- D1: an unparsable live fragment is indexed as raw text, not dropped.
 """
 
 import json
@@ -129,8 +129,24 @@ class TestScanReconcilesRowsAndSignatures:
         assert _rel(journal, isolated_data_dir) in result["fts"]["pending_repaired"]
         assert get_pending() == []
 
-    def test_unparsable_source_loses_its_row_and_is_counted(self, isolated_data_dir):
-        """N1: an unparsable live fragment is removed, counted, and retried."""
+    def test_invalid_utf8_fragment_is_indexed_as_text(self, isolated_data_dir):
+        """D1: bytes that are not UTF-8 still yield a raw-text row."""
+        from tools.lib.search_index import update_index
+
+        journal = _write_journal(isolated_data_dir, body="old")
+        assert update_index(incremental=False)["success"] is True
+
+        journal.write_bytes(b"no frontmatter \xff\xfe rawbytesword\n")
+
+        result = update_index(incremental=True)
+
+        assert result["success"] is True
+        assert result["unparsable"] == 1
+        assert "rawbytesword" in (_row_content(isolated_data_dir, journal) or "")
+        assert _stats_row(isolated_data_dir, journal) is not None
+
+    def test_unparsable_source_is_indexed_as_text(self, isolated_data_dir):
+        """D1: an unparsable live fragment keeps a row built from its full text."""
         from tools.lib.search_index import update_index
 
         journal = _write_journal(isolated_data_dir, body="n1word")
@@ -144,15 +160,28 @@ class TestScanReconcilesRowsAndSignatures:
         assert result["success"] is True
         assert result["unparsable"] == 1
         assert result["unparsable_paths"] == [_rel(journal, isolated_data_dir)]
-        assert _row_content(isolated_data_dir, journal) is None
-        assert _stats_row(isolated_data_dir, journal) is None
+        content = _row_content(isolated_data_dir, journal)
+        assert content is not None and "no frontmatter at all" in content
+        assert _stats_row(isolated_data_dir, journal) is not None
 
-        # Still retried on later scans (no archive-wide rebuild needed).
+        conn = _fts_conn(isolated_data_dir)
+        try:
+            title, date = conn.execute(
+                "SELECT title, date FROM journals WHERE path = ?",
+                (_rel(journal, isolated_data_dir),),
+            ).fetchone()
+        finally:
+            conn.close()
+        assert title == ""
+        assert date == "2026-03-04"  # filename fallback
+
+        # Current like any other row: no per-search retry.
         again = update_index(incremental=True)
         assert again["success"] is True
-        assert again["unparsable"] == 1
+        assert again["unparsable"] == 0
 
-        # A repaired source gets its row back on the next scan.
+        # A fragment that becomes parsable again is re-read (signature change)
+        # and gets a normal row on the next scan.
         journal.write_text(
             '---\ntitle: "fixed"\ndate: "2026-03-04"\n---\n\nfixedword\n',
             encoding="utf-8",
@@ -160,6 +189,15 @@ class TestScanReconcilesRowsAndSignatures:
         fixed = update_index(incremental=True)
         assert fixed["unparsable"] == 0
         assert "fixedword" in (_row_content(isolated_data_dir, journal) or "")
+        conn = _fts_conn(isolated_data_dir)
+        try:
+            title = conn.execute(
+                "SELECT title FROM journals WHERE path = ?",
+                (_rel(journal, isolated_data_dir),),
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert title == "fixed"
 
 
 class TestReadOnceConsistency:
@@ -221,6 +259,45 @@ class TestReadOnceConsistency:
 
         assert update_index(incremental=True)["success"] is True
         assert "newcontent" in (_row_content(isolated_data_dir, journal) or "")
+
+    def test_replaced_file_with_same_mtime_and_size_is_not_stable(
+        self, isolated_data_dir, monkeypatch
+    ):
+        """D3: file identity (inode) is part of the stability decision."""
+        from tools.lib.search_index import upsert_fts_row
+
+        journal = _write_journal(isolated_data_dir, body="stablecontent")
+        original = journal.read_bytes()
+        original_stat = journal.stat()
+        replacement = original[:-1] + (b"X" if original[-1:] != b"X" else b"Y")
+        assert len(replacement) == len(original)
+
+        real_read_bytes = Path.read_bytes
+
+        def replacing_read(self):
+            raw = real_read_bytes(self)
+            if Path(self) == journal:
+                staged = journal.with_name(journal.name + ".replacement")
+                staged.write_bytes(replacement)
+                os.utime(
+                    staged,
+                    ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns),
+                )
+                os.replace(staged, journal)
+            return raw
+
+        monkeypatch.setattr(Path, "read_bytes", replacing_read)
+        row = upsert_fts_row(journal)
+        monkeypatch.setattr(Path, "read_bytes", real_read_bytes)
+
+        assert row is not None
+        replaced_stat = journal.stat()
+        assert replaced_stat.st_size == original_stat.st_size
+        assert replaced_stat.st_mtime_ns == original_stat.st_mtime_ns
+        assert replaced_stat.st_ino != original_stat.st_ino, "the test needs a new file identity"
+        assert (
+            _stats_row(isolated_data_dir, journal) is None
+        ), "a file replaced during the read must not get a signature row"
 
 
 class TestLiveFragmentAdmission:
@@ -363,8 +440,8 @@ class TestPendingAcknowledgement:
         assert result["success"] is True
         assert get_pending() == []
 
-    def test_unparsable_queued_path_stays_queued(self, isolated_data_dir):
-        """An unparsable queued fragment is retried, not acknowledged."""
+    def test_unparsable_queued_path_is_indexed_and_acknowledged(self, isolated_data_dir):
+        """D1: an unparsable queued fragment gets a row and leaves the queue."""
         from tools.build_index import build_all
         from tools.lib.pending_writes import get_pending, mark_pending
 
@@ -377,7 +454,9 @@ class TestPendingAcknowledgement:
 
         assert result["success"] is True
         assert result["fts"]["unparsable"] == 1
-        assert get_pending() == [_rel(journal, isolated_data_dir)]
+        assert _rel(journal, isolated_data_dir) in result["fts"]["pending_repaired"]
+        assert _row_content(isolated_data_dir, journal) is not None
+        assert get_pending() == []
 
         fixed = '---\ntitle: "fixed"\ndate: "2026-03-04"\n---\n\nfixedafterrepair\n'
         journal.write_text(fixed, encoding="utf-8")

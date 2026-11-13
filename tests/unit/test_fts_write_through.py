@@ -227,15 +227,36 @@ class TestUpsertFtsRow:
         assert row[0] == stat.st_mtime
         assert row[1] == stat.st_size
 
-    def test_unparsable_file_returns_none(self, tmp_path: Path):
-        """A file without frontmatter yields no row (None, no raise)."""
+    def test_unparsable_file_returns_raw_row(self, tmp_path: Path):
+        """D1: a file without frontmatter is indexed as raw text, not dropped."""
         from tools.lib.search_index import upsert_fts_row
 
         user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(tmp_path)
         journal_path = journals_dir / "2026" / "03" / "life-index_2026-03-04_001.md"
         journal_path.write_text("no frontmatter here\n", encoding="utf-8")
 
-        assert upsert_fts_row(journal_path) is None
+        doc = upsert_fts_row(journal_path)
+
+        assert doc is not None
+        assert doc["unparsable"] is True
+        assert doc["title"] == ""
+        assert doc["date"] == "2026-03-04"
+        assert "no frontmatter here" in doc["content"]
+
+        conn = sqlite3.connect(str(fts_db_path))
+        try:
+            row = conn.execute(
+                "SELECT content FROM journals WHERE path = ?",
+                ("Journals/2026/03/life-index_2026-03-04_001.md",),
+            ).fetchone()
+            stats = conn.execute(
+                "SELECT mtime, size FROM fts_file_stats WHERE path = ?",
+                ("Journals/2026/03/life-index_2026-03-04_001.md",),
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None and "no frontmatter here" in row[0]
+        assert stats is not None
 
     def test_db_error_raises(self, tmp_path: Path):
         """Database errors raise so the write core records fts_row=failed."""

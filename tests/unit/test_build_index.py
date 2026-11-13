@@ -40,7 +40,7 @@ class TestBuildAll:
         assert result["fts"]["added"] == 5
         assert result["vector"] is None
         assert result["semantic_status"] == "disabled"
-        mock_update_fts.assert_called_once_with(incremental=True, force_paths=[])
+        mock_update_fts.assert_called_once_with(incremental=True, force_paths=[], lock_held=True)
 
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
@@ -221,7 +221,7 @@ class TestBuildAll:
 
         assert result["success"] is True
         # Verify incremental=False is passed
-        mock_update_fts.assert_called_once_with(incremental=False, force_paths=[])
+        mock_update_fts.assert_called_once_with(incremental=False, force_paths=[], lock_held=True)
 
     @patch("tools.build_index.update_cache_for_all_journals")
     @patch("tools.build_index.invalidate_cache")

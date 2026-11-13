@@ -85,12 +85,9 @@ def build_all(
     start_time = time.time()
 
     # ===== 文件锁保护 =====
-    # 使用文件锁保护索引构建，防止并发冲突
-    lock_path = (
-        get_user_data_dir() / ".index" / "index.lock"
-        if derived_index_only
-        else get_index_lock_path()
-    )
+    # 所有写 FTS 数据库的路径（普通/全量重建、source-safe 重建、写穿）共用
+    # .index/index.lock；derived_index_only 只能写 .index/，所以锁放在那里。
+    lock_path = get_index_lock_path()
     lock = FileLock(lock_path, timeout=FILE_LOCK_TIMEOUT_REBUILD)
 
     try:
@@ -115,13 +112,14 @@ def build_all(
                     fts_result = update_fts_index(
                         incremental=incremental,
                         force_paths=sorted(pending_snapshot),
+                        lock_held=True,
                     )
                     result["fts"] = fts_result
                     if fts_result.get("success"):
                         repaired = fts_result.get("pending_repaired")
                         ack_pending(
                             pending_snapshot,
-                            only=repaired if isinstance(repaired, list) else None,
+                            only=repaired if isinstance(repaired, list) else [],
                         )
                         logger.info(
                             f"  ✓ FTS: +{fts_result.get('added', 0)} added, "

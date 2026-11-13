@@ -597,10 +597,11 @@ class TestGetIndexLockPath:
         result = get_index_lock_path()
         assert result.name == "index.lock"
 
-    def test_returns_path_in_cache_dir(self):
-        """Should return path in .cache directory"""
+    def test_returns_path_in_index_dir(self):
+        """D4: the shared lock lives under the rebuildable .index tree."""
         result = get_index_lock_path()
-        assert ".cache" in str(result)
+        assert ".index" in str(result)
+        assert result.parent.name == ".index"
 
     @patch("tools.lib.paths.get_user_data_dir", return_value=Path("/tmp/test_life_index"))
     def test_returns_path_under_user_data_dir(self, mock_resolve):

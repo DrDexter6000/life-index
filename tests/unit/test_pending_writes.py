@@ -189,6 +189,64 @@ class TestRemovePending:
             clear_pending()
 
 
+class TestMalformedState:
+    """D6: unusable generations/counters never raise out of a read or a write."""
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            '{"pending": ["x"], "generations": {"x": "3"}}',
+            '{"pending": ["x"], "generations": {"x": 1.5}}',
+            '{"pending": ["x"], "generations": {"x": 1e999}}',
+            '{"pending": ["x"], "generations": {"x": -4}}',
+            '{"pending": ["x"], "generations": {"x": {"nested": 1}}}',
+            '{"pending": ["x"], "generations": "not-a-map"}',
+            '{"pending": ["x"], "counter": 1e999}',
+            '{"pending": ["x"], "counter": -2}',
+            '{"pending": "not-a-list"}',
+            '["x"]',
+        ],
+        ids=[
+            "string",
+            "float",
+            "infinity",
+            "negative",
+            "nested",
+            "generations-wrong-type",
+            "counter-infinity",
+            "counter-negative",
+            "pending-wrong-type",
+            "top-level-wrong-type",
+        ],
+    )
+    def test_malformed_shapes_read_as_legacy_generation(self, index_dir: Path, payload: str):
+        (index_dir / "pending_writes.json").write_text(payload, encoding="utf-8")
+
+        pending = get_pending()  # must not raise
+        generations = get_pending_generations()
+
+        assert pending in ([], ["x"])
+        if pending:
+            assert generations == {"x": 0}
+        else:
+            assert generations == {}
+
+        # A write after the malformed state must also succeed.
+        mark_pending("Journals/2026/03/after.md")
+        assert "Journals/2026/03/after.md" in get_pending()
+
+    def test_malformed_generation_ack_does_not_raise(self, index_dir: Path):
+        (index_dir / "pending_writes.json").write_text(
+            '{"pending": ["x", "y"], "generations": {"x": 1e999, "y": -1}}',
+            encoding="utf-8",
+        )
+        snapshot = get_pending_generations()
+
+        assert snapshot == {"x": 0, "y": 0}
+        assert ack_pending(snapshot, only=["x"]) == ["x"]
+        assert get_pending() == ["y"]
+
+
 class TestGenerations:
     """Generation tokens: a re-queued path survives an older acknowledgement."""
 
@@ -223,14 +281,15 @@ class TestGenerations:
         assert removed == ["Journals/2026/03/a.md"]
         assert get_pending() == ["Journals/2026/03/b.md"]
 
-    def test_ack_without_only_trusts_the_scan(self, index_dir: Path):
+    def test_ack_requires_a_repaired_list(self, index_dir: Path):
+        """D6: there is no permissive mode; a missing only list acknowledges nothing."""
         mark_pending("Journals/2026/03/a.md")
         snapshot = get_pending_generations()
 
-        removed = ack_pending(snapshot)
+        with pytest.raises(TypeError):
+            ack_pending(snapshot)  # type: ignore[call-arg]
 
-        assert removed == ["Journals/2026/03/a.md"]
-        assert get_pending() == []
+        assert get_pending() == ["Journals/2026/03/a.md"]
 
     def test_legacy_list_format_reads_as_generation_zero(self, index_dir: Path):
         """A pre-generation pending_writes.json stays readable."""

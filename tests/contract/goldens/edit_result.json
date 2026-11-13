@@ -17,6 +17,7 @@
     "reason": "not_a_live_fragment",
     "recovery": null
   },
+  "metadata_cache_updated": false,
   "index_b_updated": {
     "success": true,
     "updated": true,
