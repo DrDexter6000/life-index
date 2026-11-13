@@ -55,7 +55,7 @@ class TestEventEntityAuditIntegration:
             assert "suggested_action" in issue
 
     def test_full_event_detection_under_budget(self, tmp_path: Path):
-        """All 5 detectors should execute in < 100ms."""
+        """All five detectors run and return within the fail-safe bound."""
         from tools.lib.events import EventRegistry
         from tools.lib.event_detectors import (
             check_no_journal_streak,
