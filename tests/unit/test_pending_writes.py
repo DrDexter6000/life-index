@@ -155,9 +155,9 @@ class TestRemovePending:
 
         real_atomic_write = mod._atomic_write
 
-        def slow_atomic_write(paths, generations):
+        def slow_atomic_write(*args):
             _time.sleep(0.05)
-            real_atomic_write(paths, generations)
+            real_atomic_write(*args)
 
         monkeypatch.setattr(mod, "_atomic_write", slow_atomic_write)
 
@@ -256,6 +256,30 @@ class TestGenerations:
 
         assert ack_pending(snapshot, only=["Journals/2026/03/a.md"]) == ["Journals/2026/03/a.md"]
         assert get_pending() == []
+
+    def test_generation_is_not_reused_after_the_path_left_the_queue(self, index_dir: Path):
+        """A snapshot taken before a path left the queue must not match its next event."""
+        path = "Journals/2026/03/a.md"
+        mark_pending(path)
+        old_snapshot = get_pending_generations()
+        assert ack_pending(old_snapshot, only=[path]) == [path]
+
+        mark_pending(path)  # a later event for the same path
+
+        assert get_pending_generations()[path] > old_snapshot[path]
+        assert ack_pending(old_snapshot, only=[path]) == []
+        assert get_pending() == [path]
+
+    def test_generation_is_not_reused_after_clear(self, index_dir: Path):
+        path = "Journals/2026/03/a.md"
+        mark_pending(path)
+        old_snapshot = get_pending_generations()
+        clear_pending()
+
+        mark_pending(path)
+
+        assert ack_pending(old_snapshot, only=[path]) == []
+        assert get_pending() == [path]
 
     def test_clear_pending_drops_generations(self, index_dir: Path):
         mark_pending("Journals/2026/03/a.md")

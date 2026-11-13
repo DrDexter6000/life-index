@@ -115,6 +115,45 @@ class TestOneWalkPerDetectionCall:
         assert len(under) == 6
         assert len(set(under)) == 6
 
+    def test_index_check_reuses_the_shared_scan(self, tmp_path: Path, monkeypatch):
+        """With an FTS database present, the index detector must not walk the tree again."""
+        journals = tmp_path / "Journals"
+        _current_schema_journal(journals / "2026" / "03" / "life-index_2026-03-07_001.md")
+        index_dir = tmp_path / ".index"
+        index_dir.mkdir(parents=True)
+        conn = sqlite3.connect(str(index_dir / "journals_fts.db"))
+        conn.execute("CREATE VIRTUAL TABLE journals USING fts5(path, title, content)")
+        conn.execute(
+            "CREATE TABLE fts_file_stats "
+            "(path TEXT PRIMARY KEY, mtime REAL NOT NULL, size INTEGER NOT NULL)"
+        )
+        conn.commit()
+        conn.close()
+
+        import tools.lib.journal_files as journal_files
+
+        calls: list[str] = []
+        original = journal_files.os.scandir
+
+        def counting_scandir(path="."):
+            calls.append(str(path))
+            return original(path)
+
+        monkeypatch.setattr(journal_files.os, "scandir", counting_scandir)
+        events = _detect_all({"journals_dir": journals, "data_dir": tmp_path})
+
+        assert [event.data["reason"] for event in events if event.type == "index_stale"] == [
+            "signature_mismatch"
+        ]
+        journals_abs = os.path.normcase(os.path.abspath(journals))
+        under = [
+            call
+            for call in calls
+            if os.path.normcase(os.path.abspath(call)).startswith(journals_abs)
+        ]
+        # root + one year dir + one month dir, walked once.
+        assert len(under) == 3
+
 
 class TestDetectorResultsUnchanged:
     """Characterization cases: these pass before and after the shared scan."""

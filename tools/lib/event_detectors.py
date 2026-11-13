@@ -298,7 +298,7 @@ def check_index_stale(context: dict) -> list[Event]:
 
     from tools.lib.fts_update import inspect_fts_db
 
-    report = inspect_fts_db(fts_db, journals_dir, data_dir)
+    report = inspect_fts_db(fts_db, journals_dir, data_dir, live=_fragment_stats(context))
     if not report.current:
         return [
             Event(

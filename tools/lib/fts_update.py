@@ -30,7 +30,7 @@ _STALE_MARKER_TIMEOUT_S = 300
 
 from .chinese_tokenizer import segment_for_fts
 from .frontmatter import parse_frontmatter
-from .journal_files import scan_journal_files
+from .journal_files import JournalFileStat, scan_journal_files
 from .path_contract import build_journal_path_fields, safe_relative_path
 
 FileSignature = tuple[float, int]
@@ -272,6 +272,7 @@ def inspect_fts_index(
     journals_dir: Path,
     user_data_dir: Path,
     pending_paths: Iterable[str] = (),
+    live: list[JournalFileStat] | None = None,
 ) -> FtsSignatureReport:
     """Signature check: one directory scan + two indexed reads. Never opens a journal.
 
@@ -279,6 +280,9 @@ def inspect_fts_index(
     ``(mtime, size)`` matches the directory listing. A listing/file mismatch
     is confirmed with one real stat of that file before it counts as changed
     (the metadata cache's ``_row_is_current`` applies the same rule).
+
+    ``live`` is a ``scan_journal_files(journals_dir)`` result the caller
+    already holds; passing it avoids a second walk of the tree.
     """
     cursor = conn.cursor()
     cursor.execute("SELECT path FROM journals")
@@ -288,7 +292,8 @@ def inspect_fts_index(
         row[0]: (row[1], row[2]) for row in cursor.fetchall()
     }
 
-    live = scan_journal_files(journals_dir)
+    if live is None:
+        live = scan_journal_files(journals_dir)
     current_paths: set[str] = set()
     reasons: list[str] = []
 
@@ -331,6 +336,7 @@ def inspect_fts_db(
     journals_dir: Path,
     user_data_dir: Path,
     pending_paths: Iterable[str] = (),
+    live: list[JournalFileStat] | None = None,
 ) -> FtsSignatureReport:
     """Open the FTS database read-only and run :func:`inspect_fts_index`."""
     if not fts_db_path.exists():
@@ -340,7 +346,7 @@ def inspect_fts_db(
     except sqlite3.Error as exc:
         return FtsSignatureReport(current=False, reasons=(f"db_error: {exc}",))
     try:
-        return inspect_fts_index(conn, journals_dir, user_data_dir, pending_paths)
+        return inspect_fts_index(conn, journals_dir, user_data_dir, pending_paths, live)
     except sqlite3.Error as exc:
         return FtsSignatureReport(current=False, reasons=(f"db_error: {exc}",))
     finally:

@@ -5,15 +5,19 @@ journal paths need an incremental FTS repair. Write/edit operations append
 paths here when their FTS row write-through failed; search operations and
 ``life-index index`` consume the queue before executing.
 
-Each queued path carries a generation counter. ``mark_pending`` bumps the
-path's generation and an acknowledgement removes a path only when the
-generation it read is still current. Without generations, a path queued again
-while a repair scan is running (newer file content, same path) would be
-removed by the finishing scan and its event silently lost.
+Each queued path carries a generation. ``mark_pending`` gives the path the
+next value of a queue-wide counter and an acknowledgement removes a path only
+when the generation it read is still current. Without generations, a path
+queued again while a repair scan is running (newer file content, same path)
+would be removed by the finishing scan and its event silently lost. The
+counter never goes back, also not when the queue empties, so a path that left
+the queue and was queued again can never carry a generation an older snapshot
+still holds.
 
 The on-disk format stays backward compatible: ``pending`` remains a list of
-path strings (the pre-generation format), and ``generations`` is an additive
-map. A file without ``generations`` is read as generation 0 for every path.
+path strings (the pre-generation format); ``generations`` and ``counter`` are
+additive. A file without ``generations`` is read as generation 0 for every
+path.
 
 Mutations (mark / remove / ack / clear) serialize on a small queue lock file
 via the shared ``FileLock`` helper: each mutation is a read-modify-write of
@@ -53,21 +57,21 @@ def _ensure_index_dir() -> None:
     get_index_dir().mkdir(parents=True, exist_ok=True)
 
 
-def _read_state() -> tuple[List[str], Dict[str, int]]:
-    """Read the queue: (paths, path -> generation).
+def _read_state() -> tuple[List[str], Dict[str, int], int]:
+    """Read the queue: (paths, path -> generation, highest generation issued).
 
     Missing or corrupt state reads as an empty queue, as before. Entries in
     the legacy list-only format get ``LEGACY_GENERATION``.
     """
     pfile = _pending_file()
     if not pfile.exists():
-        return [], {}
+        return [], {}, LEGACY_GENERATION
     try:
         data = json.loads(pfile.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError, UnicodeDecodeError):
-        return [], {}
+        return [], {}, LEGACY_GENERATION
     if not isinstance(data, dict) or not isinstance(data.get("pending"), list):
-        return [], {}
+        return [], {}, LEGACY_GENERATION
 
     paths = list(dict.fromkeys(path for path in data["pending"] if isinstance(path, str)))
     raw_generations = data.get("generations")
@@ -80,11 +84,13 @@ def _read_state() -> tuple[List[str], Dict[str, int]]:
             except (TypeError, ValueError):
                 generation = LEGACY_GENERATION
         generations[path] = generation
-    return paths, generations
+    raw_counter = data.get("counter")
+    counter = raw_counter if isinstance(raw_counter, int) else LEGACY_GENERATION
+    return paths, generations, max([counter, *generations.values()])
 
 
 def mark_pending(journal_path: str) -> None:
-    """Queue a journal path and bump its generation.
+    """Queue a journal path under a generation no snapshot has seen.
 
     Uses atomic write (temp + rename) to avoid corruption on crash, under the
     queue lock so concurrent mark/remove mutations cannot lose paths. A path
@@ -93,11 +99,12 @@ def mark_pending(journal_path: str) -> None:
     """
     _ensure_index_dir()
     with _queue_lock():
-        current, generations = _read_state()
+        current, generations, counter = _read_state()
         if journal_path not in current:
             current.append(journal_path)
-        generations[journal_path] = generations.get(journal_path, LEGACY_GENERATION) + 1
-        _atomic_write(current, generations)
+        counter += 1
+        generations[journal_path] = counter
+        _atomic_write(current, generations, counter)
 
 
 def remove_pending(paths: List[str]) -> List[str]:
@@ -113,10 +120,10 @@ def remove_pending(paths: List[str]) -> List[str]:
         return []
     _ensure_index_dir()
     with _queue_lock():
-        current, generations = _read_state()
+        current, generations, counter = _read_state()
         target_set = set(paths)
         removed = [path for path in current if path in target_set]
-        _atomic_write([path for path in current if path not in target_set], generations)
+        _atomic_write([path for path in current if path not in target_set], generations, counter)
         return removed
 
 
@@ -139,7 +146,7 @@ def ack_pending(
     repaired = None if only is None else set(only)
     _ensure_index_dir()
     with _queue_lock():
-        current, generations = _read_state()
+        current, generations, counter = _read_state()
         removed: List[str] = []
         kept: List[str] = []
         for path in current:
@@ -152,7 +159,7 @@ def ack_pending(
                 removed.append(path)
             else:
                 kept.append(path)
-        _atomic_write(kept, generations)
+        _atomic_write(kept, generations, counter)
         return removed
 
 
@@ -175,7 +182,7 @@ def clear_pending() -> None:
     """
     _ensure_index_dir()
     with _queue_lock():
-        _atomic_write([], {})
+        _atomic_write([], {}, _read_state()[2])
 
 
 def has_pending() -> bool:
@@ -183,12 +190,12 @@ def has_pending() -> bool:
     return len(get_pending()) > 0
 
 
-def _atomic_write(paths: List[str], generations: Mapping[str, int]) -> None:
-    """Atomically write the pending list (and generations) to disk."""
+def _atomic_write(paths: List[str], generations: Mapping[str, int], counter: int) -> None:
+    """Atomically write the pending list, its generations and the counter to disk."""
     pfile = _pending_file()
     kept_generations = {path: generations[path] for path in paths if path in generations}
     payload = json.dumps(
-        {"pending": paths, "generations": kept_generations},
+        {"pending": paths, "generations": kept_generations, "counter": counter},
         ensure_ascii=False,
         indent=2,
     )

@@ -576,7 +576,8 @@ Round 8 在分层搜索架构之上，建立了完整的搜索质量保障闭环
 - **Index Manifest**：`tools/lib/index_manifest.py` 管理 FTS 索引构建状态（counts + checksums + legacy vector fields fixed at disabled/empty），支持增量更新的原子性和恢复
 - **Pending Queue**：`tools/lib/pending_writes.py` 实现待修复队列（ADR-017）。写入/编辑的
   FTS 行写穿失败（含索引锁繁忙短超时）时才把路径标记 pending；搜索前消费队列，增量修复
-  索引。每个 path 带 generation：`mark_pending` 提升它，acknowledgement（`ack_pending`）
+  索引。每个 path 带 generation：`mark_pending` 从队列级计数器取下一个值（计数器只增不减，
+  队列清空后也不回退，离队后再入队的 path 不会拿到旧快照里的值），acknowledgement（`ack_pending`）
   只移除“generation 未被提升且实际已修复”的路径，因此同一 path 在构建期间再次入队不会丢事件；
   旧的无 generation 列表格式继续可读（按 generation 0 处理）。队列变更（mark/ack/remove/clear）
   经队列锁文件用共享 `FileLock` 串行化，避免 read-modify-write 交错丢路径
