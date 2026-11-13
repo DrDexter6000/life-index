@@ -13,6 +13,8 @@ from dataclasses import dataclass as _dataclass
 from dataclasses import field as _field
 from typing import Any, Callable
 
+from tools.lib.journal_files import JournalFileKind
+
 # Schema 版本（用于未来格式变更的向后兼容）
 SCHEMA_VERSION = 3
 
@@ -157,9 +159,18 @@ def run_migration_chain(metadata: dict, content: str = "") -> MigrationResult:
     )
 
 
-def get_required_fields() -> list[str]:
-    """获取必需字段列表"""
-    return ["title", "date"]
+def get_required_fields(kind: JournalFileKind | None = None) -> list[str]:
+    """获取指定种类的必需字段列表。
+
+    只有 fragment 在本包内有规则：唯一必需字段是 ``date``（标题、topic 等是
+    解释，属于其他种类的文件）。其他种类（digest 等）尚无规则，询问即抛
+    ``ValueError``——digest 规则随 digest 命令落地。不传 ``kind`` 时按
+    fragment 处理（既有调用方的默认）。
+    """
+    resolved = JournalFileKind.FRAGMENT if kind is None else JournalFileKind(kind)
+    if resolved is JournalFileKind.FRAGMENT:
+        return ["date"]
+    raise ValueError(f"no required-fields rule is defined for kind {resolved.value!r}")
 
 
 def get_recommended_fields() -> list[str]:
@@ -167,7 +178,17 @@ def get_recommended_fields() -> list[str]:
     return ["location", "weather", "mood", "people", "abstract", "topic"]
 
 
-def validate_metadata(metadata: dict[str, Any]) -> list[dict[str, str]]:
+# D2: 接受生产数据中已存在的形状——`YYYY-MM-DD`，或以 `T`/一个空格连接的
+# `HH:MM:SS`（可带小数秒与 `Z` / `±HH:MM` 时区）。仅形状检查，不做日历校验。
+_DATE_SHAPE_RE = re.compile(
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}"
+    r"(?:[T ][0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})?)?$"
+)
+
+
+def validate_metadata(
+    metadata: dict[str, Any], kind: JournalFileKind | None = None
+) -> list[dict[str, str]]:
     """
     验证元数据完整性
 
@@ -175,7 +196,7 @@ def validate_metadata(metadata: dict[str, Any]) -> list[dict[str, str]]:
         问题列表，每项包含 level, field, message
     """
     issues = []
-    required = get_required_fields()
+    required = get_required_fields(kind)
 
     for field in required:
         if field not in metadata or not metadata[field]:
@@ -190,7 +211,7 @@ def validate_metadata(metadata: dict[str, Any]) -> list[dict[str, str]]:
     # 日期格式验证
     if "date" in metadata and metadata["date"]:
         date_str = str(metadata["date"])
-        if not re.match(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?$", date_str):
+        if not _DATE_SHAPE_RE.match(date_str):
             issues.append(
                 {
                     "level": "warning",

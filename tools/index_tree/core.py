@@ -261,6 +261,7 @@ def _baseline_paths_by_scan(query: str, nodes: list[dict[str, Any]]) -> list[str
             haystack_parts = [
                 str(entry.get("relative_path", "")),
                 str(entry.get("title", "")),
+                str(entry.get("display_label", "")),
                 str(entry.get("date", "")),
             ]
             for values in entry.get("signals", {}).values():
@@ -338,10 +339,11 @@ def _normalize_facets(facets: list[str] | None) -> list[str]:
 
 def _content_text(entry: Any) -> str:
     path = get_user_data_dir() / entry.rel_path
+    label = getattr(entry, "display_label", None) or str(entry.title or "")
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
-        return str(entry.title or "")
+        return label
 
     body = text
     if text.startswith("---"):
@@ -350,7 +352,7 @@ def _content_text(entry: Any) -> str:
             body = parsed_body
         except (TypeError, ValueError):
             body = text
-    return f"{entry.title}\n{body}"
+    return f"{label}\n{body}"
 
 
 def _is_content_term_allowed(term: str) -> bool:
@@ -643,6 +645,7 @@ def _entry_payload(
     return {
         "date": entry.date,
         "title": entry.title,
+        "display_label": entry.display_label,
         "path": entry.rel_path,
         "matched_facets": _matched_facets(entry, operations, canonicalizer),
     }

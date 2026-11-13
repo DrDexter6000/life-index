@@ -24,6 +24,7 @@ from .frontmatter import (
     parse_journal_file,
 )
 from .journal_files import (
+    display_label,
     is_live_fragment_path,
     iter_month_journal_files,
     scan_journal_files,
@@ -40,7 +41,10 @@ from .chinese_tokenizer import count_cjk_words
 # a scalar value becomes a one-item array (it used to be stored as a JSON
 # scalar) and null becomes [] (it used to be stored as JSON null). Existing
 # installations rebuild once on the version bump.
-CACHE_VERSION_SCHEMA_VERSION = "v2.1.0"
+# v2.2.0: rows carry the ``display_label`` column, computed by the one label
+# rule when the row is written. Existing installations rebuild once on the
+# version bump.
+CACHE_VERSION_SCHEMA_VERSION = "v2.2.0"
 
 # 缓存存储目录 (deprecated: use getters)
 CACHE_DIR = get_cache_dir()  # deprecated: use get_cache_dir()
@@ -85,6 +89,7 @@ def init_metadata_cache() -> sqlite3.Connection:
             file_path TEXT PRIMARY KEY,
             date TEXT,
             title TEXT,
+            display_label TEXT,
             location TEXT,
             weather TEXT,
             topic TEXT,  -- JSON数组
@@ -156,6 +161,8 @@ def _ensure_metadata_cache_columns(conn: sqlite3.Connection) -> None:
         cursor.execute("ALTER TABLE metadata_cache ADD COLUMN related_entries TEXT")
     if "word_count" not in existing_columns:
         cursor.execute("ALTER TABLE metadata_cache ADD COLUMN word_count INTEGER")
+    if "display_label" not in existing_columns:
+        cursor.execute("ALTER TABLE metadata_cache ADD COLUMN display_label TEXT")
     conn.commit()
 
 
@@ -205,6 +212,7 @@ def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Option
         indexable = normalize_indexable_metadata(metadata) or empty_indexable_metadata()
         date = indexable_date(indexable, file_path)
         title = indexable["title"]
+        label = display_label(title, str(metadata.get("_body", "")), file_path)
         location = indexable["location"]
         weather = indexable["weather"]
         abstract = indexable["abstract"]
@@ -226,15 +234,16 @@ def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Option
         cursor.execute(
             """
             INSERT OR REPLACE INTO metadata_cache
-            (file_path, date, title, location, weather, topic, project,
+            (file_path, date, title, display_label, location, weather, topic, project,
              tags, mood, people, abstract, links, related_entries,
              word_count, file_mtime, file_size)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 file_path_str,
                 date,
                 title,
+                label,
                 location,
                 weather,
                 topic,
@@ -259,6 +268,7 @@ def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Option
             "journal_route_path": path_fields["journal_route_path"],
             "date": date,
             "title": title,
+            "display_label": label,
             "location": location,
             "weather": weather,
             "topic": json.loads(topic),
@@ -307,6 +317,7 @@ def get_cached_metadata(conn: sqlite3.Connection, file_path: Path) -> Optional[D
         **normalized_fields,
         "date": row["date"],
         "title": row["title"],
+        "display_label": row["display_label"],
         "location": row["location"],
         "weather": row["weather"],
         "topic": json.loads(row["topic"]) if row["topic"] else [],
@@ -334,6 +345,42 @@ def get_cached_metadata(conn: sqlite3.Connection, file_path: Path) -> Optional[D
             "word_count": row["word_count"] if row["word_count"] is not None else 0,
         },
     }
+
+
+def get_display_labels_for_keys(keys: List[str]) -> Dict[str, str]:
+    """Read-only ``display_label`` lookup by cache row key.
+
+    Returns only the keys that have a row carrying a label; a caller that
+    finds no row falls back to the file name without extension. Never
+    writes: a missing cache database, or one whose table predates the
+    ``display_label`` column, simply yields no labels.
+    """
+    db_path = get_metadata_db_path()
+    if not db_path.exists():
+        return {}
+
+    wanted = list(dict.fromkeys(key for key in keys if key))
+    labels: Dict[str, str] = {}
+    conn = sqlite3.connect(str(db_path))
+    try:
+        cursor = conn.cursor()
+        for start in range(0, len(wanted), 100):
+            chunk = wanted[start : start + 100]
+            placeholders = ",".join("?" * len(chunk))
+            cursor.execute(
+                "SELECT file_path, display_label FROM metadata_cache "
+                f"WHERE file_path IN ({placeholders})",
+                chunk,
+            )
+            for key, label in cursor.fetchall():
+                if label:
+                    labels[str(key)] = str(label)
+    except sqlite3.Error:
+        # An unreadable or pre-column cache is simply "no labels available".
+        return labels
+    finally:
+        conn.close()
+    return labels
 
 
 def get_or_update_metadata(
@@ -407,6 +454,7 @@ def get_all_cached_metadata(
                     **normalized_fields,
                     "date": row["date"],
                     "title": row["title"],
+                    "display_label": row["display_label"],
                     "location": row["location"],
                     "weather": row["weather"],
                     "topic": json.loads(row["topic"]) if row["topic"] else [],

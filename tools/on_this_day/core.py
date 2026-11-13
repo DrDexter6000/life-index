@@ -156,6 +156,8 @@ def run_on_this_day(
                     "year": entry_year,
                     "years_ago": target_year - entry_year,
                     "title": entry.get("title", ""),
+                    "kind": entry.get("kind", ""),
+                    "display_label": entry.get("display_label", ""),
                     "abstract": entry.get("abstract", ""),
                     "mood": entry.get("mood", []),
                     "path": norm_path,

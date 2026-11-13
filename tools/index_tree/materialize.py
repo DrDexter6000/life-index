@@ -14,7 +14,12 @@ from typing import Any, Iterable
 
 from tools.generate_index.builder import safe_relative_path
 from tools.lib.facet_canonicalization import FacetCanonicalizer, load_facet_canonicalizer
-from tools.lib.frontmatter import parse_frontmatter
+from tools.lib.frontmatter import (
+    empty_indexable_metadata,
+    normalize_indexable_metadata,
+    parse_frontmatter,
+)
+from tools.lib.journal_files import display_label
 from tools.lib.paths import get_journals_dir, get_user_data_dir
 
 INDEX_B_SCHEMA_VERSION = "m31.index_tree.index_b.v0"
@@ -38,6 +43,7 @@ class IndexBEntry:
     month: str
     date: str
     title: str
+    display_label: str
     metadata: dict[str, Any]
 
 
@@ -82,18 +88,20 @@ def _entry_in_range(entry: IndexBEntry, date_from: str | None, date_to: str | No
     return True
 
 
-def _parse_frontmatter(path: Path) -> dict[str, Any]:
+def _parse_frontmatter(path: Path) -> tuple[dict[str, Any], str]:
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
-        return {}
+        return {}, ""
     if not text.startswith("---\n"):
-        return {}
+        return {}, ""
     try:
-        metadata, _body = parse_frontmatter(text)
+        metadata, body = parse_frontmatter(text)
     except (TypeError, ValueError):
-        return {}
-    return metadata if isinstance(metadata, dict) else {}
+        return {}, ""
+    # parse_frontmatter is typed to always return a mapping; the isinstance
+    # arm keeps the same defensive shape the old single-dict version had.
+    return (metadata, body) if isinstance(metadata, dict) else ({}, "")
 
 
 def _date_from_filename(path: Path) -> str:
@@ -172,14 +180,16 @@ def _collect_entries_with_scan(
             skipped.append(_skip_record(path, journals_dir, "unexpected_path_depth"))
             continue
         year, month = parts[0], parts[1]
-        metadata = _parse_frontmatter(path)
+        metadata, body = _parse_frontmatter(path)
         date_value = str(metadata.get("date") or _date_from_filename(path))
+        indexable = normalize_indexable_metadata(metadata) or empty_indexable_metadata()
         entry = IndexBEntry(
             rel_path=rel,
             year=year,
             month=month,
             date=date_value,
-            title=str(metadata.get("title") or path.stem),
+            title=indexable["title"],
+            display_label=display_label(indexable["title"], body, path),
             metadata=metadata,
         )
         if _entry_in_range(entry, date_from, date_to):
@@ -275,7 +285,7 @@ def _entry_pointer_markdown(entries: list[IndexBEntry]) -> str:
         lines.append("| (none) | | |")
     for entry in entries:
         lines.append(
-            f"| {_escape_cell(entry.date)} | {_escape_cell(entry.title)} | "
+            f"| {_escape_cell(entry.date)} | {_escape_cell(entry.display_label)} | "
             f"{_escape_cell(entry.rel_path)} |"
         )
     lines.append("")
@@ -652,6 +662,7 @@ def _fallback_entries(entries: list[IndexBEntry]) -> list[dict[str, str]]:
         {
             "date": entry.date,
             "title": entry.title,
+            "display_label": entry.display_label,
             "path": entry.rel_path,
         }
         for entry in entries

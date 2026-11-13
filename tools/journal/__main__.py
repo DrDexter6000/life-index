@@ -13,7 +13,12 @@ from typing import Any
 
 from tools.lib.attachment import normalize_attachment_entries
 from tools.lib.chinese_tokenizer import count_cjk_words
-from tools.lib.frontmatter import parse_frontmatter
+from tools.lib.frontmatter import (
+    empty_indexable_metadata,
+    normalize_indexable_metadata,
+    parse_frontmatter,
+)
+from tools.lib.journal_files import classify_journal_path, display_label
 from tools.lib.path_contract import build_journal_path_fields
 from tools.lib.paths import get_journals_dir, get_user_data_dir
 from tools.lib.tool_call_log import emit_tool_call_log
@@ -194,14 +199,6 @@ def run_journal_get(*, path: str | None = None, id: str | None = None) -> dict[s
         return _json_error("JOURNAL_READ_FAILED", str(exc))
 
 
-def _first_heading(body: str) -> str | None:
-    for line in body.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("# "):
-            return stripped[2:].strip() or None
-    return None
-
-
 def _journal_paths_recent() -> list[Path]:
     journals_dir = get_journals_dir()
     if not journals_dir.exists():
@@ -237,12 +234,16 @@ def _journal_summary(path: Path) -> dict[str, Any]:
     )
     rel_path = path_fields["rel_path"]
     filename_date = JOURNAL_NAME_RE.match(path.name).group(1)  # type: ignore[union-attr]
-    title = metadata.get("title") or _first_heading(body) or path.stem
+    # The normalized title text: verbatim what the file says, "" when absent.
+    indexable = normalize_indexable_metadata(metadata) or empty_indexable_metadata()
+    title = indexable["title"]
     return {
         "id": rel_path,
         "rel_path": rel_path,
         "journal_route_path": path_fields["journal_route_path"],
         "title": title,
+        "kind": classify_journal_path(path).value,
+        "display_label": display_label(title, body, path),
         "date": str(metadata.get("date") or filename_date),
         "metadata": metadata,
         "attachments": normalize_attachment_entries(

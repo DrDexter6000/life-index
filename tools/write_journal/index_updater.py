@@ -11,14 +11,21 @@ from ..lib.config import get_index_prefixes
 from ..lib.paths import get_by_topic_dir, get_user_data_dir
 from ..lib.errors import ErrorCode, create_error_response
 from ..lib.frontmatter import get_summary
+from ..lib.journal_files import display_label
 from ..lib.path_contract import safe_relative_path
 from ..lib.text_normalize import normalize_text_list
 
 
 def _build_entry(data: Dict[str, Any], journal_path: Path) -> str:
-    """Build a by-topic entry line with optional summary."""
+    """Build a by-topic entry line with optional summary.
+
+    The bracket text is the one display label (title, else first body line,
+    else file name); ``title`` itself is never invented here.
+    """
     date_str = data.get("date", "")[:10]
-    title = data.get("title", "无标题")
+    title = display_label(
+        str(data.get("title") or ""), str(data.get("content") or ""), journal_path
+    )
     rel_path = safe_relative_path(journal_path, get_user_data_dir())
     summary = get_summary(data) or ""
     if summary:

@@ -12,6 +12,7 @@ from typing import Any, Dict, List
 from ..lib.paths import get_user_data_dir, get_journals_dir, get_by_topic_dir
 from ..lib.path_contract import merge_journal_path_fields
 from ..write_journal.index_updater import build_index_filename
+from .utils import annotate_kind_and_display_label
 
 # Deprecated aliases — kept for monkeypatch compatibility (Round 13 lesson)
 BY_TOPIC_DIR = get_by_topic_dir()
@@ -60,7 +61,10 @@ def scan_all_indices() -> List[Dict[str, Any]]:
         except (OSError, IOError):
             continue
 
-    return results
+    # An index line is a pointer: kind comes from the file name and the label
+    # from the metadata cache by path (file-name fallback), never from opening
+    # the journal.
+    return annotate_kind_and_display_label(results)
 
 
 def search_l1_index(query_type: str, query_value: str) -> List[Dict[str, Any]]:
@@ -104,4 +108,6 @@ def search_l1_index(query_type: str, query_value: str) -> List[Dict[str, Any]]:
             )
         )
 
-    return results
+    # Same pointer rule as scan_all_indices: file-name kind, cache label with
+    # file-name fallback.
+    return annotate_kind_and_display_label(results)

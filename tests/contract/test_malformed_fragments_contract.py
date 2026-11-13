@@ -615,7 +615,12 @@ def test_fallback_scan_treats_non_utf8_bytes_like_the_stores(isolated_data_dir):
 
     found = {str(item["path"]).replace("\\", "/"): item for item in results}
     hit = found[str(malformed_path).replace("\\", "/")]
-    assert hit["title"] == "无标题"
+    # title stays exactly what the file says (empty); kind is the file-name
+    # kind; the label follows the one rule over the replaced raw text, whose
+    # first non-blank line is the frontmatter fence.
+    assert hit["title"] == ""
+    assert hit["kind"] == "fragment"
+    assert hit["display_label"] == "---"
     assert hit["date"] == DATE
     assert hit["location"] == ""
     assert hit["weather"] == ""

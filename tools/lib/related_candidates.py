@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 
@@ -127,7 +128,8 @@ def suggest_related_entries(
                 -(distance_days if distance_days is not None else 9999),
                 {
                     "rel_path": rel_path,
-                    "title": str(entry.get("title") or "无标题"),
+                    "title": str(entry.get("title") or ""),
+                    "display_label": str(entry.get("display_label") or "") or Path(rel_path).stem,
                     "date": str(entry.get("date") or ""),
                     "abstract": str(entry.get("abstract") or ""),
                     "score": score,

@@ -19,7 +19,11 @@ from ..lib.frontmatter import (
     normalize_indexable_metadata,
     parse_journal_file,
 )
-from ..lib.journal_files import iter_month_journal_files
+from ..lib.journal_files import (
+    classify_journal_path,
+    display_label,
+    iter_month_journal_files,
+)
 from ..lib.chinese_tokenizer import count_cjk_words
 from ..lib.metadata_cache import (
     get_or_update_metadata,
@@ -216,7 +220,9 @@ def _search_with_cache(
         results.append(
             {
                 "date": entry["date"],
-                "title": entry.get("title", "无标题"),
+                "title": entry.get("title", ""),
+                "kind": classify_journal_path(file_path).value,
+                "display_label": entry.get("display_label") or file_path.stem,
                 **path_fields,
                 "metadata": entry["metadata"],
                 "word_count": entry.get("word_count", 0),
@@ -296,7 +302,9 @@ def _search_filesystem(
                     results.append(
                         {
                             "date": entry["date"],
-                            "title": entry.get("title", "无标题"),
+                            "title": entry.get("title", ""),
+                            "kind": classify_journal_path(journal_file).value,
+                            "display_label": entry.get("display_label") or journal_file.stem,
                             **path_fields,
                             "metadata": entry["metadata"],
                             "word_count": entry.get("word_count", 0),
@@ -323,10 +331,11 @@ def _read_metadata_without_cache(journal_file: Path) -> Optional[Dict[str, Any]]
     )
     word_count = count_cjk_words(str(metadata.get("_body", "")))
     # The same values the metadata cache stores for this file: the shared
-    # indexable-metadata rule and the one date rule.
+    # indexable-metadata rule, the one date rule and the one label rule.
     indexable = normalize_indexable_metadata(metadata) or empty_indexable_metadata()
     date = indexable_date(indexable, journal_file)
     title = indexable["title"]
+    label = display_label(title, str(metadata.get("_body", "")), journal_file)
     location = indexable["location"]
     weather = indexable["weather"]
     topic = indexable["topic"]
@@ -357,6 +366,8 @@ def _read_metadata_without_cache(journal_file: Path) -> Optional[Dict[str, Any]]
         **path_fields,
         "date": date,
         "title": title,
+        "kind": classify_journal_path(journal_file).value,
+        "display_label": label,
         "location": location,
         "weather": weather,
         "topic": topic,

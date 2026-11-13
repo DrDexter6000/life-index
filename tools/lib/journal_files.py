@@ -210,3 +210,43 @@ def has_journal_files(
 def count_journal_files(journals_dir: Path) -> int:
     """Count canonical journal files under a Journals directory."""
     return sum(1 for _path in iter_journal_files(journals_dir))
+
+
+# The one display-label rule (docs/ARCHITECTURE.md, *Entry display label*).
+_LABEL_TERMINATORS = "。！？!?"
+_LABEL_MAX_CHARS = 30
+
+
+def display_label(title: str, body: str, path: Path) -> str:
+    """Return the one display label for a journal entry.
+
+    Deterministic and pure (no I/O). The rule, in order:
+
+    1. ``title`` stripped, when non-empty: that text, unchanged.
+    2. Otherwise the first non-blank line of ``body`` (a line that carries
+       nothing but ``#`` markers counts as blank here), with leading ``#``
+       characters and surrounding whitespace removed, cut at the first of
+       ``。！？!?`` (the terminator is kept) or at 30 characters, whichever
+       comes first; when the cut was made by the length limit and text remains
+       on that line, ``…`` is appended.
+    3. Otherwise the file name without its extension.
+
+    The label is a presentation aid only: it never replaces ``title``, which
+    stays exactly what the file says (empty when there is none).
+    """
+    title_text = title.strip()
+    if title_text:
+        return title_text
+
+    for line in body.splitlines():
+        text = line.strip().lstrip("#").strip()
+        if not text:
+            continue
+        cut = next((i + 1 for i, char in enumerate(text) if char in _LABEL_TERMINATORS), None)
+        if cut is not None and cut <= _LABEL_MAX_CHARS:
+            return text[:cut]
+        if len(text) > _LABEL_MAX_CHARS:
+            return text[:_LABEL_MAX_CHARS] + "…"
+        return text
+
+    return Path(path).stem

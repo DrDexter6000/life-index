@@ -127,7 +127,7 @@ class TestVerifyCommand:
             year="2026",
             month="04",
             filename="life-index_2026-04-03_001.md",
-            frontmatter="date: 2026-04-03",
+            frontmatter="title: A fragment without a date",
             body="Body",
         )
 
@@ -135,7 +135,28 @@ class TestVerifyCommand:
         frontmatter_check = _check(result, "frontmatter_valid")
 
         assert frontmatter_check["status"] != "ok"
-        assert any("missing title" in issue for issue in frontmatter_check["issues"])
+        assert any("missing date" in issue for issue in frontmatter_check["issues"])
+
+    def test_untitled_fragment_is_not_flagged(self, verify_paths: dict[str, Path]) -> None:
+        journal = _write_journal(
+            verify_paths["journals_dir"],
+            year="2026",
+            month="04",
+            filename="life-index_2026-04-03_001.md",
+            frontmatter="date: 2026-04-03",
+            body="Body without any title",
+        )
+        indexed = [_rel_path(verify_paths["base_dir"], journal)]
+        _create_fts_db(verify_paths["base_dir"], indexed)
+
+        result = run_verify()
+        frontmatter_check = _check(result, "frontmatter_valid")
+        required_check = _check(result, "required_fields")
+
+        assert frontmatter_check["status"] == "ok"
+        assert frontmatter_check["issues"] == []
+        assert required_check["status"] == "ok"
+        assert required_check["issues"] == []
 
     def test_orphan_fts_entry_detected(self, verify_paths: dict[str, Path]) -> None:
         _create_fts_db(verify_paths["base_dir"], ["Journals/2026/04/life-index_2026-04-03_001.md"])
@@ -309,3 +330,80 @@ class TestVerifyCommand:
         assert result["total_journals"] == 1
         assert fts_check["status"] == "ok"
         assert fts_check["issues"] == []
+
+    def test_frontmatter_kind_agreeing_with_filename_is_not_flagged(
+        self, verify_paths: dict[str, Path]
+    ) -> None:
+        _write_journal(
+            verify_paths["journals_dir"],
+            year="2026",
+            month="04",
+            filename="life-index_2026-04-03_001.md",
+            frontmatter="kind: fragment\ndate: 2026-04-03",
+            body="Body",
+        )
+
+        result = run_verify()
+        frontmatter_check = _check(result, "frontmatter_valid")
+
+        assert frontmatter_check["status"] == "ok"
+        assert frontmatter_check["issues"] == []
+
+    def test_frontmatter_kind_missing_or_blank_is_not_flagged(
+        self, verify_paths: dict[str, Path]
+    ) -> None:
+        _write_journal(
+            verify_paths["journals_dir"],
+            year="2026",
+            month="04",
+            filename="life-index_2026-04-03_001.md",
+            frontmatter="date: 2026-04-03\nkind:",
+            body="Body",
+        )
+
+        result = run_verify()
+        frontmatter_check = _check(result, "frontmatter_valid")
+
+        assert frontmatter_check["status"] == "ok"
+        assert frontmatter_check["issues"] == []
+
+    def test_frontmatter_kind_differing_from_filename_is_a_warning(
+        self, verify_paths: dict[str, Path]
+    ) -> None:
+        _write_journal(
+            verify_paths["journals_dir"],
+            year="2026",
+            month="04",
+            filename="life-index_2026-04-03_001.md",
+            frontmatter="kind: digest\ndate: 2026-04-03",
+            body="Body",
+        )
+
+        result = run_verify()
+        frontmatter_check = _check(result, "frontmatter_valid")
+
+        assert frontmatter_check["status"] == "warning"
+        assert any(
+            "frontmatter kind 'digest' does not match filename kind 'fragment'" in issue
+            for issue in frontmatter_check["issues"]
+        )
+
+    def test_frontmatter_kind_unknown_value_is_a_warning(
+        self, verify_paths: dict[str, Path]
+    ) -> None:
+        _write_journal(
+            verify_paths["journals_dir"],
+            year="2026",
+            month="04",
+            filename="life-index_2026-04-03_001.md",
+            frontmatter="kind: notebook\ndate: 2026-04-03",
+            body="Body",
+        )
+
+        result = run_verify()
+        frontmatter_check = _check(result, "frontmatter_valid")
+
+        assert frontmatter_check["status"] == "warning"
+        assert any(
+            "unknown frontmatter kind 'notebook'" in issue for issue in frontmatter_check["issues"]
+        )
