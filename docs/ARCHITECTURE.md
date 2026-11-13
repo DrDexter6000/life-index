@@ -615,22 +615,28 @@ Metadata cache 的新鲜度不再依赖全库内容哈希：
   metadata cache 都只经 `tools/lib/frontmatter.py` 的 `normalize_indexable_metadata()`
   读取可索引字段；完整规则只在本节描述，其他文档指向本节。`normalize_indexable_metadata()`
   只在 root 不是 mapping 或为空 mapping 时返回 `None`：没有 `---` 区块、空区块
-  （`---\n---`）、list/scalar root、YAML 错误且 legacy `content:` 恢复也无法得到 mapping、
-  递归别名（如 `custom: &a [*a]`）。此时两个存储得到同一种处理——元数据全空，FTS 写入整篇
-  原始文本行，缓存写入空行。只有未知键（含 `_custom`）的非空 mapping 是可读的。其余
+  （`---\n---`）、list/scalar root（包括 `false`、`0`、`[]`、`""` 这类假值：只有“没有
+  文档”才读作空 mapping）、YAML 错误且 legacy `content:` 恢复也无法得到 mapping、
+  递归别名（如 `custom: &a [*a]`，藏在 `!!pairs` 的 tuple 里也一样）。此时两个存储得到
+  同一种处理——元数据全空，FTS 写入整篇原始文本行，缓存写入空行。只有未知键（含
+  `_custom`）的非空 mapping 是可读的。`content` 键只有值是字符串时才按 legacy 形态并入
+  正文；其他类型的值留在 metadata 里，重写 frontmatter 的工具会把它写回去。其余
   frontmatter 都可读：标量字段（`title`/`date`/`location`/`weather`/`project`/`abstract`）
   的 `None` 读作空串、字符串保留、数字/布尔转文字，mapping/list 转为扁平文本；列表字段
   （`topic`/`tags`/`mood`/`people`/`links`/`related_entries`）的 `None` 读作空列表、标量转
   单项列表、list 逐项转文字，mapping/list 项以及字段级 mapping 都转为扁平文本；其余键一律
   忽略（键不是字符串也一样，如 `2024: x`）。一个字段坏只损失该字段，不会让其他元数据变成
-  原始文本行。扁平文本是确定性的深度优先渲染：mapping 渲染为 `key: value` 对、list 渲染为
-  各项，以 `", "` 连接，非字符串键用 `str()`，并有深度上限，因此任意嵌套或递归值都不会
-  抛错。
+  原始文本行。扁平文本是确定性的深度优先渲染：mapping 渲染为 `key: value` 对，其他集合
+  （list、`!!pairs`/`!!omap` 的 tuple、`!!set` 的 set——set 按类型名与文字排序）渲染为
+  各项，以 `", "` 连接，非字符串键转文字。遍历是迭代式的，没有深度上限：任何深度的标量
+  叶子都保持可搜索；集合包含自身时，递归引用处渲染为空。输出恒为可按 UTF-8 编码的文字
+  （lone surrogate 替换为 U+FFFD，二进制按 UTF-8 解码，过长的整数用十六进制），对任何
+  输入都不抛错。
 - **统一日期规则**：`date` 一律取 `normalize_indexable_metadata()` 得到的 `date` 文本前
   10 个字符（形状为 `YYYY-MM-DD`，仅数字与连字符，不做日历校验）；不符合（如 `20260311`
   或 `[2026]`）或缺失时，回退到规范 fragment 文件名中的日期，否则 `""`。这条
-  `frontmatter.indexable_date()` 规则用于 FTS parsed/raw 行、metadata cache 行、兜底内容
-  扫描与 `timeline`。缓存不再过滤 `_` 前缀键来决定“可解析”：它对 `parse_frontmatter()`
+  `frontmatter.indexable_date()` 规则用于 FTS parsed/raw 行、metadata cache 行、不经
+  缓存的 L2 读取、兜底内容扫描与 `timeline`。缓存不再过滤 `_` 前缀键来决定“可解析”：它对 `parse_frontmatter()`
   的完整结果调用 `normalize_indexable_metadata(metadata) or empty_indexable_metadata()`，
   再套用同一条日期规则；只有 `_custom: x` 的 frontmatter 因此在两个存储里得到同一个
   文件名日期。

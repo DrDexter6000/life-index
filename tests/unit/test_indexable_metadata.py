@@ -130,15 +130,18 @@ class TestScalarFields:
         assert result["title"] == ""
         assert result["topic"] == [""]
 
-    def test_flattening_stops_at_the_depth_bound(self):
+    @pytest.mark.parametrize("depth", [12, 5000])
+    def test_a_leaf_stays_searchable_at_any_depth(self, depth):
+        """No depth limit: a token nested deeper than any limit would be lost."""
         deep = "leaf"
-        for _ in range(1000):
+        for _ in range(depth):
             deep = [deep]
 
-        result = normalize_indexable_metadata({"title": deep})
+        result = normalize_indexable_metadata({"title": deep, "tags": [deep]})
 
         assert result is not None
-        assert result["title"] == ""
+        assert result["title"] == "leaf"
+        assert result["tags"] == ["leaf"]
 
 
 class TestListFields:
@@ -268,6 +271,14 @@ class TestFrontmatterIsUnreadable:
             "---\njust a scalar\n---\n\nbody\n",
             "---\ntitle: [unterminated\n---\n\nbody\n",
             "---\ntitle: T\ncustom: &a [*a]\n---\n\nbody\n",
+            # a falsy root that is not a mapping is still text the user wrote
+            "---\nfalse\n---\n\nbody\n",
+            "---\n0\n---\n\nbody\n",
+            "---\n[]\n---\n\nbody\n",
+            '---\n""\n---\n\nbody\n',
+            # a recursive reference hidden in tuples (``!!pairs``)
+            "---\ntitle: T\ncustom: &a !!pairs [x: *a]\n---\n\nbody\n",
+            "---\ntitle: T\ncontent: &a [*a]\n---\n\nbody\n",
         ],
     )
     def test_a_present_block_without_a_mapping_is_unreadable(self, content):
@@ -528,3 +539,177 @@ class TestBothDerivedStoresUseTheSameRule:
             if item["rel_path"] == _rel(journal, isolated_data_dir)
         )
         assert cached["location"] == "\ufffd"
+
+
+class TestEveryYamlCollectionType:
+    """``yaml.safe_load`` also builds tuples (``!!pairs``/``!!omap``) and sets."""
+
+    def test_a_set_renders_in_one_order_whatever_the_hash_seed(self):
+        result = normalize_indexable_metadata(
+            {"title": {"gamma", "alpha", "beta"}, "tags": {"zeta", "eta"}}
+        )
+
+        assert result is not None
+        assert result["title"] == "alpha, beta, gamma"
+        assert result["tags"] == ["eta", "zeta"]
+
+    def test_pairs_are_flattened_like_a_list(self):
+        metadata, _body = parse_frontmatter("---\ntitle: !!pairs [x: one, y: two]\n---\n\nb\n")
+
+        result = normalize_indexable_metadata(metadata)
+
+        assert result is not None
+        assert result["title"] == "x, one, y, two"
+
+    def test_a_lone_surrogate_inside_pairs_is_replaced(self):
+        metadata, _body = parse_frontmatter(
+            '---\ntitle: !!pairs [x: "\\uD800"]\ntags: !!set {"\\uD800 tag": null}\n---\n\nb\n'
+        )
+
+        result = normalize_indexable_metadata(metadata)
+
+        assert result is not None
+        assert result["title"] == "x, \ufffd"
+        assert result["tags"] == ["\ufffd tag"]
+
+    def test_an_integer_too_long_for_decimal_text_does_not_raise(self):
+        huge = int("f" * 6000, 16)
+
+        result = normalize_indexable_metadata({"title": huge, "tags": [huge]})
+
+        assert result is not None
+        assert result["title"] == hex(huge)
+        assert result["tags"] == [hex(huge)]
+
+    def test_binary_is_decoded_not_repr(self):
+        result = normalize_indexable_metadata({"title": b"hello \xff"})
+
+        assert result is not None
+        assert result["title"] == "hello \ufffd"
+
+
+class TestLegacyContentKey:
+    def test_a_content_value_that_is_not_text_stays_in_the_metadata(self):
+        metadata, body = parse_frontmatter(
+            "---\ntitle: T\ncontent: [irreplaceabletoken]\n---\n\nbody\n"
+        )
+
+        assert metadata == {"title": "T", "content": ["irreplaceabletoken"]}
+        assert body == "body"
+
+    def test_legacy_content_with_a_lone_surrogate_gives_an_encodable_body(self):
+        metadata, body = parse_frontmatter(
+            '---\ntitle: T\ncontent: "\\uD800 legacy text"\n---\n\nbody\n'
+        )
+
+        assert metadata == {"title": "T"}
+        assert body.encode("utf-8").decode("utf-8") == "\ufffd legacy text\n\nbody"
+
+
+class TestNormalizationIsTotal:
+    """Whatever a loader could hand over, the rule returns bindable text."""
+
+    @staticmethod
+    def _random_value(rng, depth: int):
+        import datetime as dt
+
+        leaves = [
+            None,
+            True,
+            0,
+            -7,
+            3.5,
+            float("nan"),
+            float("inf"),
+            "",
+            "plain",
+            "中文",
+            "\ud800 lone",
+            b"bytes \xff",
+            dt.date(2026, 3, 4),
+            dt.datetime(2026, 3, 4, 5, 6, 7),
+            10**5000,
+        ]
+        if depth <= 0 or rng.random() < 0.4:
+            return rng.choice(leaves)
+        size = rng.randint(0, 3)
+        kind = rng.choice(["dict", "list", "tuple", "set"])
+        if kind == "dict":
+            keys = [rng.choice(["k", 2024, True, None, 1.5, "\ud800key"]) for _ in range(size)]
+            return {key: TestNormalizationIsTotal._random_value(rng, depth - 1) for key in keys}
+        if kind == "set":
+            return {rng.choice(["a", "b", 1, 2.5, None, ("t", 1)]) for _ in range(size)}
+        items = [TestNormalizationIsTotal._random_value(rng, depth - 1) for _ in range(size)]
+        return items if kind == "list" else tuple(items)
+
+    def test_random_nested_values_never_raise_and_stay_bindable(self):
+        import random
+
+        rng = random.Random(20261113)
+        fields = list(INDEXABLE_SCALAR_FIELDS) + list(INDEXABLE_LIST_FIELDS)
+        for _ in range(400):
+            metadata = {field: self._random_value(rng, 4) for field in fields}
+            metadata[2024] = "ignored"
+
+            result = normalize_indexable_metadata(metadata)
+
+            assert result is not None
+            assert result == normalize_indexable_metadata(metadata)
+            for field in INDEXABLE_SCALAR_FIELDS:
+                assert isinstance(result[field], str)
+                result[field].encode("utf-8")
+            for field in INDEXABLE_LIST_FIELDS:
+                assert isinstance(result[field], list)
+                for item in result[field]:
+                    assert isinstance(item, str)
+                    item.encode("utf-8")
+            assert isinstance(indexable_date(result, FRAGMENT), str)
+
+    def test_a_value_that_contains_itself_through_a_tuple_never_raises(self):
+        inner: list = []
+        inner.append(("x", inner))
+
+        result = normalize_indexable_metadata({"title": inner, "tags": inner})
+
+        assert result is not None
+        assert result["title"] == "x, "
+
+
+class TestUncachedReaderUsesTheSameRule:
+    """The L2 reader that bypasses the cache returns what the cache would store."""
+
+    def test_cached_and_uncached_readers_agree(self, isolated_data_dir):
+        from tools.lib.metadata_cache import init_metadata_cache, parse_and_cache_journal
+        from tools.search_journals.l2_metadata import _read_metadata_without_cache
+
+        journal = _write_fragment(
+            isolated_data_dir,
+            "body",
+            "title: 2024\ndate: 20260311\ntopic: work\ntags:\npeople: [{name: Ann}]",
+        )
+
+        uncached = _read_metadata_without_cache(journal)
+        conn = init_metadata_cache()
+        try:
+            cached = parse_and_cache_journal(conn, journal)
+        finally:
+            conn.close()
+
+        assert uncached is not None and cached is not None
+        for field in ("date", "title", "topic", "tags", "people", "mood", "links"):
+            assert uncached[field] == cached[field], field
+        assert uncached["date"] == "2026-03-04"  # 20260311 is not a date: filename
+        assert uncached["topic"] == ["work"]
+        assert uncached["people"] == ["name: Ann"]
+
+    def test_a_file_that_is_not_utf8_is_still_returned(self, isolated_data_dir):
+        from tools.search_journals.l2_metadata import _read_metadata_without_cache
+
+        journal = _write_fragment(isolated_data_dir, "body", "title: T")
+        journal.write_bytes(b"---\ntitle: T\n---\n\nbody \xff\n")
+
+        entry = _read_metadata_without_cache(journal)
+
+        assert entry is not None
+        assert entry["date"] == "2026-03-04"
+        assert entry["title"] == ""

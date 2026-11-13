@@ -134,7 +134,12 @@ def _read_frontmatter(content: str) -> Tuple[Dict[str, Any], str, bool]:
     body = sections[1].strip()
 
     try:
-        metadata: Any = yaml.safe_load(fm_content) or {}
+        # Only an absent document (``None``) reads as an empty mapping. A
+        # falsy root that is not a mapping (``false``, ``0``, ``[]``, ``""``)
+        # is text the user wrote: it is unreadable, never "no fields".
+        metadata: Any = yaml.safe_load(fm_content)
+        if metadata is None:
+            metadata = {}
     except (yaml.YAMLError, ValueError):
         # PyYAML raises a plain ValueError (not a YAMLError) for an impossible
         # timestamp such as ``date: 2026-99-99``.
@@ -185,84 +190,88 @@ INDEXABLE_LIST_FIELDS = (
 )
 
 
-# A flattened mapping/list may be arbitrarily deep (or cyclic); the rendered
-# text stops at this depth so normalization can never exhaust the stack.
-_INDEXABLE_FLATTEN_MAX_DEPTH = 10
-
 # ASCII digits and hyphens only; no calendar check.
 _DATE_TEXT_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 
+# Every collection type ``yaml.safe_load`` can build: mappings, sequences,
+# ``!!pairs`` / ``!!omap`` (lists of tuples) and ``!!set``.
+_COLLECTION_TYPES = (dict, list, tuple, set, frozenset)
 
-def _flatten_scalar_text(value: Any) -> str:
-    """Text of one scalar leaf; never raises."""
+
+def _leaf_text(value: Any) -> str:
+    """Text of one scalar leaf: never raises, always UTF-8 encodable."""
     if value is None:
         return ""
     if isinstance(value, str):
-        return value
+        return _replace_lone_surrogates(value)
     if isinstance(value, datetime):
         return value.isoformat(timespec="seconds")
     if isinstance(value, date):
         return value.isoformat()
-    if isinstance(value, (bool, int, float)):
-        return str(value)
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
     try:
-        return str(value)
-    except Exception:  # noqa: BLE001 - flattening must never raise
+        return _replace_lone_surrogates(str(value))
+    except ValueError:
+        # An integer too long for decimal conversion (``0xfff...``).
+        return hex(value) if isinstance(value, int) else ""
+    except Exception:  # noqa: BLE001 - a leaf must never raise
         return ""
 
 
-def _flatten_key_text(key: Any) -> str:
-    """Render a mapping key; non-string keys use ``str()``."""
-    if isinstance(key, str):
-        return key
-    try:
-        return str(key)
-    except Exception:  # noqa: BLE001 - flattening must never raise
-        return ""
+def _collection_children(value: Any) -> List[Tuple[str, Any]]:
+    """``(prefix, child)`` pairs of one collection, in a deterministic order."""
+    if isinstance(value, dict):
+        return [(f"{_leaf_text(key)}: ", item) for key, item in value.items()]
+    if isinstance(value, (set, frozenset)):
+        # A set has no order of its own, and its iteration order changes with
+        # the process hash seed: sort by type name and text.
+        keyed = [((type(item).__name__, _leaf_text(item)), item) for item in value]
+        return [("", item) for _key, item in sorted(keyed, key=lambda pair: pair[0])]
+    return [("", item) for item in value]
 
 
 def _flatten_indexable_text(value: Any) -> str:
-    """Deterministic depth-first text of a mapping/list value.
+    """Deterministic depth-first text of a collection value.
 
-    A mapping renders as ``key: value`` pairs, a list as its items, joined with
-    ``", "``; every scalar leaf stays searchable. Recursive values and values
-    deeper than :data:`_INDEXABLE_FLATTEN_MAX_DEPTH` stop instead of raising.
+    A mapping renders as ``key: value`` pairs, any other collection as its
+    items, joined with ``", "``; every scalar leaf stays searchable at any
+    depth. The walk is iterative, so depth cannot exhaust the stack, and a
+    collection that contains itself renders as nothing at the point of the
+    recursive reference. Never raises.
     """
-    return _flatten_value(value, depth=0, seen=set())
+    if not isinstance(value, _COLLECTION_TYPES):
+        return _leaf_text(value)
 
-
-def _flatten_value(value: Any, depth: int, seen: set[int]) -> str:
-    if isinstance(value, dict):
-        if depth >= _INDEXABLE_FLATTEN_MAX_DEPTH or id(value) in seen:
-            return ""
-        seen.add(id(value))
+    pieces: List[str] = []
+    on_path = {id(value)}
+    # One frame per open collection: [children iterator, id, is_first_child].
+    stack: List[List[Any]] = [[iter(_collection_children(value)), id(value), True]]
+    while stack:
+        frame = stack[-1]
         try:
-            return ", ".join(
-                f"{_flatten_key_text(key)}: {_flatten_value(item, depth + 1, seen)}"
-                for key, item in value.items()
-            )
-        finally:
-            seen.discard(id(value))
-    if isinstance(value, (list, tuple)):
-        if depth >= _INDEXABLE_FLATTEN_MAX_DEPTH or id(value) in seen:
-            return ""
-        seen.add(id(value))
-        try:
-            return ", ".join(_flatten_value(item, depth + 1, seen) for item in value)
-        finally:
-            seen.discard(id(value))
-    return _flatten_scalar_text(value)
+            prefix, child = next(frame[0])
+        except StopIteration:
+            on_path.discard(frame[1])
+            stack.pop()
+            continue
+        if not frame[2]:
+            pieces.append(", ")
+        frame[2] = False
+        pieces.append(prefix)
+        if isinstance(child, _COLLECTION_TYPES):
+            if id(child) in on_path:
+                continue
+            on_path.add(id(child))
+            stack.append([iter(_collection_children(child)), id(child), True])
+        else:
+            pieces.append(_leaf_text(child))
+    return "".join(pieces)
 
 
 def _indexable_scalar_text(value: Any) -> str:
     """Text of a scalar field: a mapping or list becomes its flattened text."""
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, (dict, list, tuple)):
-        return _flatten_indexable_text(value)
-    return _flatten_scalar_text(value)
+    return _flatten_indexable_text(value)
 
 
 def _indexable_list(value: Any) -> List[str]:
@@ -274,8 +283,10 @@ def _indexable_list(value: Any) -> List[str]:
     """
     if value is None:
         return []
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         return [_indexable_scalar_text(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        return sorted(_indexable_scalar_text(item) for item in value)
     return [_indexable_scalar_text(value)]
 
 
@@ -401,14 +412,16 @@ def _normalize_temporal_values(value: Any, seen: Optional[set] = None) -> Any:
             }
         finally:
             seen.discard(id(value))
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple, set, frozenset)):
+        # ``!!pairs`` / ``!!omap`` build tuples and ``!!set`` builds a set; a
+        # string or a recursive reference can hide inside any of them.
         if seen is None:
             seen = set()
         if id(value) in seen:
-            raise _RecursiveFrontmatterError("recursive frontmatter list")
+            raise _RecursiveFrontmatterError("recursive frontmatter collection")
         seen.add(id(value))
         try:
-            return [_normalize_temporal_values(item, seen) for item in value]
+            return type(value)(_normalize_temporal_values(item, seen) for item in value)
         finally:
             seen.discard(id(value))
     return value
@@ -433,7 +446,9 @@ def _recover_legacy_content_frontmatter(
         content_block = content_block[:-1]
 
     try:
-        metadata: Any = yaml.safe_load(metadata_prefix) or {}
+        metadata: Any = yaml.safe_load(metadata_prefix)
+        if metadata is None:
+            metadata = {}
     except (yaml.YAMLError, ValueError):
         return None, body
     if not isinstance(metadata, dict):
@@ -450,11 +465,17 @@ def _recover_legacy_content_frontmatter(
 def _merge_legacy_content_into_body(
     metadata: Dict[str, Any], body: str
 ) -> Tuple[Dict[str, Any], str]:
-    legacy_content = metadata.pop("content", None)
-    if not isinstance(legacy_content, str) or not legacy_content.strip():
+    legacy_content = metadata.get("content")
+    if not isinstance(legacy_content, str):
+        # Not the legacy shape: ``content`` stays an ordinary key, so a tool
+        # that rewrites the frontmatter writes it back instead of dropping it.
+        return metadata, body
+    del metadata["content"]
+    if not legacy_content.strip():
         return metadata, body
 
-    merged_body = legacy_content.strip()
+    # The text came through YAML and may hold an escaped lone surrogate.
+    merged_body = _replace_lone_surrogates(legacy_content.strip())
     trailing_body = body.strip()
     if trailing_body:
         merged_body = f"{merged_body}\n\n{trailing_body}"

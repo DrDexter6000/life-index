@@ -143,6 +143,10 @@ class TestUnreadableFrontmatterIsLeftUntouched:
         "scalar_root": "---\njust a scalar\n---\n\nbody\n",
         "recursive_alias": "---\ntitle: T\ncustom: &a [*a]\n---\n\nbody\n",
         "invalid_yaml": "---\ntitle: [unterminated\ndate: 2026-03-04\n---\n\nbody\n",
+        "false_root": "---\nfalse\n---\n\nbody\n",
+        "zero_root": "---\n0\n---\n\nbody\n",
+        "empty_list_root": "---\n[]\n---\n\nbody\n",
+        "pairs_cycle": "---\ntitle: T\ncustom: &a !!pairs [x: *a]\n---\n\nbody\n",
     }
 
     @staticmethod
@@ -253,3 +257,20 @@ class TestOneFileNeverAbortsTheRun:
         report = scan_journals(tmp_path / "Journals")
 
         assert report["total_scanned"] == 1
+
+
+class TestRewriteKeepsWhatItRead:
+    def test_a_content_key_that_is_not_text_survives_the_rewrite(self, tmp_path: Path):
+        from tools.migrate import apply_migrations
+
+        journal = tmp_path / "Journals" / "2025" / "06" / "life-index_2025-06-15_001.md"
+        journal.parent.mkdir(parents=True, exist_ok=True)
+        journal.write_text(
+            "---\ntitle: T\ndate: 2025-06-15\ncontent: [irreplaceabletoken]\n---\n\nbody\n",
+            encoding="utf-8",
+        )
+
+        result = apply_migrations(tmp_path / "Journals")
+
+        assert result["migrated_count"] == 1
+        assert "irreplaceabletoken" in journal.read_text(encoding="utf-8")

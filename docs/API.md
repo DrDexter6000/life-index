@@ -7411,8 +7411,8 @@ life-index version
 }
 ```
 
-> **不可读 frontmatter**：一个带 `---` 区块但读不出 mapping root 的文件（list/scalar root、
-> legacy 恢复也读不了的 YAML、递归结构）在 dry-run 中计入
+> **不可读 frontmatter**：一个带 `---` 区块但读不出 mapping root 的文件（list/scalar root，
+> 含 `false`/`0`/`[]` 这类假值；legacy 恢复也读不了的 YAML；递归结构）在 dry-run 中计入
 > `version_distribution.unparseable`，不进入 `outdated_files`；`--apply` 不重写它，而是按
 > 解析失败列入 `failed_files`，文件字节保持不变。空区块（`---\n---`）与字段畸形
 > （mapping/list 出现在标量字段等）都不算不可读，仍按正常 schema 迁移；字段规则见
