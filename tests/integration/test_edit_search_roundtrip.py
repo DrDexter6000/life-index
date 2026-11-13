@@ -37,7 +37,7 @@ def _contains_path(results: list[dict], journal_path: Path) -> bool:
 
 def test_edit_content_is_reflected_in_fts_search(isolated_data_dir: Path) -> None:
     from tools.edit_journal import edit_journal
-    from tools.lib.pending_writes import clear_pending
+    from tools.lib.pending_writes import clear_pending, get_pending
     from tools.lib.search_index import search_fts, update_index
 
     journal_path = _write_journal(
@@ -56,17 +56,20 @@ def test_edit_content_is_reflected_in_fts_search(isolated_data_dir: Path) -> Non
         replace_content="betaedited marker exists after editing.",
     )
     assert edit_result["success"] is True
-    assert edit_result["pending_marked"] is True
+    # The edit writes the FTS row through itself: no repair step and no queue
+    # entry are needed before the next search sees the new body.
+    assert edit_result["fts_row_updated"] is True
+    assert edit_result["fts_row"]["status"] == "complete"
+    assert edit_result["pending_marked"] is False
+    assert get_pending() == []
 
-    updated_index = update_index(incremental=True)
-    assert updated_index["success"] is True
     assert _contains_path(search_fts("betaedited"), journal_path)
     assert not _contains_path(search_fts("alphaoriginal"), journal_path)
 
 
 def test_edit_metadata_is_reflected_in_fts_search(isolated_data_dir: Path) -> None:
     from tools.edit_journal import edit_journal
-    from tools.lib.pending_writes import clear_pending
+    from tools.lib.pending_writes import clear_pending, get_pending
     from tools.lib.search_index import search_fts, update_index
 
     journal_path = _write_journal(
@@ -86,11 +89,14 @@ def test_edit_metadata_is_reflected_in_fts_search(isolated_data_dir: Path) -> No
         frontmatter_updates={"topic": ["learning"], "tags": ["searchimpact"]},
     )
     assert edit_result["success"] is True
-    assert edit_result["pending_marked"] is True
+    # The metadata route is part of the row the edit writes through; the
+    # pending queue is only the fallback for a failed write-through.
+    assert edit_result["fts_row_updated"] is True
+    assert edit_result["fts_row"]["status"] == "complete"
+    assert edit_result["pending_marked"] is False
     assert edit_result["indices_updated"]
+    assert get_pending() == []
 
-    updated_index = update_index(incremental=True)
-    assert updated_index["success"] is True
     assert _contains_path(search_fts("learning"), journal_path)
     assert _contains_path(search_fts("searchimpact"), journal_path)
     assert not _contains_path(search_fts("work"), journal_path)
@@ -99,7 +105,7 @@ def test_edit_metadata_is_reflected_in_fts_search(isolated_data_dir: Path) -> No
 def test_edit_pending_is_auto_consumed_by_next_search(isolated_data_dir: Path, monkeypatch) -> None:
     from tools import build_index as build_index_module
     from tools.edit_journal import edit_journal
-    from tools.lib.pending_writes import clear_pending, get_pending
+    from tools.lib.pending_writes import clear_pending, get_pending, mark_pending
     from tools.lib.search_index import search_fts, update_index
     from tools.search_journals.core import hierarchical_search
 
@@ -126,7 +132,16 @@ def test_edit_pending_is_auto_consumed_by_next_search(isolated_data_dir: Path, m
         replace_content="afterauto marker exists after editing.",
     )
     assert edit_result["success"] is True
-    assert get_pending() == ["Journals/2026/03/life-index_2026-03-14_001.md"]
+    # The successful write-through leaves nothing queued.
+    assert edit_result["fts_row_updated"] is True
+    assert edit_result["pending_marked"] is False
+    assert get_pending() == []
+
+    # Simulate the fallback contract: when the write-through fails, the edit
+    # queues the path and the next search preflight must repair and consume it.
+    rel_path = journal_path.relative_to(isolated_data_dir).as_posix()
+    mark_pending(rel_path)
+    assert get_pending() == [rel_path]
 
     result = hierarchical_search(
         query="afterauto",
@@ -144,7 +159,7 @@ def test_edit_pending_is_auto_consumed_by_next_search(isolated_data_dir: Path, m
 
 def test_edit_date_is_reflected_in_fts_date_filters(isolated_data_dir: Path) -> None:
     from tools.edit_journal import edit_journal
-    from tools.lib.pending_writes import clear_pending
+    from tools.lib.pending_writes import clear_pending, get_pending
     from tools.lib.search_index import search_fts, update_index
 
     journal_path = _write_journal(
@@ -164,10 +179,13 @@ def test_edit_date_is_reflected_in_fts_date_filters(isolated_data_dir: Path) -> 
         frontmatter_updates={"date": "2026-03-15"},
     )
     assert edit_result["success"] is True
-    assert edit_result["pending_marked"] is True
+    # The date column is rewritten by the same write-through; no repair step
+    # and no pending entry are involved.
+    assert edit_result["fts_row_updated"] is True
+    assert edit_result["fts_row"]["status"] == "complete"
+    assert edit_result["pending_marked"] is False
+    assert get_pending() == []
 
-    updated_index = update_index(incremental=True)
-    assert updated_index["success"] is True
     assert _contains_path(
         search_fts("dateeditable", date_from="2026-03-15", date_to="2026-03-15"),
         journal_path,
