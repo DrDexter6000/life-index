@@ -19,19 +19,16 @@ def safe_relative_path(path: Path | str, base: Path | str) -> str:
     normalized (separators collapsed, ``.`` removed). A raw string such as
     ``"foo//bar"`` keeps doubled separators, and the prefix fast path would
     then return a different relative string. Anything else falls back.
+
+    The strings are compared as ``Path`` renders them, without rewriting
+    separators: on POSIX a backslash is an ordinary filename character, not a
+    separator, so ``Path("a\\b")`` is one component and is not under ``a``.
     """
     if isinstance(path, Path) and isinstance(base, Path):
+        prefix = str(base).rstrip(os.sep) + os.sep
         path_str = str(path)
-        base_str = str(base)
-        if base_str:
-            separator = os.sep
-            normalized_path = path_str.replace("/", separator).replace("\\", separator)
-            normalized_base = (
-                base_str.replace("/", separator).replace("\\", separator).rstrip(separator)
-            )
-            prefix = normalized_base + separator
-            if normalized_path.startswith(prefix):
-                return normalized_path[len(prefix) :].replace(separator, "/")
+        if path_str.startswith(prefix):
+            return _normalize_slashes(path_str[len(prefix) :])
     path_obj = Path(path)
     base_obj = Path(base)
     try:
