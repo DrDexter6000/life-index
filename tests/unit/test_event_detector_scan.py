@@ -136,29 +136,26 @@ class TestDetectorResultsUnchanged:
         assert events[0].data["days"] == 10
         assert events[0].message == f"已连续{events[0].data['days']}天未记日志"
 
-    def test_journal_newer_than_fts_database(self, tmp_path: Path):
+    def test_live_fragment_missing_from_index_is_reported(self, tmp_path: Path):
         journals = tmp_path / "Journals"
         _current_schema_journal(journals / "2020" / "01" / "life-index_2020-01-01_001.md")
         index_dir = tmp_path / ".index"
         index_dir.mkdir(parents=True)
         fts_db = index_dir / "journals_fts.db"
         fts_db.write_bytes(b"")
-        old = time.time() - 3600
-        os.utime(fts_db, (old, old))
 
         events = _detect_all({"journals_dir": journals, "data_dir": tmp_path})
 
         stale = [event for event in events if event.type == "index_stale"]
         assert len(stale) == 1
-        assert stale[0].data == {
-            "reason": "newer_journals",
-            "suggested_command": "life-index index",
-            "side_effect": "write",
-            "side_effect_note": (
-                "Writes derived index artifacts only; source journals are not modified."
-            ),
-        }
-        assert stale[0].message == "索引可能已过时，建议运行 life-index index"
+        assert stale[0].data["reason"] == "signature_mismatch"
+        assert stale[0].data["suggested_command"] == "life-index index"
+        assert stale[0].data["side_effect"] == "write"
+        assert stale[0].data["side_effect_note"] == (
+            "Writes derived index artifacts only; source journals are not modified."
+        )
+        assert stale[0].data["signature_state"]["current"] is False
+        assert stale[0].message == "索引与日志文件不一致，建议运行 life-index index"
 
     def test_fewer_than_ten_journals_are_all_checked(self, tmp_path: Path):
         journals = tmp_path / "Journals"
@@ -219,33 +216,43 @@ class TestDetectorResultsUnchanged:
         )
 
     def test_index_version_mismatch_still_reported(self, tmp_path: Path):
+        from tools.lib.chinese_tokenizer import get_dict_hash
         from tools.lib.search_constants import TOKENIZER_VERSION
+        from tools.lib.search_index import FTS_SCHEMA_VERSION
 
         journals = tmp_path / "Journals"
         journal = _current_schema_journal(journals / "2020" / "01" / "life-index_2020-01-01_001.md")
         index_dir = tmp_path / ".index"
         index_dir.mkdir(parents=True)
         fts_db = index_dir / "journals_fts.db"
+        rel_path = "Journals/2020/01/life-index_2020-01-01_001.md"
+        stat = journal.stat()
         conn = sqlite3.connect(str(fts_db))
         conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS journals USING fts5(path, title, content)")
         conn.execute("CREATE TABLE IF NOT EXISTS index_meta (key TEXT PRIMARY KEY, value TEXT)")
         conn.execute(
-            "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
+            "CREATE TABLE IF NOT EXISTS fts_file_stats "
+            "(path TEXT PRIMARY KEY, mtime REAL NOT NULL, size INTEGER NOT NULL)"
+        )
+        # Signature-current row; only the version keys are stale.
+        conn.execute(
+            "INSERT INTO journals (path, title, content) VALUES (?, ?, ?)",
+            (rel_path, "current", "body"),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO fts_file_stats (path, mtime, size) VALUES (?, ?, ?)",
+            (rel_path, stat.st_mtime, stat.st_size),
+        )
+        for key, value in (
             ("tokenizer_version", str(TOKENIZER_VERSION - 1)),
-        )
-        conn.execute(
-            "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
-            ("schema_version", "1"),
-        )
-        conn.execute(
-            "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
-            ("dict_hash", "dummy_hash"),
-        )
+            ("schema_version", str(FTS_SCHEMA_VERSION)),
+            ("dict_hash", get_dict_hash()),
+        ):
+            conn.execute(
+                "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)", (key, value)
+            )
         conn.commit()
         conn.close()
-        os.utime(fts_db, None)
-        old = time.time() - 3600
-        os.utime(journal, (old, old))
 
         events = _detect_all({"journals_dir": journals, "data_dir": tmp_path})
 

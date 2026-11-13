@@ -98,6 +98,12 @@ def init_fts_db(*, force_recreate: bool = False) -> sqlite3.Connection:
         )
     """)
 
+    if force_recreate:
+        # The signatures describe rows in the journals table. Recreating (or
+        # emptying) the table invalidates every one of them; keeping them
+        # would make the next scan skip files whose row no longer exists.
+        cursor.execute("DELETE FROM fts_file_stats")
+
     conn.commit()
     return conn
 
@@ -212,14 +218,17 @@ def write_index_meta(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def upsert_fts_row(file_path: Path) -> Optional[Dict[str, Any]]:
+def upsert_fts_row(
+    file_path: Path, journals_dir: Optional[Path] = None
+) -> Optional[Dict[str, Any]]:
     """Upsert exactly one journal's FTS row (write/edit post-commit step).
 
-    Builds the row from the committed file through the same parse path a full
-    rebuild uses, so the stored row is identical to a rebuilt one (real
-    ``file_hash``, the file's real mtime in ``modified_time``), and records
-    the file's ``(mtime, size)`` signature so the next incremental scan can
-    skip the file.
+    Builds the row from **one read** of the committed file through the same
+    parse path a full rebuild uses, so the stored row is identical to a
+    rebuilt one (real ``file_hash``, the file's real mtime in
+    ``modified_time``). The file's ``(mtime, size)`` signature is recorded
+    only when the stat before and after that read agree; otherwise the row is
+    stored without a signature so the next scan re-reads the file.
 
     Holds the index ``FileLock`` (the one ``build_all`` holds for a whole
     build) with a short timeout, so a write-through can never interleave
@@ -229,33 +238,40 @@ def upsert_fts_row(file_path: Path) -> Optional[Dict[str, Any]]:
     is journals lock → index lock; nothing acquires them in the reverse
     order.
 
-    Only ``last_updated`` is refreshed in ``index_meta``; the tokenizer /
-    dict / schema version keys stay untouched so a database that still needs
-    a version-triggered rebuild keeps signalling it.
+    ``index_meta.last_updated`` is deliberately not touched: only a completed
+    archive scan (rebuild or incremental) may advance it. Version keys stay
+    untouched so a database that still needs a version-triggered rebuild
+    keeps signalling it.
 
-    Returns the stored row dict, or ``None`` when the file yields no parsable
-    row. Infrastructural failures raise. A failure never loses or blocks the
+    Returns the stored row dict, or ``None`` when the path is not a live
+    fragment of this journals tree or the file yields no parsable row.
+    Infrastructural failures raise. A failure never loses or blocks the
     journal; recovery is ``life-index index`` or the queued pending repair.
     """
-    from datetime import datetime, timezone
-
     from . import fts_update
     from .config import FILE_LOCK_TIMEOUT_FTS_ROW
     from .file_lock import FileLock, get_index_lock_path
+    from .journal_files import is_live_fragment_path
+
+    resolved_journals_dir = journals_dir if journals_dir is not None else get_journals_dir()
+    if not is_live_fragment_path(file_path, resolved_journals_dir):
+        return None
 
     with FileLock(get_index_lock_path(), timeout=FILE_LOCK_TIMEOUT_FTS_ROW):
         conn = init_fts_db()
         try:
-            doc = fts_update.parse_journal(file_path, get_journals_dir(), get_user_data_dir())
+            doc, before, after = fts_update.read_journal_document(
+                file_path, resolved_journals_dir, get_user_data_dir()
+            )
             if doc is None:
                 return None
             cursor = conn.cursor()
             cursor.execute("DELETE FROM journals WHERE path = ?", (doc["path"],))
             fts_update.insert_fts_doc(cursor, doc)
-            fts_update.record_file_stat(cursor, file_path, doc["path"])
-            cursor.execute(
-                "INSERT OR REPLACE INTO index_meta (key, value) VALUES ('last_updated', ?)",
-                (datetime.now(timezone.utc).isoformat(),),
+            fts_update.record_file_signature(
+                cursor,
+                doc["path"],
+                before if before is not None and before == after else None,
             )
             conn.commit()
             return doc
@@ -423,12 +439,16 @@ def parse_journal(file_path: Path) -> Optional[Dict[str, Any]]:
     return _parse_journal(file_path, get_journals_dir(), get_user_data_dir())
 
 
-def update_index(incremental: bool = True) -> Dict[str, Any]:
+def update_index(
+    incremental: bool = True,
+    force_paths: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     """
     更新搜索索引
 
     Args:
         incremental: True=仅更新变更，False=全量重建
+        force_paths: 无论签名是否变化都必须重读的路径（pending 队列快照）
 
     Returns:
         {
@@ -437,6 +457,9 @@ def update_index(incremental: bool = True) -> Dict[str, Any]:
             "updated": int,
             "removed": int,
             "total": int,
+            "unparsable": int,
+            "unparsable_paths": [str],
+            "pending_repaired": [str],
             "needs_rebuild": bool (if version mismatch detected),
             "error": str (optional)
         }
@@ -465,7 +488,12 @@ def update_index(incremental: bool = True) -> Dict[str, Any]:
     init_func: Callable[[], sqlite3.Connection] = init_fts_db if incremental else _recreate
 
     result = _update_index(
-        init_func, get_fts_db_path(), get_journals_dir(), get_user_data_dir(), incremental
+        init_func,
+        get_fts_db_path(),
+        get_journals_dir(),
+        get_user_data_dir(),
+        incremental,
+        force_paths=force_paths,
     )
 
     # After successful update, write version metadata (T1.4)

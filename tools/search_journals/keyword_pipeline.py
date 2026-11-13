@@ -350,6 +350,7 @@ def run_keyword_pipeline(
     candidate_paths: set[str] | None = None,
     entity_expanded: bool = False,
     use_metadata_cache: bool = True,
+    index_signature_current: bool | None = None,
 ) -> KeywordPipelineResult:
     """
     关键词搜索管道: L1 索引 → L2 元数据 → L3 FTS5 内容
@@ -367,6 +368,8 @@ def run_keyword_pipeline(
         weather: 按天气过滤
         use_index: 是否使用 FTS 索引加速
         fts_min_relevance: FTS 最低相关性阈值
+        index_signature_current: 搜索 preflight 的签名检查结论；``None`` 时
+            本函数自行做一次只读签名检查
 
     Returns:
         (l1_results, l2_results, l3_results, l2_truncated, l2_total_available, perf)
@@ -578,19 +581,18 @@ def run_keyword_pipeline(
 
                     # When FTS recall is suspiciously low, supplement with full-corpus
                     # content scan so body-only matches are not missed due to stale or
-                    # incomplete index coverage.
+                    # incomplete index coverage. The stale test is the per-fragment
+                    # signature check — the same rule the search preflight uses, never a
+                    # timestamp comparison.
                     if normalized_query and len(l3_results) < FTS_FALLBACK_THRESHOLD:
-                        from ..lib.fs_consistency import (
-                            get_last_sync_ts,
-                            has_writes_since,
-                        )
-                        from ..lib.paths import get_fts_db_path
+                        if index_signature_current is None:
+                            from ..lib.fs_consistency import index_is_current
 
-                        _journals_dir = get_journals_dir()
-                        last_sync = get_last_sync_ts(get_fts_db_path())
-                        should_fallback = last_sync is None or has_writes_since(
-                            last_sync, _journals_dir
-                        )
+                            should_fallback = not index_is_current()
+                            _index_state_source = "signature_check"
+                        else:
+                            should_fallback = not index_signature_current
+                            _index_state_source = "preflight"
 
                         if should_fallback:
                             fallback_l3_results = search_l3_content(
@@ -607,16 +609,13 @@ def run_keyword_pipeline(
                                     l3_results.append(item)
                                     seen_paths.add(key)
                             logger.debug(
-                                "L3 fallback triggered (index stale: %s)",
-                                (
-                                    "missing_last_updated"
-                                    if last_sync is None
-                                    else "files_newer_than_last_sync"
-                                ),
+                                "L3 fallback triggered (index not signature-current, source=%s)",
+                                _index_state_source,
                             )
                         else:
                             logger.debug(
-                                "L3 fallback skipped (index fresh, %d FTS results authoritative)",
+                                "L3 fallback skipped (index signature-current, %d FTS results "
+                                "authoritative)",
                                 len(l3_results),
                             )
                     logger.debug(f"FTS found {len(l3_results)} results")

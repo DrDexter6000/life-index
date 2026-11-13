@@ -56,6 +56,7 @@ def _patch_search_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
             "F",
             (),
             {
+                "fts_fresh": True,
                 "overall_fresh": True,
                 "issues": [],
                 "to_dict": lambda self: {"overall_fresh": True, "issues": []},

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Shared journal path normalization helpers."""
 
+import os
 from pathlib import Path
 from typing import Any, Dict
 
@@ -10,7 +11,26 @@ def _normalize_slashes(path: Path | str) -> str:
 
 
 def safe_relative_path(path: Path | str, base: Path | str) -> str:
-    """Return a normalized relative path when possible, else normalized absolute path."""
+    """Return a normalized relative path when possible, else normalized absolute path.
+
+    The fast path is a string-prefix comparison (the same lexical rule
+    ``Path.relative_to`` applies for paths built from the same root). This
+    matters for stat-only scans over tens of thousands of journals, where
+    ``Path.relative_to`` costs hundreds of microseconds per call on Windows.
+    Anything that does not match literally falls back to ``Path.relative_to``
+    (case differences, symlinked roots, mixed inputs).
+    """
+    path_str = str(path)
+    base_str = str(base)
+    if base_str:
+        separator = os.sep
+        normalized_path = path_str.replace("/", separator).replace("\\", separator)
+        normalized_base = (
+            base_str.replace("/", separator).replace("\\", separator).rstrip(separator)
+        )
+        prefix = normalized_base + separator
+        if normalized_path.startswith(prefix):
+            return normalized_path[len(prefix) :].replace(separator, "/")
     path_obj = Path(path)
     base_obj = Path(base)
     try:

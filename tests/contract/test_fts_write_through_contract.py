@@ -527,10 +527,11 @@ class TestIncrementalStatScan:
         journal_reads.reset()
         result = self._incremental_index()
 
-        # One parse per journal: one read_text (content) + one read_bytes (hash).
-        assert journal_reads.total == 2 * N_JOURNALS, (
+        # One parse per journal: the file is read exactly once (bytes) and the
+        # same bytes feed both the row content and the file hash (R4).
+        assert journal_reads.total == N_JOURNALS, (
             f"the one-time upgrade rebuild must parse each journal exactly once, "
-            f"got {journal_reads.total} reads (expected {2 * N_JOURNALS})"
+            f"got {journal_reads.total} reads (expected {N_JOURNALS})"
         )
         assert result["fts"]["total"] == N_JOURNALS
 
@@ -618,17 +619,17 @@ class TestWriteThroughIndexLock:
         _make_synthetic_journals(isolated_data_dir, N_JOURNALS)
         _warm_index_to_steady_state()
 
-        real_iter = fts_update_mod.iter_journal_files
+        real_scan = fts_update_mod.scan_journal_files
         enumeration_done = threading.Event()
         write_finished = threading.Event()
 
-        def _paused_iter(journals_dir, *args, **kwargs):
-            # Consume the real enumeration fully, then pause the rebuild
-            # between enumeration and the delete/insert phase.
-            files = list(real_iter(journals_dir, *args, **kwargs))
+        def _paused_scan(journals_dir, *args, **kwargs):
+            # Consume the real scan fully, then pause the rebuild between
+            # enumeration and the delete/insert phase.
+            files = list(real_scan(journals_dir, *args, **kwargs))
             enumeration_done.set()
             assert write_finished.wait(timeout=60), "write never finished during pause"
-            return iter(files)
+            return files
 
         rebuild_errors: list[BaseException] = []
 
@@ -637,7 +638,7 @@ class TestWriteThroughIndexLock:
         def _run_rebuild():
             try:
                 with pytest.MonkeyPatch.context() as mp:
-                    mp.setattr(fts_update_mod, "iter_journal_files", _paused_iter)
+                    mp.setattr(fts_update_mod, "scan_journal_files", _paused_scan)
                     build_all(incremental=False)
             except BaseException as exc:  # pragma: no cover - surfaced below
                 rebuild_errors.append(exc)

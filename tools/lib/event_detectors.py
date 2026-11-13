@@ -274,10 +274,15 @@ def check_schema_migration_available(context: dict) -> list[Event]:
 def check_index_stale(context: dict) -> list[Event]:
     """Detect if search index is stale.
 
-    Checks three staleness signals:
-    1. Journal files newer than FTS index (mtime comparison)
-    2. Tokenizer/schema version mismatch in index_meta
-    3. Dictionary hash mismatch
+    Staleness is decided by the same per-fragment signature rule the search
+    preflight uses (``fts_update.inspect_fts_index``): a live fragment with no
+    FTS row, a missing or mismatching ``(mtime, size)`` signature, or a row
+    for a vanished file. The former "newest journal mtime vs database file
+    mtime" comparison is gone — the database file is written by every
+    write-through and cannot prove archive coverage.
+
+    Schema/tokenizer/dictionary version mismatches are still a separate
+    rebuild signal.
     """
     data_dir = context.get("data_dir")
     journals_dir = context.get("journals_dir")
@@ -291,25 +296,19 @@ def check_index_stale(context: dict) -> list[Event]:
     if not fts_db.exists():
         return []
 
-    # --- Signal 1: mtime comparison ---
-    try:
-        index_mtime = os.path.getmtime(fts_db)
-    except OSError:
-        return []
+    from tools.lib.fts_update import inspect_fts_db
 
-    newest_journal_mtime = 0.0
-    if journals_dir.exists():
-        newest_journal_mtime = max((item.mtime for item in _fragment_stats(context)), default=0.0)
-
-    if newest_journal_mtime > index_mtime:
+    report = inspect_fts_db(fts_db, journals_dir, data_dir)
+    if not report.current:
         return [
             Event(
                 type="index_stale",
                 severity=EventSeverity.LOW,
-                message="索引可能已过时，建议运行 life-index index",
+                message="索引与日志文件不一致，建议运行 life-index index",
                 data={
-                    "reason": "newer_journals",
+                    "reason": "signature_mismatch",
                     "suggested_command": "life-index index",
+                    "signature_state": report.to_dict(),
                     "side_effect": "write",
                     "side_effect_note": DERIVED_INDEX_NOTE,
                 },

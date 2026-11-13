@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from .paths import get_cache_dir, get_metadata_db_path, get_journals_dir, get_user_data_dir
 from .frontmatter import parse_journal_file
-from .journal_files import iter_month_journal_files, scan_journal_files
+from .journal_files import is_live_fragment_path, iter_month_journal_files, scan_journal_files
 from .path_contract import build_journal_path_fields
 from .chinese_tokenizer import count_cjk_words
 
@@ -332,12 +332,20 @@ def get_or_update_metadata(
             conn.close()
 
 
-def upsert_journal_cache_row(file_path: Path) -> Optional[Dict[str, Any]]:
+def upsert_journal_cache_row(
+    file_path: Path, journals_dir: Optional[Path] = None
+) -> Optional[Dict[str, Any]]:
     """Upsert exactly one journal's cache row (write/edit post-commit step).
 
-    A failure never loses or blocks the journal; recovery is
+    Only a live fragment of this journals tree may enter the cache (same
+    admission rule as the FTS write-through); other paths return ``None``
+    without writing. A failure never loses or blocks the journal; recovery is
     ``life-index index --rebuild`` (or the next search's reconcile pass).
     """
+    if not is_live_fragment_path(
+        file_path, journals_dir if journals_dir is not None else get_journals_dir()
+    ):
+        return None
     conn = init_metadata_cache()
     try:
         return parse_and_cache_journal(conn, file_path)

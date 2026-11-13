@@ -74,6 +74,7 @@ class TestCrashRecovery:
             "FR",
             (),
             {
+                "fts_fresh": False,
                 "overall_fresh": False,
                 "issues": ["fts_stale: FTS index missing"],
                 "to_dict": lambda self: {
@@ -121,6 +122,7 @@ class TestCrashRecovery:
             "FR",
             (),
             {
+                "fts_fresh": True,
                 "overall_fresh": True,
                 "issues": [],
                 "to_dict": lambda self: {

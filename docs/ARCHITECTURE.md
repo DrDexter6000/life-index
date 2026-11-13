@@ -576,9 +576,10 @@ Round 8 在分层搜索架构之上，建立了完整的搜索质量保障闭环
 - **Index Manifest**：`tools/lib/index_manifest.py` 管理 FTS 索引构建状态（counts + checksums + legacy vector fields fixed at disabled/empty），支持增量更新的原子性和恢复
 - **Pending Queue**：`tools/lib/pending_writes.py` 实现待修复队列（ADR-017）。写入/编辑的
   FTS 行写穿失败（含索引锁繁忙短超时）时才把路径标记 pending；搜索前消费队列，增量修复
-  索引。消费只移除构建开始时的快照路径（`remove_pending`），构建期间新入队的路径保留给
-  下一次搜索；队列变更（mark/remove/clear）经队列锁文件用共享 `FileLock` 串行化，避免
-  read-modify-write 交错丢路径
+  索引。每个 path 带 generation：`mark_pending` 提升它，acknowledgement（`ack_pending`）
+  只移除“generation 未被提升且实际已修复”的路径，因此同一 path 在构建期间再次入队不会丢事件；
+  旧的无 generation 列表格式继续可读（按 generation 0 处理）。队列变更（mark/ack/remove/clear）
+  经队列锁文件用共享 `FileLock` 串行化，避免 read-modify-write 交错丢路径
 - **FTS 行写穿 + stat 增量扫描**：写入/编辑在提交后即时写穿该日志的 FTS 行
   （`fts_row` / `fts_row_updated`）；增量扫描以 `(mtime, size)` 侧表判定"未变更"，
   不再读取/哈希每个文件（详见下节）
@@ -609,38 +610,67 @@ Metadata cache 的新鲜度不再依赖全库内容哈希：
   `life-index index --rebuild` 才能被发现；sidecar schema 自 v1.1.x 升到 v2.0.0 时存量
   安装会全量重建一次。
 
-#### FTS index freshness（write-time write-through + stat-based incremental scan）
+#### FTS index freshness（signature reconciliation on every search）
 
-FTS 索引的新鲜度不再依赖"每次增量扫描哈希全部日志"：
+FTS 索引的新鲜度**不再由时间戳推断**（`index_meta.last_updated`、数据库文件 mtime、
+manifest 行数都不再是判据）。它和 metadata cache 用同一条规则：**逐 fragment 比较
+`(mtime, size)` 签名**。
 
+- **每次搜索的只读 preflight**：`index_freshness.check_full_freshness()` →
+  `fts_update.inspect_fts_index()` 做一次 `scan_journal_files()` 目录扫描，同时读取
+  `journals` 表的 path 集合与 `fts_file_stats` 的签名集合。一个 live fragment 只有
+  “有 FTS 行 **且** 有匹配签名行”才算 current；任何 live fragment 缺行/缺签名/签名不符，
+  或存在指向已消失文件的 FTS 行/签名行，或 pending 队列非空，都判为 stale。目录 listing
+  与记录签名不一致时，按 metadata cache `_row_is_current` 的同一做法对该文件补一次真实
+  `stat` 确认后才当作变更。检查本身**不打开任何日志文件**；全部 current 时 preflight
+  不再执行其他步骤，也不写任何东西。
+- **只有 stale 才修复**：preflight 在 index lock 下运行增量 archive scan
+  （`build_all(incremental=True)`），只重读新增/变更/缺行/待修复的文件，删除已消失文件的
+  FTS 行与签名行，然后写 manifest。`life-index index` 走同一扫描。
 - **Write/edit 即时写穿**：`tools/write_journal/core.py` 在 journal 提交后追加
   `fts_row/post_commit` 非阻塞副作用记录并调用 `search_index.upsert_fts_row()`。
   行由**提交后的文件**经与全量重建同一条 "file → FTS row" 路径构建
-  （`fts_update.parse_journal` → `fts_update.insert_fts_doc`）：真实 `file_hash`
-  （文件内容 MD5 前 16 位）与文件真实 mtime 存入 `modified_time`，因此写穿行与
-  重建行逐列一致，正常写入即刻可被全文检索。`tools/edit_journal` 在编辑提交后做
-  同样写穿（结果字段 `fts_row_updated`）。写穿成功时 `mark_pending` 记为 `skipped`
+  （`fts_update.read_journal_document` → `fts_update.insert_fts_doc`）。文件**只读取一次**
+  （bytes）：行内容、`file_hash` 与签名都来自这次读取；读取前后各取一次 stat，只有二者
+  相等才记录 `(mtime, size)` 签名，否则行照常写入但不记录签名，下一次扫描会重新读取。
+  `tools/edit_journal` 在编辑提交后做同样写穿（结果字段 `fts_row_updated` 与结构化的
+  `fts_row {status, reason, recovery}`）。写穿成功时 `mark_pending` 记为 `skipped`
   （不入队）；失败时 `recovery_strategy` 为 `life-index index`，路径照旧入队
-  （`queued`），由下一次搜索 preflight 修复。写穿只刷新 `index_meta.last_updated`，
-  不改写 tokenizer/dict/schema 版本键——仍需版本触发重建的数据库不会被掩盖。
+  （`queued`），由下一次搜索 preflight 修复。写穿**不修改 `index_meta.last_updated`**，
+  也不改写 tokenizer/dict/schema 版本键：只有一次完成的 archive scan（增量或全量）才能推进
+  `last_updated`。
+- **准入规则**：只有 `journal_files.is_live_fragment_path()` 认可的 path（位于该 journals
+  树内、相对路径无 dot-directory 分量、文件名分类为 fragment）才允许写入派生存储。FTS
+  写穿与 metadata-cache upsert 都使用这一条谓词，因此编辑 `digest_*.md`、派生索引或
+  `.revisions/` 内文件不会再写入随后被扫描删除的行；这些编辑返回
+  `fts_row.status = "skipped"`。
 - **与重建串行化**：写穿持有与 `build_all` 相同的 index lock（`FILE_LOCK_TIMEOUT_FTS_ROW`
   短超时），因此不会插进一次全量重建的"枚举 → 删除/插入"窗口而被整表覆盖丢失。拿不到锁
   即按写穿失败处理并入队。锁序恒为 journals lock → index lock（写入
   `tools/write_journal/core.py`、编辑 `tools/edit_journal/__init__.py` 均在持有 journals
   lock 的提交段内调用写穿；`build_all` 只持有 index lock，内部不取 journals lock），
-  无反向持锁路径，故不会死锁。
+  队列锁是叶子锁；无反向持锁路径，故不会死锁。
 - **(mtime, size) 侧表**：`journals_fts.db` 内的普通表 `fts_file_stats`
   （`path PRIMARY KEY, mtime, size`）记录每个已索引文件的签名；由全量重建、
-  写穿和增量扫描共同维护，可从源文件 100% 重建（§1.2 机器检索层例外）。
+  写穿和增量扫描共同维护，可从源文件 100% 重建（§1.2 机器检索层例外）。重建或清空
+  `journals` 表时同步清空签名表，避免“签名匹配但行已丢失”。
 - **增量扫描**（`life-index index`、pending 修复、staleness 修复；
   `fts_update.update_index`）：经 `tools/lib/journal_files.py` 枚举 fragment 文件，
-  stat-only 比对侧表签名——签名未变的文件**不被读取、不被哈希**；只读取签名变化
-  或无行的文件；文件消失则删除其 FTS 行与签名行（与此前一致）。
+  stat-only 比对侧表签名——签名未变**且已有 FTS 行**的文件不被读取；只读取签名变化、
+  缺行或缺签名的文件；pending 队列中的 path 无论签名是否匹配都强制重读；文件消失则删除
+  其 FTS 行与签名行。不可解析的 live fragment（`parse_journal` 返回 `None`）会删除旧行与
+  签名行、计入 `fts.unparsable`、写日志并在后续扫描中重试，而不是继续返回过期行；它要求
+  的是一次局部重读，不是全库 rebuild。
+- **其他新鲜度读者**：`check_index_stale`（event detector）与 L3 fallback 的
+  `fs_consistency.index_is_current()` 都改为调用同一签名检查；旧的
+  “newest journal mtime vs `last_updated`”和“manifest 行数 vs 实际行数”规则已删除。
 - **版本升级**：`FTS_SCHEMA_VERSION` v2 → v3。存量 v2 安装没有签名行：已记录的
   schema 版本不匹配会经既有 `check_needs_rebuild` 机制在第一次增量更新时自动做
   一次全量重建并填充侧表，无需人工干预。
 - **已知边界（接受）**：工具外修改若 mtime 与大小均不变，则要到
   `life-index index --rebuild` 才能被发现（与 metadata cache 同一判据、同一边界）。
+  例外：该 path 仍在 pending queue 中时会被强制重读，所以写穿失败且同 mtime/size 的
+  编辑仍可由搜索 preflight 修复。
 
 #### Transactional write boundary
 
@@ -665,8 +695,10 @@ the execution truth for the compatibility summaries `write_outcome`,
 5. `fts_row: complete` means the journal's FTS row was written through from
    the committed file; `mark_pending` is then recorded `skipped` and nothing
    is queued. `mark_pending: queued` means the write-through failed, the
-   existing atomic pending queue is durable, and search preflight remains the
-   sole consumer and freshness authority.
+   existing atomic pending queue is durable, and the next search preflight or
+   `life-index index` repairs it. Queue acknowledgement is generation-scoped:
+   a path re-queued during the repair scan survives, and an unparsable
+   fragment stays queued for a later retry.
 6. Optional CLI `auto_index` runs only after `journal_commit=complete`, appends a
    nonblocking post-commit record, and re-projects compatibility summaries.
 

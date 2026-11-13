@@ -11,7 +11,7 @@ Tests cover:
 - Idempotent behavior (same rel_path overwrites)
 - Chinese segmentation applied correctly
 - List fields normalized the same way a rebuild normalizes them
-- index_meta.last_updated is refreshed; version keys are not masked
+- index_meta.last_updated is NOT touched by the write-through; version keys are not masked
 - The (mtime, size) signature lands in fts_file_stats
 - Error handling (DB errors raise; the write core records the failure)
 - FTS-searchable after write-through
@@ -161,8 +161,13 @@ class TestUpsertFtsRow:
         assert doc["mood"] == "思念"
         assert doc["people"] == "晴岚"
 
-    def test_last_updated_refreshed_without_masking_versions(self, tmp_path: Path):
-        """last_updated is refreshed; version keys keep signalling rebuilds."""
+    def test_write_through_does_not_touch_last_updated(self, tmp_path: Path):
+        """Only a completed archive scan may advance index_meta.last_updated.
+
+        The write-through refreshes one row; a timestamp write here would make
+        any timestamp-based freshness check claim archive coverage it does not
+        have. Version keys must survive so a pending rebuild keeps signalling.
+        """
         from tools.lib.search_index import upsert_fts_row
 
         user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(tmp_path)
@@ -173,6 +178,10 @@ class TestUpsertFtsRow:
             conn.execute("CREATE TABLE IF NOT EXISTS index_meta (key TEXT PRIMARY KEY, value TEXT)")
             conn.execute(
                 "INSERT OR REPLACE INTO index_meta (key, value) VALUES " "('schema_version', '2')"
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO index_meta (key, value) VALUES "
+                "('last_updated', '2026-01-01T00:00:00+00:00')"
             )
             conn.commit()
         finally:
@@ -185,7 +194,8 @@ class TestUpsertFtsRow:
             last_updated = conn.execute(
                 "SELECT value FROM index_meta WHERE key = 'last_updated'"
             ).fetchone()
-            assert last_updated is not None and "202" in last_updated[0]
+            assert last_updated is not None
+            assert last_updated[0] == "2026-01-01T00:00:00+00:00"
             # The stale recorded version must survive so the next incremental
             # scan still triggers its one-time rebuild.
             schema_version = conn.execute(

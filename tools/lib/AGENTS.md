@@ -13,12 +13,13 @@ Shared infrastructure library for all Life Index atomic tools.
 | Modify attachment handling | `attachment.py` | Normalize write-input and stored-metadata attachment entries |
 | Modify frontmatter format | `frontmatter.py` | SSOT: update FIELD_ORDER and type mappings (re-exports attachment + schema) |
 | Change data directory paths | `config.py` | Update USER_DATA_DIR, all other paths derive from it |
-| Decide what kind of file lives under Journals/ | `journal_files.py` | Closed kind rule (fragment / digest / derived_index / unknown) + enumeration helpers; all journals-tree walkers must use it |
+| Decide what kind of file lives under Journals/ | `journal_files.py` | Closed kind rule (fragment / digest / derived_index / unknown) + enumeration helpers + `is_live_fragment_path()` admission predicate; all journals-tree walkers and single-path derived-store writes must use it |
 | Debug concurrent write issues | `file_lock.py` | Cross-platform advisory locks for serialization |
 | Debug L2 search performance | `metadata_cache.py` | Check SQLite WAL mode, mtime/size detection |
 | Fix FTS5 search issues | `search_index.py` | Supports auto-rebuild on corruption |
 | Debug FTS search queries | `fts_search.py` | BM25 ranking, snippet extraction, JSON field parsing |
-| Debug FTS index updates | `fts_update.py` | Incremental/full rebuild, single-row write-through insert, (mtime, size) stat scan, journal parsing |
+| Debug FTS index updates | `fts_update.py` | Incremental/full rebuild, read-once single-row write-through insert, (mtime, size) signature scan + `inspect_fts_index()` preflight, unparsable handling, journal parsing |
+| Debug FTS freshness decisions | `index_freshness.py`, `fs_consistency.py`, `event_detectors.py` | All consult the per-fragment signature check; no timestamp/count freshness rules remain |
 | Search retrieval behavior | `search_index.py`, `fts_search.py`, `metadata_cache.py`, `entity_runtime.py` | Active retrieval is keyword + Entity Graph |
 | Debug path normalization | `path_contract.py` | Canonical path normalization and route-safe path shaping |
 | Modify schema validation | `schema.py` | SCHEMA_VERSION, validate/migrate metadata, required/recommended fields |
@@ -38,12 +39,15 @@ Shared infrastructure library for all Life Index atomic tools.
 - **entity_schema.py**: Entity graph schema validation. ENTITY_TYPES (new actor/artifact plus legacy person), alias conflict detection, relationship target verification, v1.2 relationship metadata defaults, and merge tombstone validation.
 - **errors.py**: Structured error codes (E{module}{type}) with recovery strategies for Agent decision-making.
 - **file_lock.py**: Cross-platform file locking for concurrent access control. Uses fcntl (Unix) and msvcrt (Windows).
-- **journal_files.py**: Canonical journal file enumeration and closed kind classification under Journals/ (fragment / digest / derived_index / unknown). Path-only rules; dot-directories such as .revisions/ are never enumerated. All journals-tree walkers use these helpers. `scan_journal_files()` walks fragments once and returns `(path, mtime, size)` from `DirEntry.stat()` for stat-only consumers (event detectors, metadata-cache reconcile); its mtime equals `Path.stat().st_mtime`.
+- **journal_files.py**: Canonical journal file enumeration and closed kind classification under Journals/ (fragment / digest / derived_index / unknown). Path-only rules; dot-directories such as .revisions/ are never enumerated. All journals-tree walkers use these helpers. `is_live_fragment_path(path, journals_dir)` is the single admission predicate for writing one path into a derived per-fragment store (FTS row, metadata-cache row): inside the tree, no dot-directory component, filename classifies as fragment. `scan_journal_files()` walks fragments once and returns `(path, mtime, size)` from `DirEntry.stat()` for stat-only consumers (event detectors, metadata-cache reconcile, FTS signature preflight); its mtime equals `Path.stat().st_mtime`.
 - **frontmatter.py**: SSOT for YAML frontmatter parsing/formatting. Re-exports attachment.py and schema.py for backward compat.
+- **fs_consistency.py**: `index_is_current()` — the L3 fallback's freshness gate, delegating to the same per-fragment signature check as the search preflight. The old mtime-vs-`last_updated` helpers are gone.
 - **fts_search.py**: FTS5 full-text search with BM25 ranking. Extracted from search_index.py.
-- **fts_update.py**: FTS5 index building/updating. Incremental scan decides "unchanged" from (mtime, size) signatures in the fts_file_stats side table; `insert_fts_doc` is the one "file → FTS row" insert shared by rebuild and write-through. Extracted from search_index.py.
+- **fts_update.py**: FTS5 index building/updating. `inspect_fts_index()` is the read-only signature check (one directory scan + journals/stats reads, never opens a journal) used by the search preflight, event detectors and L3 fallback. The incremental scan decides "unchanged" only when an FTS row exists *and* the (mtime, size) signature in `fts_file_stats` matches; pending paths are force-read; vanished files lose row+signature; unparsable fragments lose their obsolete row and are counted as `unparsable` for retry. Files are read once (bytes) and a signature is recorded only when the stat before and after that read agree. `insert_fts_doc` is the one "file → FTS row" insert shared by rebuild and write-through. Extracted from search_index.py.
+- **index_freshness.py**: `check_full_freshness()` — signature-based freshness report for search preflight / `index --check`. Manifest presence/partial and version keys remain build signals; manifest row counts are no longer a freshness rule.
 - **metadata_cache.py**: SQLite-based L2 search cache. 50-100x performance improvement over file scanning.
 - **path_contract.py**: Shared path normalization helpers for route-safe, user-safe journal paths.
+- **pending_writes.py**: Generation-scoped pending repair queue. `mark_pending` bumps the path's generation; `ack_pending(snapshot, only=repaired)` removes a path only when its generation is unchanged and the repair actually succeeded. The legacy `{"pending": [...]}` list format is still read (generation 0). Mutations serialize on a leaf queue lock.
 - **schema.py**: Schema version management, metadata validation and migration. Extracted from frontmatter.py.
 - **search_index.py**: FTS5 index management (init, stats) + backward-compat wrappers for fts_search.py and fts_update.py.
 - **timing.py**: Performance timing utility for metrics collection. Used in tool outputs for monitoring.
@@ -84,20 +88,22 @@ Shared infrastructure library for all Life Index atomic tools.
 | entity_graph.py | write_journal, entity tool, entity_runtime | ✅ 活跃 | Round 7 Phase 1 runtime view 底层 |
 | entity_relations.py | entity_runtime, check, review | ✅ 活跃 | Round 7 Phase 3 新增：relation vocabulary normalization |
 | index_manifest.py | build_index | ✅ 活跃 | Round 12 Phase 2 新增：索引构建状态 manifest（counts + checksums + partial flag） |
+| index_freshness.py | search_journals, build_index (--check) | ✅ 活跃 | 逐 fragment 签名新鲜度；manifest 行数不再参与判定 |
 | entity_runtime.py | search_journals | ✅ 活跃 | Round 7 Phase 1 新增：runtime serving layer（by_lookup + reverse_relationships + phrase patterns） |
 | entity_schema.py | write_journal, entity_graph | ✅ 活跃 | Round 7 Phase 1 确认活跃；v1.2 负责 relationship metadata defaults 与 merge tombstone validation |
 | errors.py | write_journal(core), query_weather, generate_index | ⚠️ 部分集成 | Round 5 Task 3 将全面激活 |
 | file_lock.py | write_journal, edit_journal, build_index | ✅ 活跃 | |
 | frontmatter.py | write_journal, edit_journal, search | ✅ 活跃 | SSOT |
 | fts_search.py | search_journals | ✅ 活跃 | |
-| fts_update.py | build_index, search_index (write/edit write-through) | ✅ 活跃 | stat 侧表判定 + 唯一 file→row 插入路径 |
+| fs_consistency.py | search_journals (L3 fallback) | ✅ 活跃 | `index_is_current()` 签名检查；旧 mtime/last_updated 规则已删除 |
+| fts_update.py | build_index, search_journals (preflight), event_detectors, search_index (write/edit write-through) | ✅ 活跃 | 只读签名检查 + 单次读取 + 唯一 file→row 插入路径；pending 强制重读、不可解析行清理 |
 | llm_extract.py | 无 | 🗄️ 已退役 | backward-compat shim 已删除；隔离实现仅保留在 `tools/_optional/llm_extract.py`，不在核心工具默认路径导入 |
-| journal_files.py | search_journals, entity, maintenance, backup, __main__, event_detectors | ✅ 活跃 | Journals/ 文件种类 SSOT：fragment / digest / derived_index / unknown，枚举默认只返回 fragment |
+| journal_files.py | search_journals, entity, maintenance, backup, __main__, event_detectors, fts_update, metadata_cache | ✅ 活跃 | Journals/ 文件种类 SSOT + `is_live_fragment_path()` 准入谓词；枚举默认只返回 fragment |
 | logger.py | ALL tools | ✅ 活跃 | |
 | metadata_cache.py | search_journals, write_journal | ✅ 活跃 | |
 | path_contract.py | write_journal, edit_journal | ✅ 活跃 | |
 | paths.py | 多个 | ✅ 活跃 | |
-| pending_writes.py | write_journal, edit_journal, search_journals | ✅ 活跃 | Round 12 Phase 1 新增；FTS 写穿落地后为失败修复路径：写穿失败时入队，搜索前消费 |
+| pending_writes.py | write_journal, edit_journal, search_journals, build_index | ✅ 活跃 | 写穿失败时的修复队列；generation 快照确认（`ack_pending`），同一 path 构建期间重新入队不丢事件；兼容旧列表格式 |
 | related_candidates.py | write_journal | ✅ 活跃 | |
 | revisions.py | edit_journal | ✅ 活跃 | |
 | schema_validator.py | dev tools | ✅ 活跃 | |
@@ -105,7 +111,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | search_config.py | search_journals | ✅ 活跃 | |
 | search_constants.py | search_journals | ✅ 活跃 | 包含 deprecated semantic flag defaults、FTS、confidence、fuzzy typo、structured metadata 常量 |
 | search_diagnose.py | search_journals | ✅ 活跃 | Round 8 新增：按月 JSONL 指标聚合最近搜索诊断摘要 |
-| search_index.py | build_index, search_journals, write_journal, edit_journal | ✅ 活跃 | `upsert_fts_row` 为 write/edit 提交后单行 FTS 写穿 |
+| search_index.py | build_index, search_journals, write_journal, edit_journal | ✅ 活跃 | `upsert_fts_row` 为 write/edit 提交后单行 FTS 写穿（单次读取、稳定才记签名、不碰 `last_updated`） |
 | search_metrics.py | search_journals | ✅ 活跃 | Round 8 新增：按月 JSONL 追加搜索指标日志 |
 | text_normalize.py | search, fts | ✅ 活跃 | |
 | timing.py | write_journal | ✅ 活跃 | write_journal 使用 Timer 做性能计时；其他工具使用 trace.py |

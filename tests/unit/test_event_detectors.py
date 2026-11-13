@@ -277,33 +277,15 @@ class TestSchemaMigrationAvailableDetector:
 
 
 class TestIndexStaleDetector:
-    def test_detects_stale_index(self, tmp_path: Path):
-        """Journal mtime > index mtime should trigger event."""
-        from tools.lib.event_detectors import check_index_stale
+    """Staleness uses the per-fragment signature rule, not mtime comparison."""
 
-        journals_dir = tmp_path / "Journals" / "2026" / "04"
-        journals_dir.mkdir(parents=True)
-        index_dir = tmp_path / ".index"
-        index_dir.mkdir()
-
-        journal = journals_dir / "life-index_2026-04-08_001.md"
-        journal.write_text("---\ntitle: new\n---\n", encoding="utf-8")
-
-        fts_db = index_dir / "journals_fts.db"
-        fts_db.write_text("", encoding="utf-8")
-        old_time = time.time() - 3600
-        os.utime(fts_db, (old_time, old_time))
-
-        events = check_index_stale({"data_dir": tmp_path, "journals_dir": tmp_path / "Journals"})
-        assert any(e.type == "index_stale" for e in events)
-
-    def test_no_event_if_index_fresh(self, tmp_path: Path):
-        """Index newer than journals with current meta should not trigger."""
+    @staticmethod
+    def _seed(tmp_path: Path, *, with_row: bool = True, tokenizer_version: int | None = None):
         import sqlite3
-        from tools.lib.event_detectors import check_index_stale
+
+        from tools.lib.chinese_tokenizer import get_dict_hash
         from tools.lib.search_constants import TOKENIZER_VERSION
         from tools.lib.search_index import FTS_SCHEMA_VERSION
-        from tools.lib.chinese_tokenizer import get_dict_hash
 
         journals_dir = tmp_path / "Journals" / "2026" / "04"
         journals_dir.mkdir(parents=True)
@@ -311,74 +293,76 @@ class TestIndexStaleDetector:
         index_dir.mkdir()
 
         journal = journals_dir / "life-index_2026-04-08_001.md"
-        journal.write_text("---\ntitle: old\n---\n", encoding="utf-8")
-        old_time = time.time() - 3600
-        os.utime(journal, (old_time, old_time))
+        journal.write_text("---\ntitle: test\ndate: 2026-04-08\n---\n", encoding="utf-8")
 
-        fts_db = index_dir / "journals_fts.db"
-        conn = sqlite3.connect(str(fts_db))
-        conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS journals USING fts5(path, title, content)")
-        conn.execute("CREATE TABLE IF NOT EXISTS index_meta (key TEXT PRIMARY KEY, value TEXT)")
-        conn.execute(
-            "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
-            ("tokenizer_version", str(TOKENIZER_VERSION)),
-        )
-        conn.execute(
-            "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
-            ("schema_version", str(FTS_SCHEMA_VERSION)),
-        )
-        conn.execute(
-            "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
-            ("dict_hash", get_dict_hash()),
-        )
-        conn.commit()
-        conn.close()
+        rel_path = "Journals/2026/04/life-index_2026-04-08_001.md"
+        stat = journal.stat()
+        conn = sqlite3.connect(str(index_dir / "journals_fts.db"))
+        try:
+            conn.execute(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS journals " "USING fts5(path, title, content)"
+            )
+            conn.execute("CREATE TABLE IF NOT EXISTS index_meta (key TEXT PRIMARY KEY, value TEXT)")
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS fts_file_stats "
+                "(path TEXT PRIMARY KEY, mtime REAL NOT NULL, size INTEGER NOT NULL)"
+            )
+            if with_row:
+                conn.execute(
+                    "INSERT INTO journals (path, title, content) VALUES (?, ?, ?)",
+                    (rel_path, "test", "body"),
+                )
+                conn.execute(
+                    "INSERT OR REPLACE INTO fts_file_stats (path, mtime, size) " "VALUES (?, ?, ?)",
+                    (rel_path, stat.st_mtime, stat.st_size),
+                )
+            conn.execute(
+                "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
+                (
+                    "tokenizer_version",
+                    str(TOKENIZER_VERSION if tokenizer_version is None else tokenizer_version),
+                ),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
+                ("schema_version", str(FTS_SCHEMA_VERSION)),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
+                ("dict_hash", get_dict_hash()),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        return journal
 
-        # Index is newer (current time)
-        os.utime(fts_db, None)
+    def test_detects_stale_index(self, tmp_path: Path):
+        """A live fragment without an FTS row signals a stale index."""
+        from tools.lib.event_detectors import check_index_stale
+
+        self._seed(tmp_path, with_row=False)
+
+        events = check_index_stale({"data_dir": tmp_path, "journals_dir": tmp_path / "Journals"})
+        stale_events = [e for e in events if e.type == "index_stale"]
+        assert len(stale_events) == 1
+        assert stale_events[0].data.get("reason") == "signature_mismatch"
+        assert stale_events[0].data.get("suggested_command") == "life-index index"
+
+    def test_no_event_if_index_fresh(self, tmp_path: Path):
+        """Matching row + signature + current meta should not trigger."""
+        from tools.lib.event_detectors import check_index_stale
+
+        self._seed(tmp_path)
 
         events = check_index_stale({"data_dir": tmp_path, "journals_dir": tmp_path / "Journals"})
         assert not any(e.type == "index_stale" for e in events)
 
     def test_detects_version_mismatch(self, tmp_path: Path):
-        """Tokenizer version mismatch should trigger index_stale event."""
-        import sqlite3
+        """Tokenizer version mismatch should trigger index_stale (version reason)."""
         from tools.lib.event_detectors import check_index_stale
         from tools.lib.search_constants import TOKENIZER_VERSION
 
-        journals_dir = tmp_path / "Journals" / "2026" / "04"
-        journals_dir.mkdir(parents=True)
-        index_dir = tmp_path / ".index"
-        index_dir.mkdir()
-
-        # Create a journal file
-        journal = journals_dir / "life-index_2026-04-08_001.md"
-        journal.write_text("---\ntitle: test\n---\n", encoding="utf-8")
-
-        # Create FTS DB with outdated tokenizer version
-        fts_db = index_dir / "journals_fts.db"
-        conn = sqlite3.connect(str(fts_db))
-        conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS journals USING fts5(path, title, content)")
-        conn.execute("CREATE TABLE IF NOT EXISTS index_meta (key TEXT PRIMARY KEY, value TEXT)")
-        # Write a stale tokenizer version
-        conn.execute(
-            "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
-            ("tokenizer_version", str(TOKENIZER_VERSION - 1)),
-        )
-        conn.execute(
-            "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
-            ("schema_version", "1"),
-        )
-        conn.execute(
-            "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
-            ("dict_hash", "dummy_hash"),
-        )
-        conn.commit()
-        conn.close()
-
-        # Make index mtime newer than journal
-        os.utime(fts_db, None)
-        os.utime(journal, (time.time() - 3600, time.time() - 3600))
+        self._seed(tmp_path, tokenizer_version=TOKENIZER_VERSION - 1)
 
         events = check_index_stale({"data_dir": tmp_path, "journals_dir": tmp_path / "Journals"})
         stale_events = [e for e in events if e.type == "index_stale"]
@@ -386,43 +370,10 @@ class TestIndexStaleDetector:
         assert stale_events[0].data.get("reason") == "version_mismatch"
 
     def test_no_version_event_if_meta_current(self, tmp_path: Path):
-        """No event when tokenizer/schema versions are current."""
-        import sqlite3
+        """No event when signatures and tokenizer/schema versions are current."""
         from tools.lib.event_detectors import check_index_stale
-        from tools.lib.search_constants import TOKENIZER_VERSION
-        from tools.lib.search_index import FTS_SCHEMA_VERSION
-        from tools.lib.chinese_tokenizer import get_dict_hash
 
-        journals_dir = tmp_path / "Journals" / "2026" / "04"
-        journals_dir.mkdir(parents=True)
-        index_dir = tmp_path / ".index"
-        index_dir.mkdir()
-
-        journal = journals_dir / "life-index_2026-04-08_001.md"
-        journal.write_text("---\ntitle: test\n---\n", encoding="utf-8")
-
-        fts_db = index_dir / "journals_fts.db"
-        conn = sqlite3.connect(str(fts_db))
-        conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS journals USING fts5(path, title, content)")
-        conn.execute("CREATE TABLE IF NOT EXISTS index_meta (key TEXT PRIMARY KEY, value TEXT)")
-        conn.execute(
-            "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
-            ("tokenizer_version", str(TOKENIZER_VERSION)),
-        )
-        conn.execute(
-            "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
-            ("schema_version", str(FTS_SCHEMA_VERSION)),
-        )
-        conn.execute(
-            "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
-            ("dict_hash", get_dict_hash()),
-        )
-        conn.commit()
-        conn.close()
-
-        # Make index newer than journal
-        os.utime(fts_db, None)
-        os.utime(journal, (time.time() - 3600, time.time() - 3600))
+        self._seed(tmp_path)
 
         events = check_index_stale({"data_dir": tmp_path, "journals_dir": tmp_path / "Journals"})
         assert not any(e.type == "index_stale" for e in events)

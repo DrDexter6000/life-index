@@ -51,6 +51,28 @@ def is_journal_file(path: Path) -> bool:
     return path.is_file() and JOURNAL_FILENAME_RE.match(path.name) is not None
 
 
+def is_live_fragment_path(path: Path, journals_dir: Path) -> bool:
+    """Return whether one path is a live fragment of this journals tree.
+
+    The single admission rule for a derived store that keeps per-fragment
+    rows (FTS index, metadata cache): the path must live under ``journals_dir``,
+    no component of its relative path may be a dot-directory (for example
+    ``.revisions/``), and the filename must classify as a fragment.
+
+    Path-only: never opens or stats the file, so callers can use it before
+    writing to a derived store without touching the journals tree.
+    """
+    try:
+        relative = Path(path).relative_to(Path(journals_dir))
+    except ValueError:
+        return False
+    if not relative.parts:
+        return False
+    if any(part.startswith(".") for part in relative.parts[:-1]):
+        return False
+    return classify_journal_path(path) is JournalFileKind.FRAGMENT
+
+
 @dataclass(frozen=True, slots=True)
 class JournalFileStat:
     """Path plus the stat facts the metadata cache stores and compares.

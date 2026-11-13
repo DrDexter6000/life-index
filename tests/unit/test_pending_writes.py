@@ -5,8 +5,10 @@ import pytest
 from pathlib import Path
 
 from tools.lib.pending_writes import (
+    ack_pending,
     mark_pending,
     get_pending,
+    get_pending_generations,
     clear_pending,
     has_pending,
     remove_pending,
@@ -153,9 +155,9 @@ class TestRemovePending:
 
         real_atomic_write = mod._atomic_write
 
-        def slow_atomic_write(paths):
+        def slow_atomic_write(paths, generations):
             _time.sleep(0.05)
-            real_atomic_write(paths)
+            real_atomic_write(paths, generations)
 
         monkeypatch.setattr(mod, "_atomic_write", slow_atomic_write)
 
@@ -185,3 +187,78 @@ class TestRemovePending:
                 f"round {_round}: interleaved queue mutation lost a path, " f"queue={get_pending()}"
             )
             clear_pending()
+
+
+class TestGenerations:
+    """Generation tokens: a re-queued path survives an older acknowledgement."""
+
+    def test_mark_bumps_generation(self, index_dir: Path):
+        mark_pending("Journals/2026/03/a.md")
+        first = get_pending_generations()
+        mark_pending("Journals/2026/03/a.md")
+        second = get_pending_generations()
+
+        assert first == {"Journals/2026/03/a.md": 1}
+        assert second == {"Journals/2026/03/a.md": 2}
+        assert get_pending() == ["Journals/2026/03/a.md"]
+
+    def test_ack_keeps_path_requeued_after_snapshot(self, index_dir: Path):
+        """The same path queued again during a scan must not be acknowledged."""
+        mark_pending("Journals/2026/03/a.md")
+        snapshot = get_pending_generations()
+        mark_pending("Journals/2026/03/a.md")  # newer event, same path
+
+        removed = ack_pending(snapshot, only=["Journals/2026/03/a.md"])
+
+        assert removed == []
+        assert get_pending() == ["Journals/2026/03/a.md"]
+
+    def test_ack_removes_unchanged_repaired_path(self, index_dir: Path):
+        mark_pending("Journals/2026/03/a.md")
+        mark_pending("Journals/2026/03/b.md")
+        snapshot = get_pending_generations()
+
+        removed = ack_pending(snapshot, only=["Journals/2026/03/a.md"])
+
+        assert removed == ["Journals/2026/03/a.md"]
+        assert get_pending() == ["Journals/2026/03/b.md"]
+
+    def test_ack_without_only_trusts_the_scan(self, index_dir: Path):
+        mark_pending("Journals/2026/03/a.md")
+        snapshot = get_pending_generations()
+
+        removed = ack_pending(snapshot)
+
+        assert removed == ["Journals/2026/03/a.md"]
+        assert get_pending() == []
+
+    def test_legacy_list_format_reads_as_generation_zero(self, index_dir: Path):
+        """A pre-generation pending_writes.json stays readable."""
+        (index_dir / "pending_writes.json").write_text(
+            json.dumps({"pending": ["Journals/2026/03/a.md"]}),
+            encoding="utf-8",
+        )
+
+        assert get_pending() == ["Journals/2026/03/a.md"]
+        assert get_pending_generations() == {"Journals/2026/03/a.md": 0}
+
+        snapshot = get_pending_generations()
+        mark_pending("Journals/2026/03/a.md")
+        assert ack_pending(snapshot, only=["Journals/2026/03/a.md"]) == []
+        assert get_pending() == ["Journals/2026/03/a.md"]
+
+    def test_legacy_snapshot_ack_removes_when_not_requeued(self, index_dir: Path):
+        (index_dir / "pending_writes.json").write_text(
+            json.dumps({"pending": ["Journals/2026/03/a.md"]}),
+            encoding="utf-8",
+        )
+        snapshot = get_pending_generations()
+
+        assert ack_pending(snapshot, only=["Journals/2026/03/a.md"]) == ["Journals/2026/03/a.md"]
+        assert get_pending() == []
+
+    def test_clear_pending_drops_generations(self, index_dir: Path):
+        mark_pending("Journals/2026/03/a.md")
+        clear_pending()
+
+        assert get_pending_generations() == {}

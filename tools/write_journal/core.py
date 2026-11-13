@@ -1123,7 +1123,7 @@ def _update_postcommit_derived_projections(
     # re-read the archive (non-blocking; recovery is index --rebuild or the
     # next search's reconcile pass).
     try:
-        upserted_row = upsert_journal_cache_row(journal_path)
+        upserted_row = upsert_journal_cache_row(journal_path, get_journals_dir())
         if upserted_row is None:
             raise RuntimeError("metadata cache row upsert produced no row")
     except Exception as exc:
@@ -1151,7 +1151,7 @@ def _update_postcommit_derived_projections(
     # failure the pending queue plus the next search preflight repair it).
     fts_row_failed = False
     try:
-        fts_row_doc = upsert_fts_row(journal_path)
+        fts_row_doc = upsert_fts_row(journal_path, get_journals_dir())
         if fts_row_doc is None:
             raise RuntimeError("FTS row write-through produced no row")
     except Exception as exc:

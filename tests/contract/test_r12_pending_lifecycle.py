@@ -314,7 +314,10 @@ class TestPendingLifecycle:
             build_calls.append(kwargs)
             # Simulate a concurrent write whose FTS write-through could not
             # get the index lock (held by this very build) and queued itself.
-            mark_pending(queued_during_build)
+            # Only the first build sees that event; a second re-mark would be
+            # a *newer* generation that must survive (pinned elsewhere).
+            if len(build_calls) == 1:
+                mark_pending(queued_during_build)
             return {"success": True, "fts": {"success": True}, "vector": {"success": True}}
 
         monkeypatch.setattr(bi, "build_all", mock_build_all)

@@ -12,6 +12,11 @@
   "indices_updated": [],
   "fts_row_updated": false,
   "pending_marked": false,
+  "fts_row": {
+    "status": "skipped",
+    "reason": "not_a_live_fragment",
+    "recovery": null
+  },
   "index_b_updated": {
     "success": true,
     "updated": true,

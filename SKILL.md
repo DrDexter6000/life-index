@@ -398,7 +398,7 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 - write succeeded 但用户拒绝自动补全值时，应进入 correction flow，不得把已成功写入重新表述为“写入失败”
 - 必须区分：未保存 / 已保存但待确认 / 已保存但存在降级 side effects
 - 检查 `side_effects`：`journal_commit.status == "complete"` 时 journal 已持久化；即使后续步骤失败，也绝不能再次调用 write 创建同一篇日志
-- 正常写入不再是降级：`fts_row: complete` 表示该日志的 FTS 行已写穿，即刻可被全文检索，`mark_pending: skipped` 表示没有内容留在待修复队列——此时只需按 `needs_confirmation` 走确认流程；`success_degraded` 时逐项读取失败记录的 `recovery_strategy` 并只修复对应派生物；`mark_pending: queued` 表示 FTS 行写穿失败（例如索引正在重建、锁被占用）、修复路径已可靠落盘，后续 search preflight 会消费它（也可主动运行 `life-index index` 立即修复）
+- 正常写入不再是降级：`fts_row: complete` 表示该日志的 FTS 行已写穿，即刻可被全文检索，`mark_pending: skipped` 表示没有内容留在待修复队列——此时只需按 `needs_confirmation` 走确认流程；`success_degraded` 时逐项读取失败记录的 `recovery_strategy` 并只修复对应派生物；`mark_pending: queued` 表示 FTS 行写穿失败（例如索引正在重建、锁被占用）、修复路径已可靠落盘，后续 search preflight 会按 generation 快照消费它（也可主动运行 `life-index index` 立即修复）。`edit` 结果用 additive 的 `fts_row {status, reason, recovery}` 说明派生步骤：`skipped` 表示该 path 不是 journals 树的 live fragment（如 `digest_*.md`、派生索引、`.revisions/` 内文件），只有 `failed` 时才看 `pending_marked`/入队；`fts_row_updated: false` 不必然等于失败。搜索 preflight 每次先做只读签名检查（逐 fragment 比较 `(mtime, size)` 与 FTS 行/签名表），只修复有差异的文件；工具外修改/删除、缺失 FTS 行因此不再需要 `index --rebuild`。已知边界：工具外修改若 mtime 与 size 均不变且不在 pending 队列中，仍需 `life-index index --rebuild`
 - `attachments_processed` 可含失败诊断，但 journal frontmatter 只引用已成功发布的附件；`auto_index`（如启用）也必须作为 post-commit side-effect record 消费
 - `journal_commit` 未完成且 pre-commit 记录为 `failed/compensated` 时，确认无 durable `journal_path`，解决错误后才可重试写入
 

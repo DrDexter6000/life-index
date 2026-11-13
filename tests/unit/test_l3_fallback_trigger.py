@@ -1,92 +1,81 @@
-"""Tests for L3 fulltext fallback trigger conditions (D9)."""
+"""Tests for L3 fulltext fallback trigger conditions (D9).
 
-import sqlite3
-import time
+The fallback rule is the per-fragment signature check
+(``fs_consistency.index_is_current`` → ``fts_update.inspect_fts_index``), not
+the old "newest journal mtime vs index_meta.last_updated" comparison.
+"""
+
 from pathlib import Path
-
 from unittest.mock import patch
 
-
-class TestHasWritesSince:
-    def test_no_files_newer(self, tmp_path: Path) -> None:
-        """All files older than ts -> False (index is fresh)."""
-        from tools.lib.fs_consistency import has_writes_since
-
-        year_dir = tmp_path / "2026" / "03"
-        year_dir.mkdir(parents=True)
-
-        journal = year_dir / "life-index_2026-03-01_001.md"
-        journal.write_text("test", encoding="utf-8")
-        file_mtime = journal.stat().st_mtime
-
-        assert has_writes_since(file_mtime + 1, tmp_path) is False
-
-    def test_file_newer_than_ts(self, tmp_path: Path) -> None:
-        """A file with mtime > ts -> True (index is stale)."""
-        from tools.lib.fs_consistency import has_writes_since
-
-        year_dir = tmp_path / "2026" / "03"
-        year_dir.mkdir(parents=True)
-
-        ts = time.time() - 100
-        journal = year_dir / "life-index_2026-03-01_001.md"
-        journal.write_text("test", encoding="utf-8")
-
-        assert has_writes_since(ts, tmp_path) is True
-
-    def test_nonexistent_root(self, tmp_path: Path) -> None:
-        """Non-existent root -> False."""
-        from tools.lib.fs_consistency import has_writes_since
-
-        assert has_writes_since(0, tmp_path / "nonexistent") is False
-
-    def test_empty_dir(self, tmp_path: Path) -> None:
-        """Empty directory -> False."""
-        from tools.lib.fs_consistency import has_writes_since
-
-        assert has_writes_since(0, tmp_path) is False
+import pytest
 
 
-class TestGetLastSyncTs:
-    def test_valid_timestamp(self, tmp_path: Path) -> None:
-        """Valid last_updated in index_meta -> returns float."""
-        from tools.lib.fs_consistency import get_last_sync_ts
+@pytest.fixture(autouse=True)
+def _isolate(tmp_path: Path, monkeypatch):
+    import tools.lib.pending_writes as pw_mod
 
-        db_path = tmp_path / "journals_fts.db"
-        conn = sqlite3.connect(str(db_path))
-        conn.execute("CREATE TABLE index_meta (key TEXT PRIMARY KEY, value TEXT)")
-        conn.execute(
-            "INSERT INTO index_meta VALUES ('last_updated', '2026-04-17T12:00:00+00:00')"
+    idx = tmp_path / ".index"
+    idx.mkdir(parents=True)
+    monkeypatch.setattr(pw_mod, "get_index_dir", lambda: idx)
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+
+
+def _journal(tmp_path: Path, name: str, body: str = "test") -> Path:
+    month = tmp_path / "Journals" / "2026" / "03"
+    month.mkdir(parents=True, exist_ok=True)
+    journal = month / name
+    journal.write_text(f"---\ntitle: t\ndate: 2026-03-01\n---\n\n{body}\n", encoding="utf-8")
+    return journal
+
+
+class TestIndexIsCurrent:
+    def test_current_index(self, tmp_path: Path) -> None:
+        """Every live fragment has a row and a matching signature -> current."""
+        from tools.lib.fs_consistency import index_is_current
+        from tools.lib.search_index import update_index
+
+        _journal(tmp_path, "life-index_2026-03-01_001.md")
+        assert update_index(incremental=False)["success"] is True
+
+        assert index_is_current() is True
+
+    def test_outside_edit_is_not_current(self, tmp_path: Path) -> None:
+        """An outside edit with no index update -> not current."""
+        from tools.lib.fs_consistency import index_is_current
+        from tools.lib.search_index import update_index
+
+        journal = _journal(tmp_path, "life-index_2026-03-01_001.md")
+        assert update_index(incremental=False)["success"] is True
+
+        journal.write_text(
+            journal.read_text(encoding="utf-8") + "\noutside edit\n", encoding="utf-8"
         )
-        conn.commit()
-        conn.close()
 
-        ts = get_last_sync_ts(db_path)
-        assert ts is not None
-        assert isinstance(ts, float)
+        assert index_is_current() is False
 
-    def test_missing_key(self, tmp_path: Path) -> None:
-        """No last_updated key -> None."""
-        from tools.lib.fs_consistency import get_last_sync_ts
+    def test_deleted_file_is_not_current(self, tmp_path: Path) -> None:
+        """A row for a vanished file -> not current."""
+        from tools.lib.fs_consistency import index_is_current
+        from tools.lib.search_index import update_index
 
-        db_path = tmp_path / "journals_fts.db"
-        conn = sqlite3.connect(str(db_path))
-        conn.execute("CREATE TABLE index_meta (key TEXT PRIMARY KEY, value TEXT)")
-        conn.commit()
-        conn.close()
+        journal = _journal(tmp_path, "life-index_2026-03-01_001.md")
+        assert update_index(incremental=False)["success"] is True
 
-        assert get_last_sync_ts(db_path) is None
+        journal.unlink()
 
-    def test_no_db_file(self, tmp_path: Path) -> None:
-        """No SQLite file -> None."""
-        from tools.lib.fs_consistency import get_last_sync_ts
+        assert index_is_current() is False
 
-        assert get_last_sync_ts(tmp_path / "nonexistent.db") is None
+    def test_no_index_is_not_current(self, tmp_path: Path) -> None:
+        """No FTS database -> not current (fallback stays enabled)."""
+        from tools.lib.fs_consistency import index_is_current
+
+        assert index_is_current() is False
 
 
 class TestL3FallbackTrigger:
-    def test_skips_full_scan_when_fts_is_fresh(self) -> None:
-        """Fresh index + low FTS recall should not trigger full scan."""
+    def test_skips_full_scan_when_index_is_current(self) -> None:
+        """Current index + low FTS recall should not trigger full scan."""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
         fts_rows = [
@@ -108,8 +97,7 @@ class TestL3FallbackTrigger:
         with (
             patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2,
             patch("tools.lib.search_index.search_fts", return_value=fts_rows),
-            patch("tools.lib.fs_consistency.get_last_sync_ts", return_value=123.0),
-            patch("tools.lib.fs_consistency.has_writes_since", return_value=False),
+            patch("tools.lib.fs_consistency.index_is_current", return_value=True),
             patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_scan,
         ):
             mock_l2.return_value = {
@@ -123,8 +111,8 @@ class TestL3FallbackTrigger:
         assert len(l3_results) == 1
         mock_scan.assert_not_called()
 
-    def test_triggers_full_scan_when_index_is_stale(self) -> None:
-        """Low FTS recall should still trigger scan when files are newer."""
+    def test_triggers_full_scan_when_index_is_not_current(self) -> None:
+        """Low FTS recall should trigger the scan when signatures disagree."""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
         fts_rows = [
@@ -154,8 +142,7 @@ class TestL3FallbackTrigger:
         with (
             patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2,
             patch("tools.lib.search_index.search_fts", return_value=fts_rows),
-            patch("tools.lib.fs_consistency.get_last_sync_ts", return_value=123.0),
-            patch("tools.lib.fs_consistency.has_writes_since", return_value=True),
+            patch("tools.lib.fs_consistency.index_is_current", return_value=False),
             patch(
                 "tools.search_journals.keyword_pipeline.search_l3_content",
                 return_value=scan_rows,
@@ -172,8 +159,8 @@ class TestL3FallbackTrigger:
         assert {item.get("title") for item in l3_results} == {"A", "B"}
         mock_scan.assert_called_once()
 
-    def test_triggers_full_scan_when_last_sync_is_missing(self) -> None:
-        """Old index without last_updated metadata should still fallback."""
+    def test_preflight_verdict_true_skips_the_second_check(self) -> None:
+        """A real preflight verdict avoids a duplicate scan and skips fallback."""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
         fts_rows = [
@@ -195,9 +182,8 @@ class TestL3FallbackTrigger:
         with (
             patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2,
             patch("tools.lib.search_index.search_fts", return_value=fts_rows),
-            patch("tools.lib.fs_consistency.get_last_sync_ts", return_value=None),
-            patch("tools.search_journals.keyword_pipeline.search_l3_content", return_value=[])
-            as mock_scan,
+            patch("tools.lib.fs_consistency.index_is_current", return_value=False),
+            patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_scan,
         ):
             mock_l2.return_value = {
                 "results": [],
@@ -205,6 +191,47 @@ class TestL3FallbackTrigger:
                 "total_available": 0,
             }
 
-            run_keyword_pipeline(query="needle")
+            _, _, l3_results, _, _, _ = run_keyword_pipeline(
+                query="needle", index_signature_current=True
+            )
+
+        assert len(l3_results) == 1
+        mock_scan.assert_not_called()
+
+    def test_preflight_verdict_false_triggers_the_fallback(self) -> None:
+        """A not-current preflight verdict is authoritative for the fallback."""
+        from tools.search_journals.keyword_pipeline import run_keyword_pipeline
+
+        fts_rows = [
+            {
+                "path": "Journals/2026/03/a.md",
+                "date": "2026-03-01",
+                "title": "A",
+                "relevance": 88,
+                "location": "",
+                "weather": "",
+                "topic": [],
+                "project": "",
+                "tags": [],
+                "mood": [],
+                "people": [],
+            }
+        ]
+
+        with (
+            patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2,
+            patch("tools.lib.search_index.search_fts", return_value=fts_rows),
+            patch("tools.lib.fs_consistency.index_is_current", return_value=True),
+            patch(
+                "tools.search_journals.keyword_pipeline.search_l3_content", return_value=[]
+            ) as mock_scan,
+        ):
+            mock_l2.return_value = {
+                "results": [],
+                "truncated": False,
+                "total_available": 0,
+            }
+
+            run_keyword_pipeline(query="needle", index_signature_current=False)
 
         mock_scan.assert_called_once()
