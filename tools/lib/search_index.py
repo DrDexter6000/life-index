@@ -470,6 +470,8 @@ def update_index(
             "total": int,
             "unparsable": int,
             "unparsable_paths": [str],
+            "unreadable": int,
+            "unreadable_paths": [str],
             "pending_repaired": [str],
             "needs_rebuild": bool (if version mismatch detected),
             "error": str (optional)

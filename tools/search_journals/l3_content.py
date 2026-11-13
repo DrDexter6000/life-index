@@ -112,7 +112,12 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
                     }
                 )
 
-        except (OSError, IOError):
+        except (OSError, IOError, AttributeError, TypeError, ValueError):
+            # A fragment whose frontmatter does not parse can carry a mapping
+            # where a string belongs (``title.lower()``) or a non-string date
+            # (``date[:10]``). The FTS index already returns such a fragment
+            # from its raw-text row, so this fallback scan skips it; its
+            # relevance cut-off and directory walk are unchanged.
             continue
 
     # 按匹配度排序

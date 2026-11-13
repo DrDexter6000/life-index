@@ -629,6 +629,14 @@ class TestWriteThroughIndexLock:
             ), "an ordinary build must not run while the shared .index lock is held"
             assert build_result["error"]["details"]["lock_path"] == str(shared_lock_path)
 
+            # D6: the source-safe build writes the same FTS database, so it must
+            # contend for the same lock as well — not a second .cache lock.
+            source_safe_result = bi.build_all(incremental=True, derived_index_only=True)
+            assert (
+                source_safe_result["success"] is False
+            ), "a source-safe build must not run while the shared .index lock is held"
+            assert source_safe_result["error"]["details"]["lock_path"] == str(shared_lock_path)
+
             with pytest.raises(LockTimeoutError):
                 upsert_fts_row(journals[0])
 

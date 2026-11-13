@@ -243,7 +243,7 @@ Phase A 为 JSON 输出生成命令引入三层可观测性契约，全部 addit
 
 ```json
 {
-  "schema_version": "v2.0.0",
+  "schema_version": "v2.1.0",
   "tool_version": "1.1.1",
   "created_at": "2026-05-23T10:00:00+00:00",
   "source_hash": "sha256:...",
@@ -255,9 +255,16 @@ Phase A 为 JSON 输出生成命令引入三层可观测性契约，全部 addit
 
 | 字段 | 说明 |
 |------|------|
-| `schema_version` | 当前为 `v2.0.0`。从 v1.1.x 升级后首次搜索/索引会触发一次全量重建 |
+| `schema_version` | 当前为 `v2.1.0`。从更早版本升级后首次搜索/索引会触发一次全量重建 |
 | `tool_version` | 写入该 sidecar 的工具版本；与当前工具版本不一致时触发一次全量重建 |
 | `source_hash` | **仅 `entity_graph.yaml` 的 SHA-256**（graph 变化 → 全量重建）。v2.0.0 之前它是全部日志 + graph 的整体内容哈希；日志内容不再参与 freshness 判断 |
+
+**v2.1.0 的存储表示变更**：列表列（`topic`/`tags`/`mood`/`people`/`links`/
+`related_entries`）现在统一存放 JSON 数组——标量值存为单项数组（此前存为 JSON 标量，
+如 `topic: life` → `"life"`，现为 `["life"]`），`null` 存为 `[]`（此前为 JSON `null`）。
+原因：两个派生存储共用 `frontmatter.normalize_indexable_metadata()` 的“什么可索引”规则，
+缓存必须拿到保证类型的 `list[str]`。读取端同时接受旧表示，但版本号提升会让存量安装
+重建一次，从而不再保留混合表示。
 
 **CLI 入口**：
 
@@ -2898,6 +2905,7 @@ Shape:
 
 - `status` is `"complete"` **iff** this single response carries the whole admitted set with no remainder: `returned == observed_total`, `next_offset` is null, and both `partial_reasons` and `limits_applied` are empty. A `partial` status **always** carries ≥1 entry in `partial_reasons` (there is no "partial without a reason"); each reason explains one honest defect. The `partial_reasons` vocabulary is closed and every entry has a real emission path; reasons without a reachable Phase 1 emission path were removed rather than advertised.
 - `unread_page` is recorded whenever this response window does NOT carry the whole admitted set (`returned < observed_total`) — including a nonzero-offset final page where `next_offset` is already null. `next_offset` / `has_more` signal **only** whether the same deterministic query can mechanically continue to a next page; they do not imply completeness, and `next_offset` is emitted only when it strictly advances past the current offset (an empty window never yields `next_offset=0` or a cursor equal to the offset). (The tool holds no snapshot/cursor between pages; if the corpus changes between requests, each page recomputes against the current `observed_total` and stays honest — it never fabricates `complete`.)
+- `index_not_fresh` is recorded when the index is not current at retrieval time: the search preflight's post-repair signature verdict is `false` (`index_status.signature_current: false`, even with `auto_updated: true` — a path whose read fails keeps the index not-current however often the repair retries), or no signature verdict exists and a stale/failed update is reported (`index_stale:` / `index_update_failed:` / `pending_index_update_failed:`).
 - `result_limit:<n>` is recorded in `limits_applied` only when the presentation `limit` truly bound the result window (`offset + limit < observed_total`); a final page whose shortfall comes from the `offset` alone records no `result_limit`, and a `limit` that excluded nothing records nothing. `fts_min_hits:<n>` is recorded when the segmented-query min-hits post-filter dropped ≥1 candidate that no fallback recovered (a fully recovered exclusion records nothing). `l2_source_cap:<n>` (from the existing `l2_total_available` field, which preserves the upstream source total even when an L0 candidate filter narrows the returned window) is recorded only when the L2 metadata source was actually capped (`l2_truncated=true`).
 - Default token-match relevance threshold is `0`: neither the FTS layer nor the merge/ranking layer drops low-relevance token-matches via a dynamic threshold. An explicit nonzero threshold marks `partial` with `threshold_excluded` + `fts_threshold:<n>` **only when it actually excludes ≥1 candidate**; a configured threshold that excludes 0 does not mark partial. `min_relevance=0` is the intentional Phase 1 recall-first default: search passes an explicit zero token-match threshold and thereby bypasses the legacy high-frequency dynamic threshold; this is by design, not an omission.
 - Level 1/2 responses build `retrieval_coverage` from the level's own complete result array (`l1_results` / `l2_results`; `merged_results` stays empty). The presentation layer paginates that array — not the empty `merged_results` — and scopes `returned`/`offset`/`next_offset` to the page window, with the legacy totals projected from the coverage authority.
@@ -3010,6 +3018,11 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 - `vector_fresh` 是 legacy compatibility 字段；当前始终为 `true`，不代表存在向量索引。
 - `auto_updated`：若签名检查/版本检查判为 stale 触发了增量构建，为 `true`；否则为 `false`
   （仅 stale 时出现）。增量构建只读取新增/变更/待修复的文件，并删除已消失文件的 FTS 行。
+- `signature_current`（additive）：搜索 preflight **修复之后**重新运行只读签名比较的结论，
+  `true`/`false`。`false` 表示索引在检索时仍不 current（例如某个 fragment 的读取一直失败），
+  此时即使 `auto_updated: true`，`retrieval_coverage` 也会报告 `index_not_fresh`。
+  **没有真正运行签名检查时不出现该键**（例如注入的测试替身），此时 coverage 回退到既有
+  判定（见 `retrieval_coverage` 一节）。
 
 #### Pending-writes 路径（有待消费写入）
 
@@ -3039,7 +3052,8 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 - 队列中的 path 无论其 `(mtime, size)` 签名是否匹配都会被强制重读（签名无法证明写穿已成功）；
   不可解析的 live fragment 仍会按原始文本建行并记录签名，计入 `fts.unparsable`，不会留在队列中
 - 队列为空时搜索先做只读签名检查；队列非空时 preflight 直接进入修复，并在修复后重新运行同一
-  只读比较。L3 fallback 使用的 `index_signature_current` 结论只来自这次比较，不来自构建返回值
+  只读比较。L3 fallback 使用的 `index_signature_current` 结论只来自这次比较，不来自构建返回值；
+  同一结论出现在 `index_status.signature_current` 中，并被 `retrieval_coverage` 消费
 - 构建失败时，`warnings` 数组中追加 `pending_index_update_failed: {error}` 条目，pending 队列保留以供下次搜索重试
 
 ### 错误码
@@ -5234,6 +5248,8 @@ python -m tools.build_index [options]
     "total": 45,
     "unparsable": 0,
     "unparsable_paths": [],
+    "unreadable": 0,
+    "unreadable_paths": [],
     "pending_repaired": []
   },
   "semantic_status": "disabled",
@@ -5248,10 +5264,12 @@ python -m tools.build_index [options]
 `unparsable`/`unparsable_paths` 是 additive 字段：frontmatter 不可解析的 live fragment 会按
 整篇原始文本建行（包括 frontmatter 区块里的文字；`title`/元数据列为空，`date` 回退到文件名
 日期）并记录签名；它在全量重建和每次被重读时计数，但不会再重试或留在队列中（不会触发全库
-rebuild）。这条保证只针对 FTS 行；其他派生存储对这类文件的处理见
-`docs/ARCHITECTURE.md` 的增量扫描一节。完全无法读取（`OSError`）的文件不写任何东西并保持
+rebuild）。这条规则对 FTS 行与元数据缓存是同一条，见 `docs/ARCHITECTURE.md` 的
+*Metadata cache freshness* 一节。完全无法读取（`OSError`）的文件不写任何东西并保持
 not-current：增量模式下已有行与签名保持不变；全量重建先清空再写入，该文件此时没有行，
-由之后的扫描重试。`pending_repaired`
+由之后的扫描重试。这类文件在**增量与全量两种模式**下都计入 additive 的
+`unreadable`（计数）与 `unreadable_paths`（path 列表），`total` 仍然照常计入该文件——
+“重建成功”不再掩盖一个没有被索引的文件。`pending_repaired`
 是本次实际修复的队列 path。全量重建（`--rebuild`）读取全部 live fragment，并清空签名表；
 持锁后发现遗留的 `.rebuilding` marker 会视为创建者已死而删除并继续。一次成功的 archive scan
 （增量或全量）会推进 `index_meta.last_updated`；写穿不会。
@@ -5284,9 +5302,9 @@ not-current：增量模式下已有行与签名保持不变；全量重建先清
   "dry_run": true,
   "cache_version": {
     "exists": true,
-    "stored_schema_version": "v2.0.0",
+    "stored_schema_version": "v2.1.0",
     "stored_source_hash": "sha256:...",
-    "current_schema_version": "v2.0.0",
+    "current_schema_version": "v2.1.0",
     "version_match": true,
     "hash_match": true,
     "would_rebuild": false,

@@ -82,7 +82,15 @@ def test_edit_result_matches_golden_snapshot(tmp_path: Path) -> None:
 def test_edit_of_unparsable_frontmatter_reports_complete_raw_row(
     isolated_data_dir: Path,
 ) -> None:
-    """D1: an edit whose committed file still has unparsable frontmatter is complete."""
+    """D1: an edit whose committed file still has unparsable frontmatter is complete.
+
+    The frontmatter keeps a list where a scalar belongs, so the fragment is
+    "not parsable" for both derived stores: the FTS row is the raw-text row
+    (complete, not queued) and the metadata cache stores the same empty row a
+    file without frontmatter gets. The real ``metadata_cache_updated`` value is
+    asserted — not ``in (True, False)`` — and the fragment must stay searchable
+    by a token that only occurs in its body.
+    """
     journal_path = isolated_data_dir / "Journals" / "2026" / "03" / "life-index_2026-03-04_001.md"
     journal_path.parent.mkdir(parents=True, exist_ok=True)
     journal_path.write_text(
@@ -104,4 +112,16 @@ def test_edit_of_unparsable_frontmatter_reports_complete_raw_row(
         "reason": "unparsable_frontmatter_indexed_as_text",
         "recovery": None,
     }
-    assert result["metadata_cache_updated"] in (True, False)
+    assert result["metadata_cache_updated"] is True
+
+    # The fragment is still reachable from its FTS row after the edit.
+    from tools.search_journals.core import hierarchical_search
+
+    response = hierarchical_search(query="raw body token", level=3)
+
+    assert response["success"] is True, response.get("error")
+    hits = {
+        str(item.get("path") or "").replace("\\", "/")
+        for item in (response.get("merged_results") or [])
+    }
+    assert str(journal_path).replace("\\", "/") in hits

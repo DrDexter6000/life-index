@@ -240,11 +240,13 @@ class TestIndexCacheDryRun:
 
     def test_dry_run_with_stale_tool_version_reports_rebuild(self, tmp_path):
         """A sidecar recorded by an older tool version triggers one rebuild."""
+        from tools.lib.metadata_cache import CACHE_VERSION_SCHEMA_VERSION
+
         data_dir, env = _make_empty_sandbox(tmp_path)
         version_dir = data_dir / ".life-index" / "cache"
         version_dir.mkdir(parents=True)
         sidecar = {
-            "schema_version": "v2.0.0",
+            "schema_version": CACHE_VERSION_SCHEMA_VERSION,
             "tool_version": "0.0.1-definitely-not-current",
             "created_at": "2026-05-22T00:00:00Z",
             "source_hash": "sha256:whatever",

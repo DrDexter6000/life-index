@@ -17,7 +17,11 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from .paths import get_cache_dir, get_metadata_db_path, get_journals_dir, get_user_data_dir
-from .frontmatter import parse_journal_file
+from .frontmatter import (
+    empty_indexable_metadata,
+    normalize_indexable_metadata,
+    parse_journal_file,
+)
 from .journal_files import is_live_fragment_path, iter_month_journal_files, scan_journal_files
 from .path_contract import build_journal_path_fields
 from .chinese_tokenizer import count_cjk_words
@@ -26,7 +30,12 @@ from .chinese_tokenizer import count_cjk_words
 # walk (reconcile) instead of a whole-archive content hash; the sidecar
 # ``source_hash`` now covers entity_graph.yaml only. Existing installations
 # rebuild once on the version bump.
-CACHE_VERSION_SCHEMA_VERSION = "v2.0.0"
+# v2.1.0: the list columns (topic/tags/mood/people/links/related_entries) use
+# the shared indexable-metadata rule, so they are always stored as JSON arrays:
+# a scalar value becomes a one-item array (it used to be stored as a JSON
+# scalar) and null becomes [] (it used to be stored as JSON null). Existing
+# installations rebuild once on the version bump.
+CACHE_VERSION_SCHEMA_VERSION = "v2.1.0"
 
 # 缓存存储目录 (deprecated: use getters)
 CACHE_DIR = get_cache_dir()  # deprecated: use get_cache_dir()
@@ -161,7 +170,14 @@ def is_cache_valid(file_path: Path, cached_mtime: float, cached_size: int) -> bo
 
 
 def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Optional[Dict[str, Any]]:
-    """解析日志并更新缓存"""
+    """Parse one journal and upsert its metadata-cache row.
+
+    The stored values come from ``normalize_indexable_metadata`` — the same
+    rule the FTS row builder uses — so a row never carries a type SQLite cannot
+    bind. When the frontmatter does not parse (D1) the row is the empty row a
+    file without frontmatter gets today: the fragment stays visible to L2 with
+    no metadata, and one malformed fragment can never make the cache raise.
+    """
     try:
         # 解析日志文件
         metadata = parse_journal_file(file_path)
@@ -176,20 +192,24 @@ def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Option
             file_path, journals_dir=get_journals_dir(), user_data_dir=get_user_data_dir()
         )
         file_path_str = path_fields["path"]
-        date = metadata.get("date", "")[:10] if metadata.get("date") else ""
-        title = metadata.get("title", "")
-        location = metadata.get("location", "")
-        weather = metadata.get("weather", "")
-        abstract = metadata.get("abstract", "")
-        links = json.dumps(metadata.get("links", []), ensure_ascii=False)
-        related_entries = json.dumps(metadata.get("related_entries", []), ensure_ascii=False)
+        frontmatter = {key: value for key, value in metadata.items() if not key.startswith("_")}
+        indexable = normalize_indexable_metadata(frontmatter)
+        if indexable is None:
+            indexable = empty_indexable_metadata()
+        date = indexable["date"][:10]
+        title = indexable["title"]
+        location = indexable["location"]
+        weather = indexable["weather"]
+        abstract = indexable["abstract"]
+        project = indexable["project"]
+        links = json.dumps(indexable["links"], ensure_ascii=False)
+        related_entries = json.dumps(indexable["related_entries"], ensure_ascii=False)
 
         # 数组字段转为JSON
-        topic = json.dumps(metadata.get("topic", []), ensure_ascii=False)
-        project = metadata.get("project", "")
-        tags = json.dumps(metadata.get("tags", []), ensure_ascii=False)
-        mood = json.dumps(metadata.get("mood", []), ensure_ascii=False)
-        people = json.dumps(metadata.get("people", []), ensure_ascii=False)
+        topic = json.dumps(indexable["topic"], ensure_ascii=False)
+        tags = json.dumps(indexable["tags"], ensure_ascii=False)
+        mood = json.dumps(indexable["mood"], ensure_ascii=False)
+        people = json.dumps(indexable["people"], ensure_ascii=False)
 
         # 计算字数（基于正文，不含 frontmatter）
         word_count = count_cjk_words(metadata.get("_body", ""))

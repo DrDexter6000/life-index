@@ -92,6 +92,11 @@ def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
 
     Returns:
         (metadata_dict, body_content)
+
+    The root of the YAML document must be a mapping. A document whose root is a
+    list or a scalar carries no metadata fields, so it reads exactly like a file
+    without frontmatter: ``({}, body)``. Every reader may therefore assume a
+    dict without guarding the type itself.
     """
     if not content.startswith("---"):
         return {}, content
@@ -104,9 +109,14 @@ def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
     body = sections[1].strip()
 
     try:
-        metadata: Dict[str, Any] = yaml.safe_load(fm_content) or {}
-    except yaml.YAMLError:
+        metadata: Any = yaml.safe_load(fm_content) or {}
+    except (yaml.YAMLError, ValueError):
+        # PyYAML raises a plain ValueError (not a YAMLError) for an impossible
+        # timestamp such as ``date: 2026-99-99``.
         metadata, body = _recover_legacy_content_frontmatter(fm_content, body)
+
+    if not isinstance(metadata, dict):
+        return {}, body
 
     metadata, body = _merge_legacy_content_into_body(metadata, body)
 
@@ -116,6 +126,103 @@ def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
     metadata = {key: _normalize_temporal_values(value) for key, value in metadata.items()}
 
     return metadata, body
+
+
+# The fields every derived per-fragment store (FTS row, metadata cache) may
+# index. ``normalize_indexable_metadata`` guarantees the type of each one.
+INDEXABLE_SCALAR_FIELDS = (
+    "title",
+    "date",
+    "location",
+    "weather",
+    "project",
+    "abstract",
+)
+INDEXABLE_LIST_FIELDS = (
+    "topic",
+    "tags",
+    "mood",
+    "people",
+    "links",
+    "related_entries",
+)
+
+
+def _indexable_scalar_text(value: Any) -> Optional[str]:
+    """Text of a scalar frontmatter value; ``None`` when it is not a scalar."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float)):
+        return str(value)
+    return None
+
+
+def _indexable_list(value: Any) -> Optional[List[str]]:
+    """Normalize a list field to ``list[str]``; ``None`` when unparsable."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        items: List[str] = []
+        for item in value:
+            text = _indexable_scalar_text(item)
+            if text is None:
+                return None
+            items.append(text)
+        return items
+    text = _indexable_scalar_text(value)
+    if text is None:
+        return None
+    return [text]
+
+
+def empty_indexable_metadata() -> Dict[str, Any]:
+    """The indexable fields of a fragment whose frontmatter did not parse."""
+    indexable: Dict[str, Any] = {key: "" for key in INDEXABLE_SCALAR_FIELDS}
+    indexable.update({key: [] for key in INDEXABLE_LIST_FIELDS})
+    return indexable
+
+
+def normalize_indexable_metadata(metadata: Any) -> Optional[Dict[str, Any]]:
+    """Return the indexable fields of ``metadata`` with guaranteed types.
+
+    ``metadata`` is whatever :func:`parse_frontmatter` returned. A derived
+    store may index only what this function returns:
+
+    - the root must be a mapping, and not empty;
+    - scalar fields (:data:`INDEXABLE_SCALAR_FIELDS`) are text: ``None`` reads
+      as ``""``, a string stays, a number or boolean becomes its text; a
+      mapping or list in a scalar field makes the whole frontmatter unparsable;
+    - list fields (:data:`INDEXABLE_LIST_FIELDS`) are ``list[str]``: a list
+      keeps its items as text, a scalar becomes a one-item list of its text,
+      ``None`` becomes ``[]``; a mapping, or a mapping/list item, makes the
+      whole frontmatter unparsable;
+    - every other key is ignored, and never makes a file unparsable.
+
+    Returns ``None`` when the frontmatter is unparsable; the caller then treats
+    the fragment like one without frontmatter (FTS: raw-text row; metadata
+    cache: empty row). This is one rule for both stores — never duplicate it.
+    """
+    if not isinstance(metadata, dict) or not metadata:
+        return None
+
+    indexable: Dict[str, Any] = {}
+    for key in INDEXABLE_SCALAR_FIELDS:
+        text = _indexable_scalar_text(metadata.get(key))
+        if text is None:
+            return None
+        indexable[key] = text
+
+    for key in INDEXABLE_LIST_FIELDS:
+        items = _indexable_list(metadata.get(key))
+        if items is None:
+            return None
+        indexable[key] = items
+
+    return indexable
 
 
 def _split_frontmatter_sections(content: str) -> Optional[Tuple[str, str]]:
@@ -164,8 +271,10 @@ def _recover_legacy_content_frontmatter(fm_content: str, body: str) -> Tuple[Dic
         content_block = content_block[:-1]
 
     try:
-        metadata: Dict[str, Any] = yaml.safe_load(metadata_prefix) or {}
-    except yaml.YAMLError:
+        metadata: Any = yaml.safe_load(metadata_prefix) or {}
+    except (yaml.YAMLError, ValueError):
+        return {}, body
+    if not isinstance(metadata, dict):
         return {}, body
 
     recovered_body = content_block.strip()

@@ -611,9 +611,19 @@ Metadata cache 的新鲜度不再依赖全库内容哈希：
   永不被读取；`_scan_row_file_freshness` 的 dry-run 使用同一次扫描实现。
 - **`health --cache-audit` / `run_cache_audit()`**：以同一行级对比的 dry-run 形式输出
   `valid / stale / incompatible / missing` 与行级计数，不写任何文件。
+- **不可解析 frontmatter（两个派生存储共用一条规则）**：FTS 行构建与 metadata cache
+  都只经 `tools/lib/frontmatter.py` 的 `normalize_indexable_metadata()` 读取可索引字段。
+  该规则：root 必须是**非空 mapping**；标量字段（`title`/`date`/`location`/`weather`/
+  `project`/`abstract`）的 `None` 读作空串、字符串保留、数字/布尔转文字，出现 mapping/list
+  则整篇 frontmatter **不可解析**；列表字段（`topic`/`tags`/`mood`/`people`/`links`/
+  `related_entries`）的 list 逐项转文字（项为 mapping/list 则不可解析）、标量转单项列表、
+  `None` 读作空列表；其余键一律忽略，永不使文件不可解析。不可解析的文件对缓存而言与
+  “无 frontmatter 的文件”完全一致：写入一行空元数据（不抛错、不丢该 fragment），
+  可解析文件的标量/列表字段按上述规范类型存储。写入/编辑后的单行 upsert 与搜索路径的
+  reconcile 使用同一函数，因此一个文件的内容永远不会让缓存解析抛错。
 - **已知边界（接受）**：工具外修改若 mtime 与大小均不变，则要到
   `life-index index --rebuild` 才能被发现；sidecar schema 自 v1.1.x 升到 v2.0.0 时存量
-  安装会全量重建一次。
+  安装会全量重建一次，v2.1.0 因列表列统一为 JSON 数组再重建一次。
 
 #### FTS index freshness（signature reconciliation on every search）
 
@@ -630,7 +640,10 @@ manifest 行数都不再是判据）。它和 metadata cache 用同一条规则�
   `_row_is_current` 的同一做法对该文件补一次真实 `stat` 确认后才当作变更。检查本身
   **不打开任何日志文件**；全部 current 时 preflight 不再执行其他步骤，也不写任何东西。
   队列非空时 preflight 直接进入修复；修复后重新运行同一只读比较，L3 fallback 的
-  “current” 结论只来自这次比较，从不来自构建的返回值。
+  “current” 结论只来自这次比较，从不来自构建的返回值。该结论同时写进搜索结果的
+  `index_status.signature_current`（`true`/`false`；没有真正运行签名检查时不出现），
+  `retrieval_coverage` 在它为 `false` 时报告 `index_not_fresh`——一次“成功”的修复不等于
+  索引已 current（例如某个文件读取一直失败）。字段契约见 `docs/API.md`。
 - **只有 stale 才修复**：preflight 在共享 index lock（`<data>/.index/index.lock`，由
   `get_index_lock_path()` 返回；普通构建、source-safe 构建与写穿共用这一把锁）下运行
   增量 archive scan（`build_all(incremental=True)`），只重读新增/变更/缺行/待修复的文件，
@@ -676,9 +689,10 @@ manifest 行数都不再是判据）。它和 metadata cache 用同一条规则�
   数字、布尔等非字符串标量（如 `title: 2024`）按其文字入索引，不算不可解析。这类文件在
   **全量重建**和**每次被重读**时计入 `fts.unparsable`/`fts.unparsable_paths`。完全无法
   读取（`OSError`）的文件不写任何东西并保持 not-current 以便后续重试：增量扫描保留其已有
-  行与签名；全量重建先清空再写入，该文件此时没有行。
-  本节的保证只针对 FTS 行。元数据缓存对“标量字段里出现映射或列表”的 frontmatter 尚无同等
-  容错（实现待补）：这类文件目前仍会让元数据缓存的解析抛错。
+  行与签名；全量重建先清空再写入，该文件此时没有行。两种模式都把这类文件计入
+  `fts.unreadable`/`fts.unreadable_paths`，并在 `fts.total` 中照常计数，因此“重建成功”
+  不会掩盖一个没有被索引的文件。FTS 行与 metadata cache 对不可解析 frontmatter 的
+  容错是同一条规则（见上文 *Metadata cache freshness* 一节）。
 - **其他新鲜度读者**：`check_index_stale`（event detector，含 pending 队列）与 L3
   fallback 的 `fs_consistency.index_is_current()` 都改为调用同一签名检查；旧的
   “newest journal mtime vs `last_updated`”和“manifest 行数 vs 实际行数”规则已删除。

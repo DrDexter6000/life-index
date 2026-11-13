@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 _REBUILD_MARKER_NAME = ".rebuilding"
 
 from .chinese_tokenizer import segment_for_fts
-from .frontmatter import parse_frontmatter
+from .frontmatter import normalize_indexable_metadata, parse_frontmatter
 from .journal_files import (
     JournalFileStat,
     fragment_date_from_filename,
@@ -136,7 +136,11 @@ def _parse_content(
 
         # 使用 SSOT frontmatter 解析
         metadata, body = parse_frontmatter(content)
-        if not metadata:
+        # D1: one shared rule for "what is indexable metadata". ``None`` means
+        # the frontmatter did not parse (no mapping root, or a mapping/list in a
+        # typed field) and the caller falls back to the raw-text row.
+        indexable = normalize_indexable_metadata(metadata)
+        if indexable is None:
             return None
 
         # 构建可索引文档
@@ -148,7 +152,7 @@ def _parse_content(
         # file_hash is computed from the same bytes the row content came from.
         # R11 fix: 'title' stores raw original text (for display),
         # 'title_segmented' stores jieba tokens (for FTS matching).
-        raw_title = _require_str(metadata, "title")
+        raw_title = indexable["title"]
         segmented_title = segment_for_fts(raw_title, mode="index")
         segmented_content = segment_for_fts(body, mode="index")
 
@@ -157,14 +161,14 @@ def _parse_content(
             "title": raw_title,
             "title_segmented": segmented_title,
             "content": segmented_content,
-            "date": _require_str(metadata, "date")[:10],
-            "location": _require_str(metadata, "location"),
-            "weather": _require_str(metadata, "weather"),
-            "topic": _metadata_text(metadata.get("topic")),
-            "project": _require_str(metadata, "project"),
-            "tags": _metadata_text(metadata.get("tags")),
-            "mood": _metadata_text(metadata.get("mood")),
-            "people": _metadata_text(metadata.get("people")),
+            "date": indexable["date"][:10],
+            "location": indexable["location"],
+            "weather": indexable["weather"],
+            "topic": ", ".join(indexable["topic"]),
+            "project": indexable["project"],
+            "tags": ", ".join(indexable["tags"]),
+            "mood": ", ".join(indexable["mood"]),
+            "people": ", ".join(indexable["people"]),
             "file_hash": _content_hash(raw),
             "modified_time": (
                 datetime.fromtimestamp(modified_time_ts).isoformat()
@@ -546,6 +550,8 @@ def update_index(
             "total": int,
             "unparsable": int,          # additive: read as raw text (frontmatter did not parse)
             "unparsable_paths": [str],  # additive
+            "unreadable": int,          # additive: read raised OSError, nothing written
+            "unreadable_paths": [str],  # additive
             "pending_repaired": [str],  # additive: force_paths actually repaired
             "error": str (optional)
         }
@@ -592,6 +598,8 @@ def _update_index_locked(
         "total": 0,
         "unparsable": 0,
         "unparsable_paths": [],
+        "unreadable": 0,
+        "unreadable_paths": [],
         "pending_repaired": [],
         "error": None,
     }
@@ -689,7 +697,11 @@ def _update_index_locked(
                 except (OSError, IOError) as e:
                     # Transient read failure: keep whatever row and signature
                     # exist; the file stays not-current and a later scan retries.
+                    # D5: name it in the result. A full rebuild has no earlier
+                    # row to keep, so silence here would read as "indexed".
                     logger.warning("Failed to read %s: %s", rel_path, e)
+                    result["unreadable"] = (result["unreadable"] or 0) + 1
+                    result["unreadable_paths"].append(rel_path)
                     continue
 
                 if unparsable:
