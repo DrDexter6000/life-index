@@ -7417,6 +7417,10 @@ life-index version
 > 解析失败列入 `failed_files`，文件字节保持不变。空区块（`---\n---`）与字段畸形
 > （mapping/list 出现在标量字段等）都不算不可读，仍按正常 schema 迁移；字段规则见
 > `docs/ARCHITECTURE.md` 的 *Metadata cache freshness* 一节。
+>
+> **单个文件不会中断整次迁移**：`--apply` 对某个文件算不出迁移结果时（`schema_version`
+> 不是数字、frontmatter 含序列化器写不回去的非字符串键等），该文件列入 `failed_files`、
+> 字节保持不变，其余文件照常迁移。
 
 > **E08xx 状态**: Reserved / 未实现。`tools/migrate/` 当前不发射结构化 E08xx 错误码；迁移失败以非结构化日志或异常形式报告。E0800–E0803 为预留编码，未来若迁移模块统一接入 `tools/lib/errors.py` 结构化错误体系时可启用。
 

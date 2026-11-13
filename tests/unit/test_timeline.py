@@ -186,6 +186,23 @@ class TestTimeline:
         assert result["success"] is True
         assert result["entries"] == []
 
+    def test_a_fragment_that_is_not_utf8_is_listed_with_its_filename_date(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        journals_dir = tmp_path / "Journals"
+        journal_dir = journals_dir / "2026" / "01"
+        journal_dir.mkdir(parents=True)
+        (journal_dir / "life-index_2026-01-06_001.md").write_bytes(
+            b"---\ntitle: T\ndate: 2026-01-06\n---\n\nbody \xff\xfe\n"
+        )
+        monkeypatch.setattr("tools.timeline.core.get_journals_dir", lambda: journals_dir)
+
+        result = run_timeline(range_start="2026-01", range_end="2026-01")
+
+        assert result["success"] is True
+        assert [entry["date"] for entry in result["entries"]] == ["2026-01-06"]
+        assert result["entries"][0]["title"] == ""
+
     def test_an_unparsable_fragment_is_listed_with_its_filename_date(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:

@@ -79,7 +79,7 @@ def run_timeline(
                             continue
 
                         metadata = parse_journal_file(journal_file)
-                        if not metadata or "_error" in metadata:
+                        if not metadata:
                             continue
 
                         # D7: read every field through the shared rule, so

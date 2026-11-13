@@ -80,7 +80,14 @@ def scan_journals(journals_dir: Path) -> dict[str, Any]:
         ver_key = str(file_ver)
         version_dist[ver_key] = version_dist.get(ver_key, 0) + 1
 
-        if file_ver < SCHEMA_VERSION:
+        try:
+            outdated_file = file_ver < SCHEMA_VERSION
+        except TypeError:
+            # A ``schema_version`` that is not a number is counted above under
+            # its own text; it cannot be compared, so it is not migratable.
+            continue
+
+        if outdated_file:
             missing = sorted(EXPECTED_FIELDS - set(metadata.keys()))
             outdated.append(
                 {
@@ -157,17 +164,25 @@ def apply_migrations(
             failed.append({"path": str(md_file), "error": str(exc)})
             continue
 
-        file_ver = metadata.get("schema_version", 1)
-        if file_ver >= target:
-            already_current += 1
+        # Everything computed from this one file's content stays inside the
+        # per-file failure boundary: a ``schema_version`` that is not a number,
+        # or a frontmatter the serializer cannot write back (a non-string key),
+        # fails this file only and leaves its bytes unchanged.
+        try:
+            file_ver = metadata.get("schema_version", 1)
+            if file_ver >= target:
+                already_current += 1
+                continue
+
+            # Run migration chain
+            result = run_migration_chain(metadata, content=body)
+
+            # Reconstruct the file with migrated frontmatter
+            new_frontmatter = format_frontmatter(result.metadata)
+            new_content = f"{new_frontmatter}\n\n{body}"
+        except Exception as exc:
+            failed.append({"path": str(md_file), "error": f"{type(exc).__name__}: {exc}"})
             continue
-
-        # Run migration chain
-        result = run_migration_chain(metadata, content=body)
-
-        # Reconstruct the file with migrated frontmatter
-        new_frontmatter = format_frontmatter(result.metadata)
-        new_content = f"{new_frontmatter}\n\n{body}"
 
         # Atomic write: write to temp file, then rename
         try:

@@ -200,3 +200,56 @@ class TestUnreadableFrontmatterIsLeftUntouched:
         assert metadata["schema_version"] == SCHEMA_VERSION
         assert metadata["title"] == "Legacy"
         assert "line one" in body
+
+
+class TestOneFileNeverAbortsTheRun:
+    """A file the migration cannot compute fails alone; the run goes on."""
+
+    BROKEN = {
+        "non_string_key": "---\ntitle: T\ndate: 2025-06-14\n2024: x\n---\n\nbody\n",
+        "schema_version_text": (
+            "---\nschema_version: abc\ntitle: T\ndate: 2025-06-14\n---\n\nbody\n"
+        ),
+    }
+
+    @staticmethod
+    def _month(tmp_path: Path) -> Path:
+        month = tmp_path / "Journals" / "2025" / "06"
+        month.mkdir(parents=True, exist_ok=True)
+        return month
+
+    @pytest.mark.parametrize("shape", sorted(BROKEN))
+    def test_apply_fails_that_file_and_migrates_the_next(self, tmp_path: Path, shape):
+        from tools.lib.frontmatter import parse_frontmatter
+        from tools.lib.schema import SCHEMA_VERSION
+        from tools.migrate import apply_migrations
+
+        month = self._month(tmp_path)
+        broken = month / "life-index_2025-06-14_001.md"
+        original = self.BROKEN[shape].encode()
+        broken.write_bytes(original)
+        good = month / "life-index_2025-06-15_001.md"
+        good.write_text(
+            "---\nschema_version: 1\ntitle: Good\ndate: 2025-06-15\n---\n\nbody\n",
+            encoding="utf-8",
+        )
+
+        result = apply_migrations(tmp_path / "Journals")
+
+        assert [item["path"] for item in result["failed_files"]] == [str(broken)]
+        assert broken.read_bytes() == original
+        assert result["migrated_count"] == 1
+        metadata, _body = parse_frontmatter(good.read_text(encoding="utf-8"))
+        assert metadata["schema_version"] == SCHEMA_VERSION
+
+    @pytest.mark.parametrize("shape", sorted(BROKEN))
+    def test_scan_does_not_raise(self, tmp_path: Path, shape):
+        from tools.migrate import scan_journals
+
+        (self._month(tmp_path) / "life-index_2025-06-14_001.md").write_bytes(
+            self.BROKEN[shape].encode()
+        )
+
+        report = scan_journals(tmp_path / "Journals")
+
+        assert report["total_scanned"] == 1
