@@ -6,6 +6,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 
 def _write_journal(
     data_dir: Path,
@@ -155,3 +157,40 @@ def test_builder_degrades_malformed_frontmatter(tmp_path: Path, monkeypatch) -> 
         "present": 0,
         "parseable": 0,
     }
+
+
+# The one date rule for navigation entries: the entry_ref date is the day the
+# shared rule gives (file-name day for the first three shapes), never the raw
+# frontmatter text.
+NAVIGATION_DATE_SHAPES: dict[str, bytes] = {
+    "no_frontmatter": b"no-frontmatter shape body\n",
+    "date_digit_run_on": b"---\ntitle: Digit Run On\ndate: 20260311\n---\n\nbody\n",
+    "date_list": b"---\ntitle: List Date\ndate: [2026]\n---\n\nbody\n",
+    "date_tz_datetime": (
+        b"---\ntitle: Tz Datetime\ndate: 2026-03-11T19:43:02+08:00\n---\n\nbody\n"
+    ),
+}
+
+
+def _write_navigation_shapes(data_dir: Path) -> None:
+    month_dir = data_dir / "Journals" / "2026" / "03"
+    month_dir.mkdir(parents=True, exist_ok=True)
+    for seq, (_shape, payload) in enumerate(sorted(NAVIGATION_DATE_SHAPES.items()), start=1):
+        (month_dir / f"life-index_2026-03-11_{seq:03d}.md").write_bytes(payload)
+
+
+@pytest.mark.parametrize("shape", sorted(NAVIGATION_DATE_SHAPES))
+def test_entry_ref_date_follows_the_shared_date_rule(tmp_path: Path, monkeypatch, shape) -> None:
+    from tools.generate_index.builder import build_index_tree_model
+
+    data_dir = tmp_path / "Life-Index"
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+    _write_navigation_shapes(data_dir)
+
+    model = build_index_tree_model(level="month")
+
+    node = model["nodes"][0]
+    by_path = {entry["relative_path"]: entry for entry in node["entry_refs"]}
+    seq = sorted(NAVIGATION_DATE_SHAPES).index(shape) + 1
+    entry = by_path[f"Journals/2026/03/life-index_2026-03-11_{seq:03d}.md"]
+    assert entry["date"] == "2026-03-11"

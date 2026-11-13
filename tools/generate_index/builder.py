@@ -16,6 +16,7 @@ from typing import Any, Iterable
 from tools.generate_index.navigation import IndexNode, build_month_node_ref, enumerate_index_nodes
 from tools.lib.frontmatter import (
     empty_indexable_metadata,
+    indexable_date,
     normalize_indexable_metadata,
     parse_frontmatter,
 )
@@ -97,7 +98,7 @@ def _entry_ref(path: Path, node: IndexNode, data_dir: Path) -> dict[str, Any] | 
     indexable = normalize_indexable_metadata(metadata) or empty_indexable_metadata()
     payload: dict[str, Any] = {
         "relative_path": rel,
-        "date": str(metadata.get("date", "")) if metadata.get("date") is not None else "",
+        "date": indexable_date(indexable, path),
         "title": indexable["title"],
         "display_label": display_label(indexable["title"], body, path),
         "signals": {k: v for k, v in signals.items() if v},

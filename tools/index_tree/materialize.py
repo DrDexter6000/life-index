@@ -16,6 +16,7 @@ from tools.generate_index.builder import safe_relative_path
 from tools.lib.facet_canonicalization import FacetCanonicalizer, load_facet_canonicalizer
 from tools.lib.frontmatter import (
     empty_indexable_metadata,
+    indexable_date,
     normalize_indexable_metadata,
     parse_frontmatter,
 )
@@ -27,7 +28,6 @@ INDEX_B_MANIFEST_SCHEMA_VERSION = "m31.index_tree.index_b.manifest.v0"
 INDEX_B_DIR = ".life-index/index-b"
 INDEX_B_MANIFEST = "manifest.json"
 _MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
-_JOURNAL_DATE_RE = re.compile(r"life-index_(\d{4}-\d{2}-\d{2})_\d{3}\.md$")
 
 
 @dataclass(frozen=True)
@@ -104,11 +104,6 @@ def _parse_frontmatter(path: Path) -> tuple[dict[str, Any], str]:
     return (metadata, body) if isinstance(metadata, dict) else ({}, "")
 
 
-def _date_from_filename(path: Path) -> str:
-    match = _JOURNAL_DATE_RE.match(path.name)
-    return match.group(1) if match else ""
-
-
 def _iter_values(value: Any) -> Iterable[str]:
     if isinstance(value, list):
         for item in value:
@@ -181,13 +176,12 @@ def _collect_entries_with_scan(
             continue
         year, month = parts[0], parts[1]
         metadata, body = _parse_frontmatter(path)
-        date_value = str(metadata.get("date") or _date_from_filename(path))
         indexable = normalize_indexable_metadata(metadata) or empty_indexable_metadata()
         entry = IndexBEntry(
             rel_path=rel,
             year=year,
             month=month,
-            date=date_value,
+            date=indexable_date(indexable, path),
             title=indexable["title"],
             display_label=display_label(indexable["title"], body, path),
             metadata=metadata,
