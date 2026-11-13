@@ -5585,9 +5585,10 @@ python -m tools.backup [options]
 
 - `backup` 属于数据安全与 operator 工具，不改变 journal/frontmatter 契约
 - `files_excluded` 是 additive 计数：被内置排除规则（任一相对路径组件为
-  `.cache`、文件名为 `.life-index-backup-manifest.json`、文件名匹配 glob
-  `*.tmp`）或 caller `exclude_patterns` 跳过的源文件数。排除规则只匹配
-  源根相对路径，绝不匹配数据目录的绝对路径。
+  `.cache`、文件名为 `.life-index-backup-manifest.json`）或 caller
+  `exclude_patterns` 跳过的源文件数。排除规则只匹配源根相对路径，绝不匹配
+  数据目录的绝对路径。源根下名字以 `.tmp` 结尾的文件没有内置排除规则，照常
+  备份。
 - caller `exclude_patterns` 按相对路径匹配：glob（`fnmatch`，可匹配 slash
   分隔的相对路径或文件名）或子串。full backup 的 canonical-source 拒绝
   同样只看相对路径，因此数据目录的位置不会触发或漏掉该拒绝。

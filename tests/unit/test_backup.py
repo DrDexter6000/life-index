@@ -265,8 +265,7 @@ class TestCreateBackup:
         regular_file = journals_src / "2026" / "03" / "regular.md"
         regular_file.write_text("content", encoding="utf-8")
 
-        # File matching a built-in name glob ("*.tmp"); the caller pattern
-        # ".tmp" also matches it through the historical substring rule.
+        # Excluded by the caller pattern ".tmp" (the historical substring rule).
         tmp_file = journals_src / "2026" / "03" / "test.tmp"
         tmp_file.write_text("temp content", encoding="utf-8")
 
@@ -590,13 +589,36 @@ class TestBackupExclusionRelativeToSourceRoot:
         result = create_backup(str(tmp_path / "backups"))
 
         assert result["success"] is True
-        assert result["files_backed_up"] == 4
-        assert result["files_excluded"] == 3
+        assert result["files_backed_up"] == 5
+        assert result["files_excluded"] == 2
         backed_up = self._backup_files(result)
         assert "Journals/2026/03/life-index_2026-03-20_001.md" in backed_up
-        assert "Journals/2026/03/draft.tmp" not in backed_up
+        # A `.tmp` file under a source root is canonical source like any other:
+        # no built-in rule drops it.
+        assert "Journals/2026/03/draft.tmp" in backed_up
         assert "Journals/2026/03/.life-index-backup-manifest.json" not in backed_up
         assert all(".cache" not in path.split("/") for path in backed_up)
+
+    def test_full_backup_keeps_tmp_named_files_and_agrees_with_its_inventory(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A leftover or user-named `.tmp` file must not fail or thin a full backup."""
+        root = tmp_path / "neutral-data"
+        self._write_archive(root)
+        (root / "Journals" / "2026" / "03" / "life-index_2026-03-20_002.tmp").write_text(
+            "half written\n", encoding="utf-8"
+        )
+        (root / "attachments").mkdir(exist_ok=True)
+        (root / "attachments" / "scan.tmp").write_bytes(b"an attachment named .tmp")
+        self._activate(monkeypatch, root)
+
+        result = create_backup(str(tmp_path / "backups"), full=True)
+
+        assert result["success"] is True, result["errors"]
+        assert result["files_excluded"] == 0
+        backed_up = self._backup_files(result)
+        assert "Journals/2026/03/life-index_2026-03-20_002.tmp" in backed_up
+        assert "attachments/scan.tmp" in backed_up
 
     def test_caller_patterns_match_relative_path_globs_and_substrings(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -681,9 +703,9 @@ class TestBackupExclusionRelativeToSourceRoot:
     ) -> None:
         root = tmp_path / "data"
         if scenario == "builtin":
-            tmp_file = root / "Journals" / "2026" / "03" / "draft.tmp"
-            tmp_file.parent.mkdir(parents=True)
-            tmp_file.write_text("tmp\n", encoding="utf-8")
+            cached_journal = root / "Journals" / ".cache" / "draft.md"
+            cached_journal.parent.mkdir(parents=True)
+            cached_journal.write_text("cached\n", encoding="utf-8")
             cache_file = root / "attachments" / ".cache" / "hidden.bin"
             cache_file.parent.mkdir(parents=True)
             cache_file.write_bytes(b"hidden")

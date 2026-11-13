@@ -47,10 +47,15 @@ BACKUP_CATALOG_LOCK_NAME = ".life-index-backup-manifest.lock"
 BACKUP_CATALOG_LOCK_TIMEOUT = 30.0
 
 # Built-in exclusions are matched against the path relative to the source root
-# being walked: one path component, one exact file name, one file-name glob.
+# being walked: one path component and one exact file name.
+#
+# There is deliberately no "*.tmp" rule. The old list carried one, but it was
+# compared as literal text and never matched, so `.tmp` files under a source
+# root have always been backed up. A file under Journals/ or attachments/ is
+# canonical source whatever its name; dropping it by a name pattern would lose
+# user data and would make a full backup disagree with its own inventory.
 BUILTIN_EXCLUDED_PATH_COMPONENTS = frozenset({".cache"})
 BUILTIN_EXCLUDED_NAMES = frozenset({BACKUP_CATALOG_NAME})
-BUILTIN_EXCLUDED_NAME_GLOBS = ("*.tmp",)
 
 
 @dataclass(frozen=True)
@@ -401,8 +406,6 @@ def _is_excluded_relative_path(relative_path: Path, caller_patterns: List[str]) 
     if any(part in BUILTIN_EXCLUDED_PATH_COMPONENTS for part in relative_path.parts):
         return True
     if relative_path.name in BUILTIN_EXCLUDED_NAMES:
-        return True
-    if any(fnmatch(relative_path.name, glob) for glob in BUILTIN_EXCLUDED_NAME_GLOBS):
         return True
     return any(
         _relative_path_matches_pattern(relative_path, pattern) for pattern in caller_patterns
