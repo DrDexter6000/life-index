@@ -611,20 +611,33 @@ Metadata cache 的新鲜度不再依赖全库内容哈希：
   永不被读取；`_scan_row_file_freshness` 的 dry-run 使用同一次扫描实现。
 - **`health --cache-audit` / `run_cache_audit()`**：以同一行级对比的 dry-run 形式输出
   `valid / stale / incompatible / missing` 与行级计数，不写任何文件。
-- **不可解析 frontmatter（两个派生存储共用一条规则）**：FTS 行构建与 metadata cache
-  都只经 `tools/lib/frontmatter.py` 的 `normalize_indexable_metadata()` 读取可索引字段。
-  该规则：root 必须是**非空 mapping**；标量字段（`title`/`date`/`location`/`weather`/
-  `project`/`abstract`）的 `None` 读作空串、字符串保留、数字/布尔转文字，出现 mapping/list
-  则整篇 frontmatter **不可解析**；列表字段（`topic`/`tags`/`mood`/`people`/`links`/
-  `related_entries`）的 list 逐项转文字（项为 mapping/list 则不可解析）、标量转单项列表、
-  `None` 读作空列表；其余键一律忽略（键本身不是字符串也一样，如 `2024: x`），永不使
-  文件不可解析。不可解析的文件（包括没有 frontmatter 的文件）在两个存储里得到同一种
-  处理：元数据全空，只有 `date` 回退到规范文件名中的日期——缓存写入这样一行（不抛错、
-  不丢该 fragment，按日期范围仍能查到），FTS 写入原始文本行。可解析文件的标量/列表字段
-  按上述规范类型存储。写入/编辑后的单行 upsert 与搜索路径的 reconcile 使用同一函数，
-  因此一个文件的内容永远不会让缓存解析抛错。索引不可信时运行的兜底内容扫描
-  （`l3_content.py`）用同一条规则读取每个文件：不可解析的文件按整篇文本参与匹配，
-  非 UTF-8 字节被替换而不是让文件被跳过；它的相关度门槛与遍历范围不在本规则之内。
+- **可索引元数据与不可解析 frontmatter（两个派生存储共用一条规则）**：FTS 行构建与
+  metadata cache 都只经 `tools/lib/frontmatter.py` 的 `normalize_indexable_metadata()`
+  读取可索引字段；完整规则只在本节描述，其他文档指向本节。`normalize_indexable_metadata()`
+  只在 root 不是 mapping 或为空 mapping 时返回 `None`：没有 `---` 区块、空区块
+  （`---\n---`）、list/scalar root、YAML 错误且 legacy `content:` 恢复也无法得到 mapping、
+  递归别名（如 `custom: &a [*a]`）。此时两个存储得到同一种处理——元数据全空，FTS 写入整篇
+  原始文本行，缓存写入空行。只有未知键（含 `_custom`）的非空 mapping 是可读的。其余
+  frontmatter 都可读：标量字段（`title`/`date`/`location`/`weather`/`project`/`abstract`）
+  的 `None` 读作空串、字符串保留、数字/布尔转文字，mapping/list 转为扁平文本；列表字段
+  （`topic`/`tags`/`mood`/`people`/`links`/`related_entries`）的 `None` 读作空列表、标量转
+  单项列表、list 逐项转文字，mapping/list 项以及字段级 mapping 都转为扁平文本；其余键一律
+  忽略（键不是字符串也一样，如 `2024: x`）。一个字段坏只损失该字段，不会让其他元数据变成
+  原始文本行。扁平文本是确定性的深度优先渲染：mapping 渲染为 `key: value` 对、list 渲染为
+  各项，以 `", "` 连接，非字符串键用 `str()`，并有深度上限，因此任意嵌套或递归值都不会
+  抛错。
+- **统一日期规则**：`date` 一律取 `normalize_indexable_metadata()` 得到的 `date` 文本前
+  10 个字符（形状为 `YYYY-MM-DD`，仅数字与连字符，不做日历校验）；不符合（如 `20260311`
+  或 `[2026]`）或缺失时，回退到规范 fragment 文件名中的日期，否则 `""`。这条
+  `frontmatter.indexable_date()` 规则用于 FTS parsed/raw 行、metadata cache 行、兜底内容
+  扫描与 `timeline`。缓存不再过滤 `_` 前缀键来决定“可解析”：它对 `parse_frontmatter()`
+  的完整结果调用 `normalize_indexable_metadata(metadata) or empty_indexable_metadata()`，
+  再套用同一条日期规则；只有 `_custom: x` 的 frontmatter 因此在两个存储里得到同一个
+  文件名日期。
+- **兜底内容扫描**（`l3_content.py`）：先严格按 UTF-8 读取；遇到 `UnicodeDecodeError`
+  时把替换后的整篇文本作为可搜索正文、不带任何元数据（与 FTS raw 行完全一致）。可读文件
+  用同一条规则读取，不可解析文件按整篇文本参与匹配。它的相关度门槛与遍历范围不在本规则
+  之内。
 - **已知边界（接受）**：工具外修改若 mtime 与大小均不变，则要到
   `life-index index --rebuild` 才能被发现；sidecar schema 自 v1.1.x 升到 v2.0.0 时存量
   安装会全量重建一次，v2.1.0 因列表列统一为 JSON 数组再重建一次。
@@ -686,14 +699,15 @@ manifest 行数都不再是判据）。它和 metadata cache 用同一条规则�
   `fts_update.update_index`）：经 `tools/lib/journal_files.py` 枚举 fragment 文件，
   stat-only 比对侧表签名——签名未变**且已有 FTS 行**的文件不被读取；只读取签名变化、
   缺行或缺签名的文件；pending 队列中的 path 无论签名是否匹配都强制重读；文件消失则删除
-  其 FTS 行与签名行。**每个可读的 live fragment 都有 FTS 行**：frontmatter 不可解析
-  （无 `---`、空/非法 YAML、标量字段里出现映射或列表、非 UTF-8 字节）时，整篇文件文本
-  （含 frontmatter 区块里的文字）分段后写入 `content`，`title` 与元数据列为空，`date`
-  回退到规范文件名中的日期；该文件此后与普通行一样 current（不重试、不强制 fallback）。
-  数字、布尔等非字符串标量（如 `title: 2024`）按其文字入索引，不算不可解析。这类文件在
-  **全量重建**和**每次被重读**时计入 `fts.unparsable`/`fts.unparsable_paths`。完全无法
-  读取（`OSError`）的文件不写任何东西并保持 not-current 以便后续重试：增量扫描保留其已有
-  行与签名；全量重建先清空再写入，该文件此时没有行。两种模式都把这类文件计入
+  其 FTS 行与签名行。**每个可读的 live fragment 都有 FTS 行**：frontmatter 读不出
+  mapping root（无 `---`、空/非法 YAML、list/scalar root、递归结构、非 UTF-8 字节）时，
+  整篇文件文本（含 frontmatter 区块里的文字）分段后写入 `content`，`title` 与元数据列为空，
+  `date` 按上文 *Metadata cache freshness* 的统一日期规则（frontmatter 日期，否则文件名）。
+  该文件此后与普通行一样 current（不重试、不强制 fallback）。字段里的数字/布尔或
+  mapping/list 都按扁平文字入索引，一个坏字段不损失其他元数据，也不算不可解析。这类
+  文件在**全量重建**和**每次被重读**时计入 `fts.unparsable`/`fts.unparsable_paths`。
+  完全无法读取（`OSError`）的文件不写任何东西并保持 not-current 以便后续重试：增量扫描
+  保留其已有行与签名；全量重建先清空再写入，该文件此时没有行。两种模式都把这类文件计入
   `fts.unreadable`/`fts.unreadable_paths`，并在 `fts.total` 中照常计数，因此“重建成功”
   不会掩盖一个没有被索引的文件。FTS 行与 metadata cache 对不可解析 frontmatter 的
   容错是同一条规则（见上文 *Metadata cache freshness* 一节）。

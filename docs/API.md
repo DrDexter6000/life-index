@@ -3050,7 +3050,8 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
   `mark_pending` 提升”且“该 path 实际被修复”时才移除。同一 path 在构建期间再次入队会保留，
   构建期间新入队的 path 也原样保留
 - 队列中的 path 无论其 `(mtime, size)` 签名是否匹配都会被强制重读（签名无法证明写穿已成功）；
-  不可解析的 live fragment 仍会按原始文本建行并记录签名，计入 `fts.unparsable`，不会留在队列中
+  不可解析（frontmatter 读不出 mapping root）的 live fragment 仍会按原始文本建行并记录签名，
+  计入 `fts.unparsable`，不会留在队列中
 - 队列为空时搜索先做只读签名检查；队列非空时 preflight 直接进入修复，并在修复后重新运行同一
   只读比较。L3 fallback 使用的 `index_signature_current` 结论只来自这次比较，不来自构建返回值；
   同一结论出现在 `index_status.signature_current` 中，并被 `retrieval_coverage` 消费
@@ -4992,7 +4993,7 @@ python -m tools.edit_journal --journal "<path>" [options]
 | 字段 | 值 | 含义 |
 |------|----|------|
 | `fts_row.status` | `complete` / `skipped` / `failed` | 写穿结果 |
-| `fts_row.reason` | string / null | `skipped` 时为 `not_a_live_fragment`；`complete` 时为 null，若 frontmatter 不可解析而按原始文本建行则为 `unparsable_frontmatter_indexed_as_text`；`failed` 时为写穿错误（若队列写入也失败，reason 追加 `pending_queue_failed: ...`） |
+| `fts_row.reason` | string / null | `skipped` 时为 `not_a_live_fragment`；`complete` 时为 null，若 frontmatter 读不出 mapping root 而按原始文本建行则为 `unparsable_frontmatter_indexed_as_text`；`failed` 时为写穿错误（若队列写入也失败，reason 追加 `pending_queue_failed: ...`） |
 | `fts_row.recovery` | string / null | 需要修复时给调用方的命令：写穿失败且已入队为 `life-index index`；写穿失败且入队也失败为 `life-index index --rebuild`；`skipped`/`complete` 为 null |
 
 只有 `fts_row.status == "failed"` 且 `pending_marked == true` 时，该 path 才已进入 pending
@@ -5261,11 +5262,14 @@ python -m tools.build_index [options]
 增量模式（`life-index index`，无 `--rebuild`）以每个 live fragment 的 `(mtime, size)` 签名
 判定是否读取：新文件、签名变化、缺 FTS 行、缺签名行的文件才被读取；已消失文件删除其 FTS 行
 与签名行；pending queue 中的 path 无论签名是否匹配都会重读，修复后按 generation 快照确认移除。
-`unparsable`/`unparsable_paths` 是 additive 字段：frontmatter 不可解析的 live fragment 会按
-整篇原始文本建行（包括 frontmatter 区块里的文字；`title`/元数据列为空，`date` 回退到文件名
-日期）并记录签名；它在全量重建和每次被重读时计数，但不会再重试或留在队列中（不会触发全库
-rebuild）。这条规则对 FTS 行与元数据缓存是同一条，见 `docs/ARCHITECTURE.md` 的
-*Metadata cache freshness* 一节。完全无法读取（`OSError`）的文件不写任何东西并保持
+`unparsable`/`unparsable_paths` 是 additive 字段：只有 frontmatter **读不出 mapping root**
+的 live fragment（没有 `---` 区块、list/scalar root、legacy 恢复也读不了的 YAML、递归结构、
+非 UTF-8 字节）会按整篇原始文本建行（包括 frontmatter 区块里的文字；`title`/元数据列为空，
+`date` 走共享日期规则：frontmatter 日期，否则规范文件名日期）并记录签名。字段里的 mapping/
+list 或数字/布尔只影响该字段（按扁平文字入索引），不会让整行变成原始文本。这条规则对 FTS
+行与元数据缓存是同一条，完整字段语义与日期规则见 `docs/ARCHITECTURE.md` 的
+*Metadata cache freshness* 一节。它在全量重建和每次被重读时计数，但不会再重试或留在队列中
+（不会触发全库 rebuild）。完全无法读取（`OSError`）的文件不写任何东西并保持
 not-current：增量模式下已有行与签名保持不变；全量重建先清空再写入，该文件此时没有行，
 由之后的扫描重试。这类文件在**增量与全量两种模式**下都计入 additive 的
 `unreadable`（计数）与 `unreadable_paths`（path 列表），`total` 仍然照常计入该文件——
@@ -5698,6 +5702,11 @@ python -m tools verify [--json]
 - `success`: whether the timeline was generated successfully.
 - `range`: two-element array of the requested time range (YYYY-MM format, inclusive).
 - `entries`: sorted by date ascending.
+- `entries[].date`: the shared fragment date rule — frontmatter `date` text whose first
+  10 characters have the shape `YYYY-MM-DD`, otherwise the date carried by the canonical
+  fragment filename, otherwise `""`. A fragment whose frontmatter has no readable mapping
+  root is still listed with empty metadata fields and its filename date. The rule itself
+  lives in `docs/ARCHITECTURE.md` (*Metadata cache freshness*).
 - `entries[].path`: relative path to the journal file.
 - `total`: total count of entries in the response.
 
@@ -7401,6 +7410,13 @@ life-index version
   "deterministic_changes": [{"path": "...", "changes": ["removed sentiment_score", "removed themes"]}]
 }
 ```
+
+> **不可读 frontmatter**：一个带 `---` 区块但读不出 mapping root 的文件（list/scalar root、
+> legacy 恢复也读不了的 YAML、递归结构）在 dry-run 中计入
+> `version_distribution.unparseable`，不进入 `outdated_files`；`--apply` 不重写它，而是按
+> 解析失败列入 `failed_files`，文件字节保持不变。空区块（`---\n---`）与字段畸形
+> （mapping/list 出现在标量字段等）都不算不可读，仍按正常 schema 迁移；字段规则见
+> `docs/ARCHITECTURE.md` 的 *Metadata cache freshness* 一节。
 
 > **E08xx 状态**: Reserved / 未实现。`tools/migrate/` 当前不发射结构化 E08xx 错误码；迁移失败以非结构化日志或异常形式报告。E0800–E0803 为预留编码，未来若迁移模块统一接入 `tools/lib/errors.py` 结构化错误体系时可启用。
 

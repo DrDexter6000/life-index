@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""The shared "what is indexable metadata" rule (D1).
+"""The shared "what is indexable metadata" rule and the shared date rule.
 
 Both derived per-fragment stores — the FTS row builder and the metadata cache —
 read frontmatter through ``frontmatter.normalize_indexable_metadata``. This file
-pins the rule itself and proves both stores obey it: one malformed fragment must
-never make a store raise, and a parsable fragment's stored values must have the
-guaranteed types.
+pins the rule itself and proves both stores obey it: a malformed field costs only
+that field, one malformed fragment must never make a store raise, and every
+reader dates a fragment by the one date rule.
 """
 
-import json
 import sqlite3
 from pathlib import Path
 
@@ -18,6 +17,8 @@ from tools.lib.frontmatter import (
     INDEXABLE_LIST_FIELDS,
     INDEXABLE_SCALAR_FIELDS,
     empty_indexable_metadata,
+    frontmatter_is_unreadable,
+    indexable_date,
     normalize_indexable_metadata,
     parse_frontmatter,
 )
@@ -27,6 +28,8 @@ LIST_FIELD = INDEXABLE_LIST_FIELDS[0]
 
 NORMALIZED_KEYS = set(INDEXABLE_SCALAR_FIELDS) | set(INDEXABLE_LIST_FIELDS)
 
+FRAGMENT = Path("Journals/2026/03/life-index_2026-03-04_001.md")
+
 
 def _rel(journal: Path, data_dir: Path) -> str:
     return str(journal.relative_to(data_dir)).replace("\\", "/")
@@ -35,10 +38,21 @@ def _rel(journal: Path, data_dir: Path) -> str:
 def _write_fragment(data_dir: Path, body: str, frontmatter: str | None) -> Path:
     month = data_dir / "Journals" / "2026" / "03"
     month.mkdir(parents=True, exist_ok=True)
-    journal = month / "life-index_2026-03-04_001.md"
+    journal = month / FRAGMENT.name
     text = f"---\n{frontmatter}\n---\n\n{body}\n" if frontmatter is not None else f"{body}\n"
     journal.write_text(text, encoding="utf-8")
     return journal
+
+
+def _fts_row(data_dir: Path, journal: Path) -> sqlite3.Row:
+    conn = sqlite3.connect(str(data_dir / ".index" / "journals_fts.db"))
+    conn.row_factory = sqlite3.Row
+    try:
+        return conn.execute(
+            "SELECT * FROM journals WHERE path = ?", (_rel(journal, data_dir),)
+        ).fetchone()
+    finally:
+        conn.close()
 
 
 class TestRootRule:
@@ -84,11 +98,47 @@ class TestScalarFields:
         assert result[field] == expected
 
     @pytest.mark.parametrize("field", INDEXABLE_SCALAR_FIELDS)
-    @pytest.mark.parametrize("value", [{"nested": "value"}, [1, 2], []])
-    def test_a_mapping_or_list_in_a_scalar_field_makes_the_frontmatter_unparsable(
-        self, field, value
-    ):
-        assert normalize_indexable_metadata({field: value}) is None
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ({"nested": "value"}, "nested: value"),
+            ([1, 2], "1, 2"),
+            ([], ""),
+            ([{"a": 1}, [2]], "a: 1, 2"),
+            ({"a": [1, {"b": 2}]}, "a: 1, b: 2"),
+        ],
+    )
+    def test_a_mapping_or_list_in_a_scalar_field_is_flattened(self, field, value, expected):
+        result = normalize_indexable_metadata({field: value})
+
+        assert result is not None, f"{field}={value!r} must stay indexable"
+        assert result[field] == expected
+
+    def test_non_string_keys_are_rendered_with_str(self):
+        result = normalize_indexable_metadata({"title": {2024: "x", True: [1]}})
+
+        assert result is not None
+        assert result["title"] == "2024: x, True: 1"
+
+    def test_flattening_a_recursive_value_never_raises(self):
+        cyclic = []
+        cyclic.append(cyclic)
+
+        result = normalize_indexable_metadata({"title": cyclic, "topic": cyclic})
+
+        assert result is not None
+        assert result["title"] == ""
+        assert result["topic"] == [""]
+
+    def test_flattening_stops_at_the_depth_bound(self):
+        deep = "leaf"
+        for _ in range(1000):
+            deep = [deep]
+
+        result = normalize_indexable_metadata({"title": deep})
+
+        assert result is not None
+        assert result["title"] == ""
 
 
 class TestListFields:
@@ -115,15 +165,25 @@ class TestListFields:
 
     @pytest.mark.parametrize("field", INDEXABLE_LIST_FIELDS)
     @pytest.mark.parametrize(
-        "value",
-        [{"nested": "value"}, [{"nested": "value"}], [["nested"]]],
+        ("value", "expected"),
+        [
+            ({"nested": "value"}, ["nested: value"]),
+            ([{"nested": "value"}], ["nested: value"]),
+            ([["nested"]], ["nested"]),
+            ([{"url": "https://example.com"}], ["url: https://example.com"]),
+            ({"url": "https://example.com"}, ["url: https://example.com"]),
+            ([{"a": [1, 2]}, None], ["a: 1, 2", ""]),
+        ],
     )
-    def test_a_mapping_or_a_mapping_item_makes_the_frontmatter_unparsable(self, field, value):
-        assert normalize_indexable_metadata({field: value}) is None
+    def test_a_mapping_or_a_nested_item_becomes_flattened_text(self, field, value, expected):
+        result = normalize_indexable_metadata({field: value})
+
+        assert result is not None
+        assert result[field] == expected
 
     @pytest.mark.parametrize("field", INDEXABLE_LIST_FIELDS)
     @pytest.mark.parametrize("value", ["scalar", 7, True])
-    def test_a_scalar_list_field_is_not_unparsable(self, field, value):
+    def test_a_scalar_list_field_is_one_item(self, field, value):
         result = normalize_indexable_metadata({field: value})
 
         assert result is not None
@@ -148,7 +208,7 @@ class TestListFields:
 
 
 class TestParseFrontmatterStaysReadable:
-    """Violations of the rule never escape the parser as an exception."""
+    """Malformed documents never escape the parser as an exception."""
 
     @pytest.mark.parametrize(
         "frontmatter",
@@ -157,9 +217,10 @@ class TestParseFrontmatterStaysReadable:
             "just a scalar",
             "title: T\ndate: 2026-99-99",
             "title: [unterminated",
+            "title: T\ncustom: &a [*a]",
         ],
     )
-    def test_unparsable_documents_still_yield_the_body(self, frontmatter):
+    def test_unreadable_documents_still_yield_the_body(self, frontmatter):
         metadata, body = parse_frontmatter(f"---\n{frontmatter}\n---\n\nthe body\n")
 
         assert metadata == {}
@@ -177,6 +238,126 @@ class TestParseFrontmatterStaysReadable:
         assert metadata == {}
         assert body == "body"
 
+    def test_a_recursive_alias_is_unreadable(self):
+        content = "---\ntitle: T\ncustom: &a [*a]\n---\n\nbody\n"
+
+        metadata, body = parse_frontmatter(content)
+
+        assert metadata == {}
+        assert body == "body"
+        assert frontmatter_is_unreadable(content) is True
+
+    def test_every_returned_string_is_utf8_encodable(self):
+        content = '---\nlocation: "\\uD800"\n"\\uDC00key": value\n---\n\nbody\n'
+
+        metadata, body = parse_frontmatter(content)
+
+        assert metadata["location"] == "\ufffd"
+        assert metadata["\ufffdkey"] == "value"
+        assert body == "body"
+        for value in metadata.values():
+            assert isinstance(value, str)
+            value.encode("utf-8")
+
+
+class TestFrontmatterIsUnreadable:
+    @pytest.mark.parametrize(
+        "content",
+        [
+            "---\n- a\n- b\n---\n\nbody\n",
+            "---\njust a scalar\n---\n\nbody\n",
+            "---\ntitle: [unterminated\n---\n\nbody\n",
+            "---\ntitle: T\ncustom: &a [*a]\n---\n\nbody\n",
+        ],
+    )
+    def test_a_present_block_without_a_mapping_is_unreadable(self, content):
+        assert frontmatter_is_unreadable(content) is True
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            "no frontmatter at all\n",
+            "---\n---\n\nbody\n",
+            "---\ntitle: T\ndate: 2026-03-04\n---\n\nbody\n",
+            '---\ntitle: T\ncontent: "line one\nline two\n---\n\nbody\n',
+        ],
+    )
+    def test_a_readable_or_absent_block_is_not_unreadable(self, content):
+        assert frontmatter_is_unreadable(content) is False
+
+    def test_the_legacy_content_recovery_is_still_readable(self):
+        content = '---\ntitle: T\ncontent: "line one\nline two\n---\n\nbody\n'
+
+        metadata, body = parse_frontmatter(content)
+
+        assert metadata == {"title": "T"}
+        assert "line one" in body
+
+
+class TestDateRule:
+    @pytest.mark.parametrize(
+        ("frontmatter_date", "expected"),
+        [
+            ("2026-03-08", "2026-03-08"),
+            ("2026-03-08T10:00:00", "2026-03-08"),
+            # Shape only: no calendar check.
+            ("2026-99-99", "2026-99-99"),
+            ("20260311", "2026-03-04"),
+            ("2026-3-8", "2026-03-04"),
+            ("[2026]", "2026-03-04"),
+            (None, "2026-03-04"),
+        ],
+    )
+    def test_frontmatter_date_then_filename(self, frontmatter_date, expected):
+        indexable = normalize_indexable_metadata({"date": frontmatter_date})
+
+        assert indexable is not None
+        assert indexable_date(indexable, FRAGMENT) == expected
+
+    def test_a_non_canonical_filename_has_no_fallback_date(self):
+        indexable = empty_indexable_metadata()
+
+        assert indexable_date(indexable, Path("notes.md")) == ""
+
+    def test_the_fts_row_and_the_cache_row_use_the_same_fallback_date(self, isolated_data_dir):
+        from tools.build_index import build_all
+        from tools.lib.metadata_cache import get_all_cached_metadata
+
+        journal = _write_fragment(
+            isolated_data_dir,
+            "dateword",
+            "title: T\ndate: 20260311",
+        )
+        assert build_all(incremental=False)["success"] is True
+
+        row = _fts_row(isolated_data_dir, journal)
+        cached = next(
+            item
+            for item in get_all_cached_metadata()
+            if item["rel_path"] == _rel(journal, isolated_data_dir)
+        )
+
+        assert row["date"] == "2026-03-04"
+        assert cached["date"] == row["date"]
+
+    def test_the_fallback_scan_uses_the_same_fallback_date(self, isolated_data_dir):
+        from tools.search_journals.l3_content import search_l3_content
+
+        journal = _write_fragment(
+            isolated_data_dir,
+            "dateword first hit\ndateword second hit",
+            "title: T\ndate: [2026]",
+        )
+
+        results = search_l3_content("dateword")
+
+        hit = next(
+            item
+            for item in results
+            if str(item["path"]).replace("\\", "/") == str(journal).replace("\\", "/")
+        )
+        assert hit["date"] == "2026-03-04"
+
 
 class TestBothDerivedStoresUseTheSameRule:
     def test_fts_row_and_cache_row_agree_for_a_parsable_scalar_file(self, isolated_data_dir):
@@ -191,16 +372,18 @@ class TestBothDerivedStoresUseTheSameRule:
         )
         assert build_all(incremental=False)["success"] is True
 
-        conn = sqlite3.connect(str(isolated_data_dir / ".index" / "journals_fts.db"))
-        try:
-            fts_row = conn.execute(
-                "SELECT title, date, location, weather, project, topic, tags, mood, people "
-                "FROM journals WHERE path = ?",
-                (_rel(journal, isolated_data_dir),),
-            ).fetchone()
-        finally:
-            conn.close()
-        assert fts_row == (
+        row = _fts_row(isolated_data_dir, journal)
+        assert (
+            row["title"],
+            row["date"],
+            row["location"],
+            row["weather"],
+            row["project"],
+            row["topic"],
+            row["tags"],
+            row["mood"],
+            row["people"],
+        ) == (
             "2024",
             "2026-03-04",
             "42",
@@ -225,6 +408,42 @@ class TestBothDerivedStoresUseTheSameRule:
         assert cached["mood"] == ["calm"]
         assert cached["people"] == ["Alice"]
 
+    def test_a_malformed_field_costs_only_that_field(self, isolated_data_dir):
+        from tools.build_index import build_all
+        from tools.lib.metadata_cache import get_all_cached_metadata
+        from tools.search_journals.core import hierarchical_search
+
+        journal = _write_fragment(
+            isolated_data_dir,
+            "reviewbodytoken",
+            "title: Review Title\ndate: 2026-03-04\ntopic: [work]\n"
+            "links:\n  - url: https://example.com",
+        )
+        assert build_all(incremental=False)["success"] is True
+
+        row = _fts_row(isolated_data_dir, journal)
+        assert row["title"] == "Review Title"
+        assert row["topic"] == "work"
+        assert row["date"] == "2026-03-04"
+
+        cached = next(
+            item
+            for item in get_all_cached_metadata()
+            if item["rel_path"] == _rel(journal, isolated_data_dir)
+        )
+        assert cached["title"] == "Review Title"
+        assert cached["topic"] == ["work"]
+        assert cached["date"] == "2026-03-04"
+        assert cached["links"] == ["url: https://example.com"]
+
+        response = hierarchical_search(query="Review Title", level=3)
+        assert response["success"] is True
+        hits = {
+            str(item.get("path") or "").replace("\\", "/")
+            for item in (response.get("merged_results") or [])
+        }
+        assert str(journal).replace("\\", "/") in hits
+
     def test_fts_row_and_cache_row_agree_for_an_unparsable_file(self, isolated_data_dir):
         from tools.build_index import build_all
         from tools.lib.metadata_cache import get_all_cached_metadata
@@ -232,21 +451,14 @@ class TestBothDerivedStoresUseTheSameRule:
         journal = _write_fragment(
             isolated_data_dir,
             "unparsable body",
-            "title: {nested: value}\ntopic: [life]",
+            "- a\n- b",
         )
         assert build_all(incremental=False)["success"] is True
 
-        conn = sqlite3.connect(str(isolated_data_dir / ".index" / "journals_fts.db"))
-        try:
-            title, content, fts_date = conn.execute(
-                "SELECT title, content, date FROM journals WHERE path = ?",
-                (_rel(journal, isolated_data_dir),),
-            ).fetchone()
-        finally:
-            conn.close()
-        assert title == ""
-        assert fts_date == "2026-03-04"  # from the filename
-        assert "unparsable" in content  # raw-text row over the whole file
+        row = _fts_row(isolated_data_dir, journal)
+        assert row["title"] == ""
+        assert row["date"] == "2026-03-04"  # from the filename
+        assert "unparsable" in row["content"]  # raw-text row over the whole file
 
         cached = next(
             item
@@ -254,7 +466,65 @@ class TestBothDerivedStoresUseTheSameRule:
             if item["rel_path"] == _rel(journal, isolated_data_dir)
         )
         assert cached["title"] == ""
-        assert cached["date"] == fts_date
+        assert cached["date"] == row["date"]
         assert cached["topic"] == []
         assert cached["tags"] == []
-        json.dumps(cached["metadata"])  # JSON-safe: no dict leaked into a field
+
+    def test_a_frontmatter_with_only_a_private_key_dates_like_the_fts_row(self, isolated_data_dir):
+        from tools.build_index import build_all
+        from tools.lib.metadata_cache import get_all_cached_metadata
+
+        journal = _write_fragment(isolated_data_dir, "privatekeybody", "_custom: x")
+        assert build_all(incremental=False)["success"] is True
+
+        row = _fts_row(isolated_data_dir, journal)
+        cached = next(
+            item
+            for item in get_all_cached_metadata()
+            if item["rel_path"] == _rel(journal, isolated_data_dir)
+        )
+
+        # The mapping is readable (it only has an ignored key), so the date
+        # falls back to the filename in both stores — never one empty and one
+        # filled.
+        assert row["date"] == "2026-03-04"
+        assert cached["date"] == row["date"]
+
+    def test_a_recursive_alias_is_indexed_as_raw_text(self, isolated_data_dir):
+        from tools.build_index import build_all
+
+        journal = _write_fragment(
+            isolated_data_dir,
+            "recursivebodytoken",
+            "title: T\ndate: 2026-03-04\ncustom: &a [*a]",
+        )
+
+        result = build_all(incremental=False)
+
+        assert result["success"] is True
+        assert result["fts"]["unparsable_paths"] == [_rel(journal, isolated_data_dir)]
+        row = _fts_row(isolated_data_dir, journal)
+        assert row["title"] == ""
+        assert "recursivebodytoken" in row["content"]
+
+    def test_a_lone_surrogate_is_stored_as_replacement_character(self, isolated_data_dir):
+        from tools.build_index import build_all
+        from tools.lib.metadata_cache import get_all_cached_metadata
+
+        journal = _write_fragment(
+            isolated_data_dir,
+            "surrogatebody",
+            'title: S\ndate: 2026-03-04\nlocation: "\\uD800"',
+        )
+
+        result = build_all(incremental=False)
+
+        assert result["success"] is True
+        row = _fts_row(isolated_data_dir, journal)
+        assert row["location"] == "\ufffd"
+        cached = next(
+            item
+            for item in get_all_cached_metadata()
+            if item["rel_path"] == _rel(journal, isolated_data_dir)
+        )
+        assert cached["location"] == "\ufffd"

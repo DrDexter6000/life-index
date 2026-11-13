@@ -9,8 +9,12 @@ from typing import Any, Dict, List, Optional
 
 # 导入配置 (relative imports from tools/lib)
 from ..lib.paths import get_user_data_dir, get_journals_dir
-from ..lib.frontmatter import empty_indexable_metadata, normalize_indexable_metadata
-from ..lib.journal_files import fragment_date_from_filename, iter_month_journal_files
+from ..lib.frontmatter import (
+    empty_indexable_metadata,
+    indexable_date,
+    normalize_indexable_metadata,
+)
+from ..lib.journal_files import iter_month_journal_files
 from ..lib.path_contract import build_journal_path_fields
 from ..lib.search_constants import (
     L3_TITLE_MATCH_BONUS,
@@ -60,17 +64,28 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
 
     for journal_file in files_to_search:
         try:
-            # Bytes that are not UTF-8 are replaced, not fatal: the rest of the
-            # file is still searchable text.
-            content = journal_file.read_text(encoding="utf-8", errors="replace")
-            metadata, body = parse_frontmatter(content)
-            indexable = normalize_indexable_metadata(metadata)
-            if indexable is None:
-                # Same treatment as the fragment's FTS row: the whole file is
-                # searchable text, no metadata, date from the filename.
-                metadata, body = {}, content
+            # D6: decode strictly first. Bytes that are not UTF-8 cost the whole
+            # fragment's metadata (same as its FTS raw-text row): the replaced
+            # text is the searchable body, nothing is parsed from it.
+            metadata: Dict[str, Any]
+            body: str
+            try:
+                content = journal_file.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                metadata = {}
+                body = journal_file.read_text(encoding="utf-8", errors="replace")
                 indexable = empty_indexable_metadata()
-                indexable["date"] = fragment_date_from_filename(journal_file) or ""
+            else:
+                metadata, body = parse_frontmatter(content)
+                parsed_indexable = normalize_indexable_metadata(metadata)
+                if parsed_indexable is None:
+                    # Same treatment as the fragment's FTS row: the whole file is
+                    # searchable text, no metadata, date from the one date rule.
+                    metadata, body = {}, content
+                    parsed_indexable = empty_indexable_metadata()
+                indexable = parsed_indexable
+
+            date = indexable_date(indexable, journal_file)
 
             # 在标题中搜索
             title_match = False
@@ -100,7 +115,7 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
 
                 results.append(
                     {
-                        "date": indexable["date"][:10],
+                        "date": date,
                         "title": title or "无标题",
                         **path_fields,
                         "title_match": title_match,

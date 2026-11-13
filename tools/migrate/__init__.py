@@ -7,7 +7,11 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from tools.lib.frontmatter import parse_frontmatter, format_frontmatter
+from tools.lib.frontmatter import (
+    format_frontmatter,
+    frontmatter_is_unreadable,
+    parse_frontmatter,
+)
 from tools.lib.journal_files import iter_journal_files
 from tools.lib.schema import SCHEMA_VERSION, run_migration_chain
 
@@ -63,6 +67,9 @@ def scan_journals(journals_dir: Path) -> dict[str, Any]:
         total += 1
         try:
             content = md_file.read_text(encoding="utf-8")
+            if frontmatter_is_unreadable(content):
+                version_dist["unparseable"] = version_dist.get("unparseable", 0) + 1
+                continue
             metadata, _body = parse_frontmatter(content)
         except Exception:
             logger.debug("Failed to parse %s during scan", md_file, exc_info=True)
@@ -135,6 +142,16 @@ def apply_migrations(
     for md_file in iter_journal_files(journals_dir):
         try:
             content = md_file.read_text(encoding="utf-8")
+            if frontmatter_is_unreadable(content):
+                # D3: no readable mapping, so a rewrite would delete the YAML
+                # text. Report it like a parse failure and keep the bytes.
+                failed.append(
+                    {
+                        "path": str(md_file),
+                        "error": "frontmatter is unreadable (no mapping root); file left unchanged",
+                    }
+                )
+                continue
             metadata, body = parse_frontmatter(content)
         except Exception as exc:
             failed.append({"path": str(md_file), "error": str(exc)})

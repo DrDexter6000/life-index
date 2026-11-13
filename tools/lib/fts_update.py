@@ -28,10 +28,14 @@ logger = logging.getLogger(__name__)
 _REBUILD_MARKER_NAME = ".rebuilding"
 
 from .chinese_tokenizer import segment_for_fts
-from .frontmatter import normalize_indexable_metadata, parse_frontmatter
+from .frontmatter import (
+    empty_indexable_metadata,
+    indexable_date,
+    normalize_indexable_metadata,
+    parse_frontmatter,
+)
 from .journal_files import (
     JournalFileStat,
-    fragment_date_from_filename,
     scan_journal_files,
 )
 from .path_contract import build_journal_path_fields, safe_relative_path
@@ -103,8 +107,8 @@ def _parse_content(
         # 使用 SSOT frontmatter 解析
         metadata, body = parse_frontmatter(content)
         # D1: one shared rule for "what is indexable metadata". ``None`` means
-        # the frontmatter did not parse (no mapping root, or a mapping/list in a
-        # typed field) and the caller falls back to the raw-text row.
+        # the frontmatter has no readable mapping root and the caller falls back
+        # to the raw-text row; a malformed field never makes the row raw.
         indexable = normalize_indexable_metadata(metadata)
         if indexable is None:
             return None
@@ -127,7 +131,7 @@ def _parse_content(
             "title": raw_title,
             "title_segmented": segmented_title,
             "content": segmented_content,
-            "date": indexable["date"][:10],
+            "date": indexable_date(indexable, file_path),
             "location": indexable["location"],
             "weather": indexable["weather"],
             "topic": ", ".join(indexable["topic"]),
@@ -160,8 +164,8 @@ def _raw_document(
 
     CHARTER §1.11 does not allow a fragment the user can describe with a token
     to be unreachable: the whole file text is segmented into ``content``; every
-    metadata column stays empty except ``date``, which falls back to the date
-    carried by the canonical fragment filename.
+    metadata column stays empty except ``date``, which follows the one date rule
+    (frontmatter date, else the canonical fragment filename).
     """
     path_fields = build_journal_path_fields(
         file_path, journals_dir=journals_dir, user_data_dir=user_data_dir
@@ -171,7 +175,7 @@ def _raw_document(
         "title": "",
         "title_segmented": "",
         "content": segment_for_fts(content, mode="index"),
-        "date": fragment_date_from_filename(file_path) or "",
+        "date": indexable_date(empty_indexable_metadata(), file_path),
         "location": "",
         "weather": "",
         "topic": "",
@@ -200,10 +204,11 @@ def read_journal_document(
     caller can treat a transient read failure as "not repaired" instead of
     deleting a valid row.
 
-    Every readable live fragment yields a document. When the frontmatter does
-    not parse (no leading ``---``, empty/invalid YAML, a field of an unexpected
-    type, bytes that are not valid UTF-8) the document is the raw-text row from
-    :func:`_raw_document` and ``unparsable`` is True.
+    Every readable live fragment yields a document. When the frontmatter has no
+    readable mapping root (no leading ``---``, empty/invalid YAML, a list/scalar
+    root, a recursive structure, bytes that are not valid UTF-8) the document is
+    the raw-text row from :func:`_raw_document` and ``unparsable`` is True. A
+    malformed field keeps the fragment's other metadata.
 
     ``recorded_signature`` is ``None`` unless the stability identity
     ``(st_mtime_ns, st_size, st_ino)`` is unchanged across the read; the next

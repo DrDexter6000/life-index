@@ -19,11 +19,11 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from .paths import get_cache_dir, get_metadata_db_path, get_journals_dir, get_user_data_dir
 from .frontmatter import (
     empty_indexable_metadata,
+    indexable_date,
     normalize_indexable_metadata,
     parse_journal_file,
 )
 from .journal_files import (
-    fragment_date_from_filename,
     is_live_fragment_path,
     iter_month_journal_files,
     scan_journal_files,
@@ -179,11 +179,10 @@ def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Option
 
     The stored values come from ``normalize_indexable_metadata`` — the same
     rule the FTS row builder uses — so a row never carries a type SQLite cannot
-    bind. When the frontmatter does not parse the row carries no metadata
-    except ``date``, which falls back to the date in the canonical fragment
-    filename, exactly like the fragment's raw-text FTS row: it stays visible to
-    L2 and to date-range queries, and one malformed fragment can never make the
-    cache raise.
+    bind. ``date`` uses the shared fragment date rule (frontmatter date, else the
+    canonical filename). When the frontmatter has no readable mapping root the
+    row carries no metadata; a malformed field only costs that field. One
+    malformed fragment can never make the cache raise.
     """
     try:
         # 解析日志文件
@@ -199,18 +198,12 @@ def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Option
             file_path, journals_dir=get_journals_dir(), user_data_dir=get_user_data_dir()
         )
         file_path_str = path_fields["path"]
-        # ``parse_journal_file`` adds private ``_``-prefixed keys; the verdict
-        # is about the frontmatter alone. Keys need not be strings (``2024: x``).
-        frontmatter = {
-            key: value
-            for key, value in metadata.items()
-            if not (isinstance(key, str) and key.startswith("_"))
-        }
-        indexable = normalize_indexable_metadata(frontmatter)
-        if indexable is None:
-            indexable = empty_indexable_metadata()
-            indexable["date"] = fragment_date_from_filename(file_path) or ""
-        date = indexable["date"][:10]
+        # ``parse_journal_file`` adds private ``_``-prefixed keys; they are
+        # ignored by the shared rule like any other unknown key. Do not filter
+        # them into a "parsable" verdict: a frontmatter with only ``_custom`` is
+        # still a readable mapping and must date exactly like the FTS row.
+        indexable = normalize_indexable_metadata(metadata) or empty_indexable_metadata()
+        date = indexable_date(indexable, file_path)
         title = indexable["title"]
         location = indexable["location"]
         weather = indexable["weather"]

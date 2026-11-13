@@ -39,9 +39,7 @@ def _write_journal(
 
 
 class TestTimeline:
-    def test_range_filter(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_range_filter(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         journals_dir = tmp_path / "Journals"
         _write_journal(
             journals_dir,
@@ -77,9 +75,7 @@ class TestTimeline:
         assert len(result["entries"]) == 2
         assert all(entry["date"] <= "2026-02-28" for entry in result["entries"])
 
-    def test_chronological_order(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_chronological_order(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         journals_dir = tmp_path / "Journals"
         _write_journal(
             journals_dir,
@@ -146,9 +142,7 @@ class TestTimeline:
 
         assert result["entries"] == []
 
-    def test_topic_filter(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_topic_filter(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         journals_dir = tmp_path / "Journals"
         _write_journal(
             journals_dir,
@@ -174,3 +168,41 @@ class TestTimeline:
 
         assert len(result["entries"]) == 1
         assert result["entries"][0]["title"] == "Work entry"
+
+    def test_topic_null_does_not_crash_the_topic_filter(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        journals_dir = tmp_path / "Journals"
+        journal_dir = journals_dir / "2026" / "01"
+        journal_dir.mkdir(parents=True)
+        (journal_dir / "life-index_2026-01-05_001.md").write_text(
+            '---\ntitle: "Null topic"\ndate: 2026-01-05\ntopic:\n---\n\nBody\n',
+            encoding="utf-8",
+        )
+        monkeypatch.setattr("tools.timeline.core.get_journals_dir", lambda: journals_dir)
+
+        result = run_timeline(range_start="2026-01", range_end="2026-01", topic="work")
+
+        assert result["success"] is True
+        assert result["entries"] == []
+
+    def test_an_unparsable_fragment_is_listed_with_its_filename_date(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        journals_dir = tmp_path / "Journals"
+        journal_dir = journals_dir / "2026" / "01"
+        journal_dir.mkdir(parents=True)
+        (journal_dir / "life-index_2026-01-05_001.md").write_text(
+            "---\n- not\n- a mapping\n---\n\nBody\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr("tools.timeline.core.get_journals_dir", lambda: journals_dir)
+
+        result = run_timeline(range_start="2026-01", range_end="2026-01")
+
+        assert result["success"] is True
+        assert len(result["entries"]) == 1
+        entry = result["entries"][0]
+        assert entry["date"] == "2026-01-05"
+        assert entry["title"] == ""
+        assert entry["mood"] == []

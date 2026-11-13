@@ -90,6 +90,17 @@ SHAPES: dict[str, bytes] = {
         "---\ntitle: T\ndate: 2026-03-04\nmood:\n  - a\n  - k: v\n---\n\n" + _body()
     ).encode(),
     "mood_null": ("---\ntitle: T\ndate: 2026-03-04\nmood:\n---\n\n" + _body()).encode(),
+    "links_mapping_item": (
+        "---\ntitle: Review Title\ndate: 2026-03-04\ntopic: [work]\n"
+        "links:\n  - url: https://example.com\n---\n\n" + _body()
+    ).encode(),
+    "recursive_alias": (
+        "---\ntitle: T\ndate: 2026-03-04\ncustom: &a [*a]\n---\n\n" + _body()
+    ).encode(),
+    "lone_surrogate": (
+        '---\ntitle: S\ndate: 2026-03-04\nlocation: "\\uD800"\n---\n\n' + _body()
+    ).encode(),
+    "private_key_only": ("---\n_custom: x\n---\n\n" + _body()).encode(),
     "not_utf8": b"---\ntitle: T\ndate: 2026-03-04\n---\n\nmalformedfragmenttoken \xff\xfe bytes\n",
     "utf8_bom": b"\xef\xbb\xbf---\ntitle: T\ndate: 2026-03-04\n---\n\n" + _body().encode(),
     "crlf": ("---\r\ntitle: T\r\ndate: 2026-03-04\r\n---\r\n\r\n" + _body())
@@ -300,6 +311,16 @@ def test_malformed_fragment_survives_every_operation(isolated_data_dir, shape):
         if payload is not None and payload.get("success") is not True:
             failures.append(f"timeline: error envelope {payload.get('error')!r}")
 
+    timeline_topic = _step(
+        failures,
+        "timeline --topic",
+        lambda: _run_cli("timeline", "--range", "2026-03", "2026-03", "--topic", "work"),
+    )
+    if timeline_topic is not None:
+        payload = _cli_json(timeline_topic, "timeline --topic", failures)
+        if payload is not None and payload.get("success") is not True:
+            failures.append(f"timeline --topic: error envelope {payload.get('error')!r}")
+
     on_this_day = _step(
         failures,
         "on-this-day",
@@ -393,21 +414,52 @@ UNPARSABLE = (
     "invalid_yaml",
     "list_root",
     "scalar_root",
-    "title_mapping",
+    "recursive_alias",
     "date_impossible",
-    "tags_list_mapping",
     "not_utf8",
     "unclosed_frontmatter",
 )
 
+# Unparsable fragments and fragments whose frontmatter date cannot fill the
+# date column must all fall back to the canonical filename date.
+DATE_FALLBACK = UNPARSABLE + (
+    "date_number",
+    "date_list",
+    "date_missing",
+)
 
-@pytest.mark.parametrize("shape", UNPARSABLE)
+
+def _rel_path(data_dir: Path, journal: Path) -> str:
+    return str(journal.relative_to(data_dir)).replace("\\", "/")
+
+
+def _cached_row(data_dir: Path, journal: Path):
+    from tools.lib.metadata_cache import get_all_cached_metadata
+
+    rel_path = _rel_path(data_dir, journal)
+    return next(item for item in get_all_cached_metadata() if item["rel_path"] == rel_path)
+
+
+def _fts_row(data_dir: Path, journal: Path):
+    import sqlite3
+
+    conn = sqlite3.connect(str(data_dir / ".index" / "journals_fts.db"))
+    conn.row_factory = sqlite3.Row
+    try:
+        return conn.execute(
+            "SELECT * FROM journals WHERE path = ?", (_rel_path(data_dir, journal),)
+        ).fetchone()
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("shape", DATE_FALLBACK)
 def test_unparsable_fragment_is_found_by_its_filename_date(isolated_data_dir, shape):
-    """Both derived stores date an unparsable fragment from its filename.
+    """Every reader dates a fragment by the one date rule.
 
     A date-range query without a token is answered from the metadata cache; the
     fragment must not vanish from "what did I write that day" because its
-    frontmatter is broken.
+    frontmatter has no usable date (a broken root, ``20260304`` or ``[2026]``).
     """
     from tools.build_index import build_all
     from tools.search_journals.core import hierarchical_search
@@ -416,10 +468,118 @@ def test_unparsable_fragment_is_found_by_its_filename_date(isolated_data_dir, sh
     malformed_path, _valid_path = _paths()
     assert build_all(incremental=False)["success"] is True
 
+    assert _fts_row(isolated_data_dir, malformed_path)["date"] == DATE
+    assert _cached_row(isolated_data_dir, malformed_path)["date"] == DATE
+
     response = hierarchical_search(date_from=DATE, date_to=DATE, level=2)
 
     assert response["success"] is True
     assert str(malformed_path).replace("\\", "/") in _hit_paths(response, "l2_results")
+
+
+def test_a_malformed_field_keeps_title_and_topic_in_both_stores(isolated_data_dir):
+    """D1: ``links: [{url: ...}]`` costs the links field, not the title/topic."""
+    from tools.build_index import build_all
+    from tools.search_journals.core import hierarchical_search
+
+    _write_fragments(SHAPES["links_mapping_item"])
+    malformed_path, _valid_path = _paths()
+    assert build_all(incremental=False)["success"] is True
+
+    row = _fts_row(isolated_data_dir, malformed_path)
+    assert (row["title"], row["topic"], row["date"]) == ("Review Title", "work", DATE)
+
+    cached = _cached_row(isolated_data_dir, malformed_path)
+    assert cached["title"] == "Review Title"
+    assert cached["topic"] == ["work"]
+    assert cached["links"] == ["url: https://example.com"]
+
+    response = hierarchical_search(query="Review", level=3)
+    assert response["success"] is True
+    hit = next(
+        item
+        for item in response["merged_results"]
+        if str(item.get("path") or "").replace("\\", "/") == str(malformed_path).replace("\\", "/")
+    )
+    assert hit["title"] == "Review Title"
+
+
+def test_a_private_key_only_frontmatter_agrees_on_the_date(isolated_data_dir):
+    """A ``_custom`` key is ignored by both stores, not a parsability verdict."""
+    from tools.build_index import build_all
+
+    _write_fragments(SHAPES["private_key_only"])
+    malformed_path, _valid_path = _paths()
+    assert build_all(incremental=False)["success"] is True
+
+    row_date = _fts_row(isolated_data_dir, malformed_path)["date"]
+    cached_date = _cached_row(isolated_data_dir, malformed_path)["date"]
+
+    assert row_date == DATE
+    assert cached_date == row_date
+
+
+def test_a_recursive_alias_is_unreadable_and_indexed_as_raw_text(isolated_data_dir):
+    """D4: ``&a [*a]`` is unreadable, never a recursion error."""
+    from tools.build_index import build_all
+    from tools.lib.frontmatter import frontmatter_is_unreadable, parse_frontmatter
+
+    content = SHAPES["recursive_alias"].decode()
+    assert frontmatter_is_unreadable(content) is True
+    assert parse_frontmatter(content)[0] == {}
+
+    _write_fragments(SHAPES["recursive_alias"])
+    malformed_path, _valid_path = _paths()
+    result = build_all(incremental=False)
+
+    assert result["success"] is True
+    assert result["fts"]["unparsable_paths"] == [_rel_path(isolated_data_dir, malformed_path)]
+    row = _fts_row(isolated_data_dir, malformed_path)
+    assert row["title"] == ""
+    assert row["date"] == DATE
+    assert TOKEN in row["content"]
+
+
+def test_a_lone_surrogate_is_store_safe(isolated_data_dir):
+    """D5: a YAML-escaped lone surrogate becomes U+FFFD, never a SQL error."""
+    from tools.build_index import build_all
+
+    _write_fragments(SHAPES["lone_surrogate"])
+    malformed_path, _valid_path = _paths()
+    result = build_all(incremental=False)
+
+    assert result["success"] is True
+    row = _fts_row(isolated_data_dir, malformed_path)
+    assert row["location"] == "\ufffd"
+    assert row["title"] == "S"
+    assert _cached_row(isolated_data_dir, malformed_path)["location"] == "\ufffd"
+
+
+def test_fallback_scan_treats_non_utf8_bytes_like_the_stores(isolated_data_dir):
+    """D6: one bad body byte means no metadata in the fallback scan either."""
+    from tools.build_index import build_all
+    from tools.search_journals.l3_content import search_l3_content
+
+    _write_fragments(SHAPES["not_utf8"] + b"\n" + TOKEN.encode() + b" second hit\n")
+    malformed_path, _valid_path = _paths()
+    assert build_all(incremental=False)["success"] is True
+
+    # The stores already treat the whole file as raw text with no metadata.
+    assert _fts_row(isolated_data_dir, malformed_path)["title"] == ""
+    assert _cached_row(isolated_data_dir, malformed_path)["title"] == ""
+
+    results = search_l3_content(TOKEN)
+
+    found = {str(item["path"]).replace("\\", "/"): item for item in results}
+    hit = found[str(malformed_path).replace("\\", "/")]
+    assert hit["title"] == "无标题"
+    assert hit["date"] == DATE
+    assert hit["location"] == ""
+    assert hit["weather"] == ""
+    assert hit["project"] == ""
+    assert hit["abstract"] == ""
+    for field in ("topic", "tags", "mood", "people"):
+        assert hit[field] == [], field
 
 
 @pytest.mark.parametrize("shape", sorted(SHAPES))
@@ -441,4 +601,5 @@ def test_fallback_scan_returns_the_malformed_fragment(isolated_data_dir, shape):
     assert isinstance(hit["title"], str)
     assert isinstance(hit["date"], str)
     for field in ("topic", "tags", "mood", "people"):
+        assert isinstance(hit[field], list), field
         assert all(isinstance(value, str) for value in hit[field]), field

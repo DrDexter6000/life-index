@@ -171,20 +171,30 @@ class TestScanReconcilesRowsAndSignatures:
             conn.close()
         assert row == ("2024", "2026-03-04", "42", "True", "3.5", "life")
 
-    def test_mapping_in_a_scalar_field_is_indexed_as_text(self, isolated_data_dir):
-        """A mapping where a scalar belongs cannot be read as a value: raw-text row."""
+    def test_mapping_in_a_scalar_field_keeps_the_metadata(self, isolated_data_dir):
+        """A mapping where a scalar belongs is flattened, not a raw-text row."""
         from tools.lib.search_index import update_index
 
         journal = _write_journal(isolated_data_dir, body="mappingword")
         journal.write_text(
-            "---\ntitle:\n  nested: value\ndate: 2026-03-04\n---\n\nmappingword\n",
+            "---\ntitle:\n  nested: value\ndate: 2026-03-04\ntopic: [life]\n"
+            "---\n\nmappingword\n",
             encoding="utf-8",
         )
 
         result = update_index(incremental=False)
 
         assert result["success"] is True
-        assert result["unparsable"] == 1
+        assert result["unparsable"] == 0
+        conn = _fts_conn(isolated_data_dir)
+        try:
+            title, date, topic = conn.execute(
+                "SELECT title, date, topic FROM journals WHERE path = ?",
+                (_rel(journal, isolated_data_dir),),
+            ).fetchone()
+        finally:
+            conn.close()
+        assert (title, date, topic) == ("nested: value", "2026-03-04", "life")
         assert "mappingword" in (_row_content(isolated_data_dir, journal) or "")
 
     def test_unparsable_source_is_indexed_as_text(self, isolated_data_dir):

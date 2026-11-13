@@ -7,7 +7,12 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from ..lib.paths import get_journals_dir
-from ..lib.frontmatter import parse_journal_file
+from ..lib.frontmatter import (
+    empty_indexable_metadata,
+    indexable_date,
+    normalize_indexable_metadata,
+    parse_journal_file,
+)
 
 
 def run_timeline(
@@ -77,20 +82,23 @@ def run_timeline(
                         if not metadata or "_error" in metadata:
                             continue
 
+                        # D7: read every field through the shared rule, so
+                        # ``topic: null``, a mapping in a field or an unparsable
+                        # frontmatter can never raise here.
+                        indexable = (
+                            normalize_indexable_metadata(metadata) or empty_indexable_metadata()
+                        )
+
                         # Topic filter
-                        if topic:
-                            topics = metadata.get("topic", [])
-                            if isinstance(topics, str):
-                                topics = [topics]
-                            if topic not in topics:
-                                continue
+                        if topic and topic not in indexable["topic"]:
+                            continue
 
                         # Extract fields
                         entry = {
-                            "date": str(metadata.get("date", ""))[:10],
-                            "title": metadata.get("title", ""),
-                            "mood": metadata.get("mood", []),
-                            "abstract": metadata.get("abstract", ""),
+                            "date": indexable_date(indexable, journal_file),
+                            "title": indexable["title"],
+                            "mood": indexable["mood"],
+                            "abstract": indexable["abstract"],
                             "path": str(journal_file.relative_to(_journals_dir.parent)),
                         }
                         entries.append(entry)
