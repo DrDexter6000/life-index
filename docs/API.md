@@ -2048,7 +2048,10 @@ legacy route 必须带 `--confirm <import_id>`，且 `<import_id>` 必须匹配 
 有效但不匹配仍返回 `IMPORT_CONFIRMATION_REQUIRED`，无效的非缺席 confirm 或无效的
 plan `import_id` 返回 `IMPORT_ID_INVALID`。legacy route 按 create-only /
 fail-closed 策略写入 plan 中的 journal 和 attachment path，并在写入前建立固定
-ledger 和 rollback manifest。
+ledger 和 rollback manifest。写出的 journal frontmatter 由
+`tools/lib/frontmatter.py` 的共享 serializer 生成：始终包含 `schema_version`，plan
+的标量 `topic` 以单元素 canonical 数组写入，`title` / `date` / `tags` 按 YAML
+安全转义后写入，正文为 plan 的 `content` 原样。
 
 对 `media.photo_timeline`，`run` 还应带 `--source-root <photo-dir>`。CLI 只
 使用该 root 解析 plan 中的 `source_rel_path`，并在复制 attachment 前校验
