@@ -9,7 +9,7 @@ from typing import Any
 
 from tools.lib.frontmatter import (
     format_frontmatter,
-    frontmatter_is_unreadable,
+    frontmatter_rewrite_blocker,
     parse_frontmatter,
 )
 from tools.lib.journal_files import iter_journal_files
@@ -67,7 +67,8 @@ def scan_journals(journals_dir: Path) -> dict[str, Any]:
         total += 1
         try:
             content = md_file.read_text(encoding="utf-8")
-            if frontmatter_is_unreadable(content):
+            reason = frontmatter_rewrite_blocker(content)
+            if reason == "unreadable":
                 version_dist["unparseable"] = version_dist.get("unparseable", 0) + 1
                 continue
             metadata, _body = parse_frontmatter(content)
@@ -89,13 +90,15 @@ def scan_journals(journals_dir: Path) -> dict[str, Any]:
 
         if outdated_file:
             missing = sorted(EXPECTED_FIELDS - set(metadata.keys()))
-            outdated.append(
-                {
-                    "path": str(md_file),
-                    "current_version": file_ver,
-                    "missing_fields": missing,
-                }
-            )
+            entry: dict[str, Any] = {
+                "path": str(md_file),
+                "current_version": file_ver,
+                "missing_fields": missing,
+            }
+            if reason is not None:
+                # Readable and outdated, but --apply will refuse to rewrite it.
+                entry["rewrite_blocker"] = reason
+            outdated.append(entry)
 
     return {
         "total_scanned": total,
@@ -149,15 +152,15 @@ def apply_migrations(
     for md_file in iter_journal_files(journals_dir):
         try:
             content = md_file.read_text(encoding="utf-8")
-            if frontmatter_is_unreadable(content):
-                # D3: no readable mapping, so a rewrite would delete the YAML
-                # text. Report it like a parse failure and keep the bytes.
-                failed.append(
-                    {
-                        "path": str(md_file),
-                        "error": "frontmatter is unreadable (no mapping root); file left unchanged",
-                    }
-                )
+            reason = frontmatter_rewrite_blocker(content)
+            blocked = {
+                "path": str(md_file),
+                "error": f"frontmatter rewrite blocked ({reason}); file left unchanged",
+            }
+            if reason == "unreadable":
+                # No readable mapping, so not even the version is known. Report
+                # it like a parse failure and keep the bytes.
+                failed.append(blocked)
                 continue
             metadata, body = parse_frontmatter(content)
         except Exception as exc:
@@ -165,13 +168,18 @@ def apply_migrations(
             continue
 
         # Everything computed from this one file's content stays inside the
-        # per-file failure boundary: a ``schema_version`` that is not a number,
-        # or a frontmatter the serializer cannot write back (a non-string key),
+        # per-file failure boundary: a ``schema_version`` that is not a number
         # fails this file only and leaves its bytes unchanged.
         try:
             file_ver = metadata.get("schema_version", 1)
             if file_ver >= target:
                 already_current += 1
+                continue
+
+            if reason is not None:
+                # Outdated, but the serializer cannot write this frontmatter
+                # back without loss: the file needs a migration it cannot get.
+                failed.append(blocked)
                 continue
 
             # Run migration chain

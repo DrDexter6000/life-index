@@ -13,10 +13,11 @@ For every cell the requirement is the same:
 * the token search returns the malformed fragment with its path (from its FTS
   row), and the valid fragment is unaffected.
 
-``edit`` on a file whose bytes are not UTF-8 is the one documented refusal: the
-bytes cannot be rewritten without corrupting them, so edit returns its standard
-error envelope (E0200) instead of raising. Whether edit should refuse such files
-is decided by a separate package.
+``edit`` refuses a frontmatter it cannot write back without loss (the shapes in
+:data:`EDIT_BLOCKED`) with ``E0202`` and leaves the bytes unchanged. A file
+whose bytes are not UTF-8 is the other documented refusal: the bytes cannot be
+rewritten without corrupting them, so edit returns ``E0200`` instead of
+raising. All other shapes must still edit successfully.
 """
 
 import json
@@ -107,6 +108,29 @@ SHAPES: dict[str, bytes] = {
     .replace("\n", "\r\n")
     .encode(),
     "unclosed_frontmatter": ("---\ntitle: T\ndate: 2026-03-04\n\n" + _body()).encode(),
+    "non_string_key_number": (
+        "---\ntitle: T\ndate: 2026-03-04\n2024: x\n---\n\n" + _body()
+    ).encode(),
+    "non_string_key_boolean": (
+        "---\ntitle: T\ndate: 2026-03-04\ntrue: x\n---\n\n" + _body()
+    ).encode(),
+    "non_string_key_null": ("---\ntitle: T\ndate: 2026-03-04\nnull: x\n---\n\n" + _body()).encode(),
+}
+
+
+# The edit step's contract: these shapes cannot be rewritten without loss, so
+# edit refuses them with E0202 and leaves the bytes alone. Every other shape
+# (except the non-UTF-8 file, which is refused with E0200) must still edit.
+EDIT_BLOCKED = {
+    "date_impossible": "unreadable",
+    "invalid_yaml": "unreadable",
+    "list_root": "unreadable",
+    "recursive_alias": "unreadable",
+    "scalar_root": "unreadable",
+    "non_string_key_boolean": "not_round_trippable",
+    "non_string_key_null": "not_round_trippable",
+    "non_string_key_number": "not_round_trippable",
+    "private_key_only": "not_round_trippable",
 }
 
 
@@ -181,7 +205,9 @@ def _check_fts_row(data_dir: Path, malformed_path: Path, failures: list[str]) ->
 
 
 @pytest.mark.parametrize("shape", sorted(SHAPES))
-def test_malformed_fragment_survives_every_operation(isolated_data_dir, shape):
+def test_malformed_fragment_survives_every_operation(  # noqa: C901 - one cell per operation
+    isolated_data_dir, shape
+):
     from tools.build_index import build_all
     from tools.edit_journal import edit_journal
     from tools.search_journals.core import hierarchical_search
@@ -335,6 +361,7 @@ def test_malformed_fragment_survives_every_operation(isolated_data_dir, shape):
     _step(failures, "l3_content fallback scan", lambda: search_l3_content(TOKEN))
 
     # 9. Edit one field.
+    before_edit = malformed_path.read_bytes()
     edit_result = _step(
         failures,
         "edit",
@@ -342,12 +369,28 @@ def test_malformed_fragment_survives_every_operation(isolated_data_dir, shape):
     )
     if isinstance(edit_result, dict):
         refused = edit_result.get("success") is False
-        if refused and shape != "not_utf8":
+        expected_reason = EDIT_BLOCKED.get(shape)
+        if expected_reason is not None:
+            if not refused:
+                failures.append("edit: blocked frontmatter was rewritten")
+            else:
+                error = edit_result.get("error") or {}
+                if error.get("code") != "E0202":
+                    failures.append(f"edit: unexpected refusal {error!r}")
+                details = error.get("details") or {}
+                if details.get("reason") != expected_reason:
+                    failures.append(f"edit: unexpected reason {error!r}")
+                if malformed_path.read_bytes() != before_edit:
+                    failures.append("edit: blocked frontmatter changed the file bytes")
+        elif shape == "not_utf8":
+            if not refused:
+                failures.append("edit: non-UTF-8 file was rewritten")
+            else:
+                error = edit_result.get("error") or {}
+                if error.get("code") != "E0200":
+                    failures.append(f"edit: unexpected refusal {error!r}")
+        elif refused:
             failures.append(f"edit: error envelope {edit_result.get('error')!r}")
-        if refused and shape == "not_utf8":
-            error = edit_result.get("error") or {}
-            if error.get("code") != "E0200":
-                failures.append(f"edit: unexpected refusal {error!r}")
 
     # 10. Full rebuild through the CLI.
     cli_rebuild = _step(

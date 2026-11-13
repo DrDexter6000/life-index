@@ -4947,6 +4947,21 @@ python -m tools.edit_journal --journal "<path>" [options]
 - 如果最终拿不到新的天气，本次地点修改不得成功写入
 - 调用前必须先解决 target selection 与 mutation intent；`edit_journal` 不负责替调用方猜测编辑目标或变更类型
 
+### 不可重写 frontmatter 的拒绝
+
+在计算或写入任何变更之前，`edit` 先检查目标文件的 frontmatter 能否在不丢失内容的前提下
+重写（规则见 `docs/ARCHITECTURE.md` 的 *Frontmatter 重写边界*）。若不能，返回标准错误
+envelope：
+
+- `error.code` 为 `E0202`（`FRONTMATTER_INVALID`）
+- `error.message` 与 `error.details.reason` 指明原因：`unreadable`（frontmatter 区块读不出
+  mapping root）或 `not_round_trippable`（区块可读，但序列化器写不回去，例如非字符串键、
+  `_` 开头的键、`!!set`、`!!pairs`）
+- 文件字节保持不变；不创建 revision，不更新索引/缓存，不入 pending queue，不留锁
+
+该拒绝适用于所有编辑类型（仅修改 frontmatter、追加正文、替换正文）以及 `--dry-run`。
+调用方不得自行重试或改用其它方式修复该文件；应把文件与原因告知用户。
+
 ### 地点 / 天气耦合语义
 
 - `edit_journal` 是**确定性修改工具**，不负责自动刷新天气
@@ -5010,6 +5025,7 @@ queue，由下次搜索 preflight 或 `life-index index` 修复；`skipped` 不�
 | E0502 | 字段不识别 | ask_user |
 | E0503 | 无变更 | ask_user |
 | E0504 | 修改地点时缺少天气 | ask_user |
+| E0202 | frontmatter 无法在不丢失内容的前提下重写（`details.reason` 为 `unreadable` / `not_round_trippable`） | fail |
 
 ---
 
@@ -7417,6 +7433,13 @@ life-index version
 > 解析失败列入 `failed_files`，文件字节保持不变。空区块（`---\n---`）与字段畸形
 > （mapping/list 出现在标量字段等）都不算不可读，仍按正常 schema 迁移；字段规则见
 > `docs/ARCHITECTURE.md` 的 *Metadata cache freshness* 一节。
+>
+> **可读但写不回去的 frontmatter**：区块可读、但序列化器写不回去（非字符串键、`_` 开头
+> 的键、`!!set`、`!!pairs` 等）的文件，版本读得出来，所以 dry-run 按它的真实版本计数；
+> 需要迁移时照常列入 `outdated_files`，并多带一个 `rewrite_blocker`（值为
+> `not_round_trippable`）。`--apply` 不重写这样的文件，列入 `failed_files` 且 `error` 含该
+> reason，文件字节保持不变。已是当前版本的文件本来就不会被重写，计入 `already_current`。
+> 判定规则见 `docs/ARCHITECTURE.md` 的 *Frontmatter 重写边界*。
 >
 > **单个文件不会中断整次迁移**：`--apply` 对某个文件算不出迁移结果时（`schema_version`
 > 不是数字、frontmatter 含序列化器写不回去的非字符串键等），该文件列入 `failed_files`、

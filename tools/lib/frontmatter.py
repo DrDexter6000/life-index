@@ -114,11 +114,80 @@ def frontmatter_is_unreadable(content: str) -> bool:
     True for a list or scalar root, a YAML error the legacy-content recovery
     cannot turn into a mapping, and a recursive structure. A file without a
     ``---`` block and an empty block (``---\\n---``) are readable (they simply
-    carry no fields). ``migrate`` uses this to leave such a file untouched
-    instead of rewriting it as schema version 1.
+    carry no fields). A rewriter refuses such a file through
+    :func:`frontmatter_rewrite_blocker`, which reports this as ``"unreadable"``.
     """
     _metadata, _body, unreadable = _read_frontmatter(content)
     return unreadable
+
+
+def frontmatter_rewrite_blocker(content: str) -> Optional[str]:
+    """Reason an existing file's frontmatter cannot be written back, or ``None``.
+
+    A tool that rewrites an existing frontmatter first proves it can write it
+    back. Two reason codes block a rewrite:
+
+    - ``"unreadable"``: a present block has no readable mapping root, so
+      ``parse_frontmatter`` reads it as no fields and a rewrite would delete the
+      user's YAML text.
+    - ``"not_round_trippable"``: the block is readable, but serializing the
+      parsed mapping and parsing the result does not give back what the
+      serializer is meant to write for it (:func:`_rewrite_form`): a non-string
+      key, ``!!set``, ``!!pairs``, a ``_``-prefixed key, ...
+
+    A file without a ``---`` block and an empty block are rewritable, as is a
+    file whose YAML would merely be laid out differently after a rewrite. The
+    comparison is on parsed values, including their types, and uses the same
+    parser as every reader.
+
+    The check fails safe: if the serializer and :func:`_rewrite_form` ever
+    disagree, the answer is a refusal, never a lossy rewrite.
+    """
+    metadata, body, unreadable = _read_frontmatter(content)
+    if unreadable:
+        return "unreadable"
+
+    try:
+        rendered = format_frontmatter(metadata)
+        rewritten, _rewritten_body = parse_frontmatter(f"{rendered}\n\n{body}")
+        same = _same_value(rewritten, _rewrite_form(metadata))
+    except Exception:  # noqa: BLE001 - the serializer must never make a rewriter crash
+        return "not_round_trippable"
+
+    return None if same else "not_round_trippable"
+
+
+def _rewrite_form(metadata: Dict[Any, Any]) -> Dict[Any, Any]:
+    """The mapping ``format_frontmatter()`` is meant to write for ``metadata``.
+
+    The serializer normalizes three things on purpose, and none of them loses
+    a value: it always writes ``schema_version``; it leaves out a known field
+    whose value is null (every reader treats that as absent); and it writes a
+    string in a list field as the list of its comma-separated items. Everything
+    else must come back exactly.
+    """
+    form: Dict[Any, Any] = {}
+    for key, value in metadata.items():
+        if value is None and key != "schema_version" and key in FIELD_ORDER:
+            continue
+        if key in _LIST_LIKE_FIELDS and isinstance(value, str):
+            value = _split_list_text(value)
+        form[key] = value
+    form.setdefault("schema_version", SCHEMA_VERSION)
+    return form
+
+
+def _same_value(left: Any, right: Any) -> bool:
+    """Equality that also compares types (``1``, ``1.0`` and ``True`` differ)."""
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return left.keys() == right.keys() and all(
+            _same_value(left[key], right[key]) for key in left
+        )
+    if isinstance(left, (list, tuple)):
+        return len(left) == len(right) and all(_same_value(a, b) for a, b in zip(left, right))
+    return bool(left == right)
 
 
 def _read_frontmatter(content: str) -> Tuple[Dict[str, Any], str, bool]:
@@ -545,21 +614,21 @@ def format_frontmatter(data: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+# Fields the serializer writes as lists: a string value becomes the list of its
+# comma-separated items ("tag1, tag2" -> ["tag1", "tag2"]).
+_LIST_LIKE_FIELDS = frozenset(
+    {"topic", "tags", "mood", "entities", "people", "links", "related_entries"}
+)
+
+
+def _split_list_text(value: str) -> List[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 def _format_field(key: str, value: Any) -> str:
     """格式化单个字段"""
-    list_like_fields = {
-        "topic",
-        "tags",
-        "mood",
-        "entities",
-        "people",
-        "links",
-        "related_entries",
-    }
-
-    if key in list_like_fields and isinstance(value, str):
-        # 按逗号分割，确保 "tag1, tag2" 变成 ["tag1", "tag2"]
-        value = [item.strip() for item in value.split(",") if item.strip()]
+    if key in _LIST_LIKE_FIELDS and isinstance(value, str):
+        value = _split_list_text(value)
 
     if isinstance(value, dict):
         # 映射使用 block-style YAML：可读、保留键序、Unicode 不转义
@@ -766,6 +835,10 @@ def update_frontmatter_fields(
 
     try:
         content = file_path.read_text(encoding="utf-8")
+        blocker = frontmatter_rewrite_blocker(content)
+        if blocker is not None:
+            result["error"] = f"frontmatter rewrite blocked ({blocker})"
+            return result
         metadata, body = parse_frontmatter(content)
 
         # 记录变更

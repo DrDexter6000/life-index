@@ -20,6 +20,9 @@ from typing import Dict, List, Optional, Any, Tuple
 # 导入配置 (relative imports from parent tools package)
 from ..lib.paths import get_journals_dir, get_by_topic_dir, get_user_data_dir, resolve_user_data_dir
 from ..lib.frontmatter import (
+    empty_indexable_metadata,
+    frontmatter_rewrite_blocker,
+    normalize_indexable_metadata,
     parse_journal_file,
     format_frontmatter,
 )
@@ -199,6 +202,31 @@ def _normalize_to_list(value: Any) -> List[str]:
     if isinstance(value, str):
         return [value]
     return []
+
+
+def _is_private_key(key: Any) -> bool:
+    """Whether a metadata key is an internal ``_``-prefixed string key.
+
+    ``parse_journal_file`` adds such keys itself. A non-string key is never
+    private, and this predicate must not raise on one: the rewrite guard runs
+    first, but the filter may not depend on that.
+    """
+    return isinstance(key, str) and key.startswith("_")
+
+
+def _rewrite_refusal(journal_path: Path, content: str) -> Optional[Dict[str, Any]]:
+    """The E0202 envelope when ``content``'s frontmatter cannot be written back."""
+    blocker = frontmatter_rewrite_blocker(content)
+    if blocker is None:
+        return None
+    logger.warning(f"frontmatter 无法安全重写（{blocker}）：{journal_path}")
+    return create_error_response(
+        ErrorCode.FRONTMATTER_INVALID,
+        f"Frontmatter cannot be rewritten without loss: {blocker}",
+        {"path": str(journal_path), "reason": blocker},
+        "Leave the file unchanged and report the file and reason to the user;"
+        " do not retry or repair it automatically",
+    )
 
 
 def _apply_edit_updates(  # noqa: C901
@@ -498,6 +526,10 @@ def edit_journal(
                     "请先查询新地点的天气；如果 query_weather 失败，可手动提供天气后再一起修改",
                 )
 
+        refusal = _rewrite_refusal(journal_path, journal_path.read_text(encoding="utf-8"))
+        if refusal is not None:
+            return refusal
+
         def compute_updates(
             current_frontmatter: Dict[str, Any], current_body: str
         ) -> tuple[Dict[str, Any], Dict[str, Any], str, Dict[str, Any]]:
@@ -512,7 +544,7 @@ def edit_journal(
             )
 
         metadata = parse_journal_file(journal_path)
-        initial_frontmatter = {k: v for k, v in metadata.items() if not k.startswith("_")}
+        initial_frontmatter = {k: v for k, v in metadata.items() if not _is_private_key(k)}
         initial_body = metadata.get("_body", "")
 
         old_frontmatter, new_frontmatter, new_body, computed_result = compute_updates(
@@ -537,9 +569,14 @@ def edit_journal(
             with lock:
                 logger.debug("获取文件锁成功")
                 original_content = journal_path.read_text(encoding="utf-8")
+                # The file may have changed since the check above; the content
+                # read under the lock is the one that gets rewritten.
+                refusal = _rewrite_refusal(journal_path, original_content)
+                if refusal is not None:
+                    return refusal
                 locked_metadata = parse_journal_file(journal_path)
                 locked_frontmatter = {
-                    k: v for k, v in locked_metadata.items() if not k.startswith("_")
+                    k: v for k, v in locked_metadata.items() if not _is_private_key(k)
                 }
                 locked_body = locked_metadata.get("_body", "")
                 old_frontmatter, new_frontmatter, new_body, computed_result = compute_updates(
@@ -563,10 +600,17 @@ def edit_journal(
                         except ValueError:
                             source_rel_path = None
                         if source_rel_path:
+                            # The shared rule turns whatever the file holds in
+                            # this field into ``list[str]``; a malformed value
+                            # must not raise after the file is written.
+                            indexable = (
+                                normalize_indexable_metadata(new_frontmatter)
+                                or empty_indexable_metadata()
+                            )
                             replace_entry_relations(
                                 metadata_conn,
                                 source_rel_path,
-                                new_frontmatter.get("related_entries", []),
+                                indexable["related_entries"],
                             )
                     finally:
                         metadata_conn.close()

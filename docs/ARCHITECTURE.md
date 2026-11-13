@@ -514,6 +514,31 @@ Alfred 是档案馆管理员这个角色的名字。用户可以为它另设人�
   共享助手之外不允许出现可触及 Journals 树的 `*.md` 通配扫描
   （白名单精确到 文件 + 模式，仅限扫描其他目录的站点）。
 
+### 4.3 Frontmatter 重写边界（frontmatter rewrite boundary）
+
+**规则：任何工具在重写已有 frontmatter 之前，必须先证明它能把它原样写回。** 实现是
+`tools/lib/frontmatter.py` 的 `frontmatter_rewrite_blocker(content)`：它用同一个
+`parse_frontmatter()` 读出 mapping，再经 `format_frontmatter()` 序列化并重新解析；
+只有重新解析得到的值（连同类型）与“序列化器本来就该写出的形态”一致才返回 `None`。
+这个形态只允许序列化器有意做的三处规范化，它们都不丢失任何值：总是写出
+`schema_version`；已知字段的值为 `null` 时不写这个字段；列表字段里的字符串写成按逗号
+拆开的列表。否则返回一个 reason code：
+
+- `unreadable`：带 `---` 区块但读不出 mapping root（list/scalar root、无法恢复的 YAML、
+  递归结构）——重写会删掉用户写下的 YAML 文本。
+- `not_round_trippable`：区块可读，但序列化器无法复现解析结果（非字符串键、`_` 开头的
+  键、`!!set`、`!!pairs` 等）——重写会改写或丢失值。
+
+这个检查偏向拒绝：序列化器与上述形态一旦不一致，结果是拒绝重写，而不是有损重写。
+
+没有 `---` 区块、空区块，以及只是排版会变化的 YAML 都可重写；比较的是解析后的值，不是
+文本。重写既有文件的工具（`edit`、`migrate`、`update_frontmatter_fields()`）在计算或
+写入前调用这个 guard：被拒绝时文件字节不变，不创建 revision，不更新索引/缓存，不入
+pending queue。`edit` 在动手前检查一次，拿到写锁后对锁内读到的内容再检查一次，以
+`E0202`（`details.reason` 为上述 reason）拒绝；`migrate` 只在文件确实需要迁移时才问
+这个 guard，被拒绝的文件列入 `failed_files`（读不出的文件连版本都不知道，dry-run 计入
+`unparseable`）。写新文件的工具（`write`、`import`）不经过这个 guard。
+
 ---
 
 ## 5. 基础设施增强
