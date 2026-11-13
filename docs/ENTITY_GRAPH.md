@@ -139,13 +139,13 @@ alias/标签，不得在工具中硬编码文化对照表。
 `attributes.role`（如 `child`, `spouse`, `parent`）用于**当前阶段**快速标注实体在家庭结构中的位置，但它:
 - **不是**长期关系建模的终点
 - **不能**替代 `relationships` 字段中的有向边
-- 生产图已配置核心家庭 relationship 边（见 §4.3），`attributes.role` 与 `family_role_labels` 仍作为补充检索信号存在
+- 图谱配置了 relationship 边之后（见 §4.3），`attributes.role` 与 `family_role_labels` 仍作为补充检索信号存在
 
 ### 4.3 关系短语搜索的当前状态
 
 关系短语搜索（如 `"我女儿"` → 通过 `child_of` 反向查找）对已配置的 relationship 边**可用**：
 
-- 当前生产图已建立核心家庭 person 实体（含 self / spouse / child / parent）
+- 前提：图谱里已建立相关 person 实体（如 self / spouse / child / parent）
 - 已配置 `child_of` / `parent_of` / `spouse_of` / `grandmother_of` / `grandfather_of` relationship
 - 已配置 `family_role_labels`（如 `parent_perspective: 女儿`、`child_perspective: 爸爸`）
 - 因此 `"王小橙的妈妈"` → `person-chen-xiaohong`、`"王小橙的外婆"` → `person-li-yulan` 等短语可解析（示例为虚构，不对应 production 具体实体）
