@@ -265,8 +265,8 @@ class TestCreateBackup:
         regular_file = journals_src / "2026" / "03" / "regular.md"
         regular_file.write_text("content", encoding="utf-8")
 
-        # File matching exclude pattern (substring match: ".tmp" in filename)
-        # Note: The exclude pattern matching uses substring matching, not glob
+        # File matching a built-in name glob ("*.tmp"); the caller pattern
+        # ".tmp" also matches it through the historical substring rule.
         tmp_file = journals_src / "2026" / "03" / "test.tmp"
         tmp_file.write_text("temp content", encoding="utf-8")
 
@@ -515,6 +515,210 @@ class TestCreateBackup:
 
         assert result["success"] is False
         assert len(result["errors"]) > 0
+
+
+class TestBackupExclusionRelativeToSourceRoot:
+    """Exclusion is based on source-relative paths, never absolute location."""
+
+    @staticmethod
+    def _write_archive(root: Path) -> None:
+        journal = root / "Journals" / "2026" / "03" / "life-index_2026-03-20_001.md"
+        journal.parent.mkdir(parents=True)
+        journal.write_text("---\ntitle: Keep\n---\nbody\n", encoding="utf-8")
+        attachment = root / "attachments" / "2026" / "03" / "evidence.bin"
+        attachment.parent.mkdir(parents=True)
+        attachment.write_bytes(b"evidence")
+        topic = root / "by-topic" / "topic_work.md"
+        topic.parent.mkdir(parents=True)
+        topic.write_text("index\n", encoding="utf-8")
+        (root / "entity_graph.yaml").write_text("entities: []\n", encoding="utf-8")
+
+    @staticmethod
+    def _activate(monkeypatch: pytest.MonkeyPatch, root: Path) -> None:
+        root.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr("tools.backup.get_user_data_dir", lambda: root)
+        monkeypatch.setattr("tools.backup.get_journals_dir", lambda: root / "Journals")
+        monkeypatch.setattr("tools.backup.get_by_topic_dir", lambda: root / "by-topic")
+        monkeypatch.setattr("tools.backup.get_attachments_dir", lambda: root / "attachments")
+
+    @staticmethod
+    def _backup_files(result: dict) -> list[str]:
+        backup_root = Path(str(result["backup_path"]))
+        return sorted(
+            path.relative_to(backup_root).as_posix()
+            for path in backup_root.rglob("*")
+            if path.is_file()
+        )
+
+    @pytest.mark.parametrize("full", [True, False], ids=["full", "incremental"])
+    @pytest.mark.parametrize(
+        "cache_parent", [".cache", "x.cache-old"], ids=["dot-cache", "cache-old"]
+    )
+    def test_absolute_source_location_does_not_change_backup(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, full: bool, cache_parent: str
+    ) -> None:
+        neutral_root = tmp_path / "neutral" / "data"
+        cached_root = tmp_path / cache_parent / "data"
+        self._write_archive(neutral_root)
+        self._write_archive(cached_root)
+
+        self._activate(monkeypatch, neutral_root)
+        neutral = create_backup(str(tmp_path / "neutral-backups"), full=full)
+        self._activate(monkeypatch, cached_root)
+        cached = create_backup(str(tmp_path / "cached-backups"), full=full)
+
+        assert neutral["success"] is True
+        assert cached["success"] is True
+        assert neutral["files_backed_up"] == cached["files_backed_up"] == 4
+        assert neutral["files_skipped"] == cached["files_skipped"] == 0
+        assert neutral["files_excluded"] == cached["files_excluded"] == 0
+        assert self._backup_files(neutral) == self._backup_files(cached)
+
+    def test_builtin_exclusions_use_relative_path_components(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        root = tmp_path / "neutral-data"
+        self._write_archive(root)
+        journals_month = root / "Journals" / "2026" / "03"
+        cache_dir = journals_month / ".cache"
+        cache_dir.mkdir()
+        (cache_dir / "cached.md").write_text("cache\n", encoding="utf-8")
+        (journals_month / "draft.tmp").write_text("tmp\n", encoding="utf-8")
+        (journals_month / ".life-index-backup-manifest.json").write_text("{}\n", encoding="utf-8")
+        self._activate(monkeypatch, root)
+
+        result = create_backup(str(tmp_path / "backups"))
+
+        assert result["success"] is True
+        assert result["files_backed_up"] == 4
+        assert result["files_excluded"] == 3
+        backed_up = self._backup_files(result)
+        assert "Journals/2026/03/life-index_2026-03-20_001.md" in backed_up
+        assert "Journals/2026/03/draft.tmp" not in backed_up
+        assert "Journals/2026/03/.life-index-backup-manifest.json" not in backed_up
+        assert all(".cache" not in path.split("/") for path in backed_up)
+
+    def test_caller_patterns_match_relative_path_globs_and_substrings(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        root = tmp_path / "neutral-data"
+        self._write_archive(root)
+        journals_month = root / "Journals" / "2026" / "03"
+        (journals_month / "debug.log").write_text("log\n", encoding="utf-8")
+        (journals_month / "temp_note.md").write_text("temp\n", encoding="utf-8")
+        self._activate(monkeypatch, root)
+
+        result = create_backup(str(tmp_path / "backups"), exclude_patterns=["*.log", "temp_"])
+
+        assert result["success"] is True
+        assert result["files_backed_up"] == 4
+        assert result["files_excluded"] == 2
+        backed_up = self._backup_files(result)
+        assert "Journals/2026/03/debug.log" not in backed_up
+        assert "Journals/2026/03/temp_note.md" not in backed_up
+
+    def test_caller_pattern_does_not_match_absolute_source_location(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        root = tmp_path / "private-root" / "data"
+        self._write_archive(root)
+        self._activate(monkeypatch, root)
+
+        result = create_backup(str(tmp_path / "backups"), exclude_patterns=["private-root"])
+
+        assert result["success"] is True
+        assert result["files_backed_up"] == 4
+        assert result["files_excluded"] == 0
+
+    def test_full_backup_refusal_does_not_depend_on_absolute_location(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        excluded_name = "life-index_2026-03-20_001.md"
+        outcomes = {}
+        for label, parent in (
+            ("neutral", None),
+            ("dot-cache", ".cache"),
+            ("cache-old", "x.cache-old"),
+        ):
+            root = tmp_path / parent / "data" if parent else tmp_path / "neutral" / "data"
+            self._write_archive(root)
+            self._activate(monkeypatch, root)
+
+            refused = create_backup(
+                str(tmp_path / f"{label}-refused"),
+                full=True,
+                exclude_patterns=[excluded_name],
+            )
+            allowed = create_backup(
+                str(tmp_path / f"{label}-allowed"),
+                full=True,
+                exclude_patterns=[".cache"],
+            )
+
+            assert refused["success"] is False
+            assert any(
+                excluded_name in error and "canonical" in error.lower()
+                for error in refused["errors"]
+            )
+            assert refused["recovery_manifest_path"] == ""
+            assert allowed["success"] is True
+            assert allowed["files_backed_up"] == 4
+            assert allowed["files_excluded"] == 0
+
+            outcomes[label] = (
+                refused["success"],
+                tuple(refused["errors"]),
+                allowed["success"],
+                allowed["files_backed_up"],
+            )
+
+        assert outcomes["dot-cache"] == outcomes["neutral"]
+        assert outcomes["cache-old"] == outcomes["neutral"]
+
+    @pytest.mark.parametrize("scenario", ["builtin", "caller"])
+    def test_all_sources_excluded_is_not_plain_success(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, scenario: str
+    ) -> None:
+        root = tmp_path / "data"
+        if scenario == "builtin":
+            tmp_file = root / "Journals" / "2026" / "03" / "draft.tmp"
+            tmp_file.parent.mkdir(parents=True)
+            tmp_file.write_text("tmp\n", encoding="utf-8")
+            cache_file = root / "attachments" / ".cache" / "hidden.bin"
+            cache_file.parent.mkdir(parents=True)
+            cache_file.write_bytes(b"hidden")
+            exclude_patterns = None
+            expected_excluded = 2
+        else:
+            self._write_archive(root)
+            exclude_patterns = ["*"]
+            expected_excluded = 4
+        self._activate(monkeypatch, root)
+
+        result = create_backup(str(tmp_path / "backups"), exclude_patterns=exclude_patterns)
+
+        assert result["success"] is False
+        assert result["files_backed_up"] == 0
+        assert result["files_skipped"] == 0
+        assert result["files_excluded"] == expected_excluded
+        assert any(
+            "excluded" in error.lower() and str(expected_excluded) in error
+            for error in result["errors"]
+        )
+
+    def test_empty_source_still_succeeds_with_zero_excluded(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        root = tmp_path / "empty-data"
+        root.mkdir()
+        self._activate(monkeypatch, root)
+
+        result = create_backup(str(tmp_path / "backups"))
+
+        assert result["success"] is True
+        assert result["files_backed_up"] == 0
+        assert result["files_excluded"] == 0
+        assert result["errors"] == []
 
 
 class TestListBackups:

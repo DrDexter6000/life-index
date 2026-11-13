@@ -524,6 +524,8 @@ Aggregation And Heuristic Evidence。不得把 `search_journals.total_found` 直
 1. **创建可恢复备份**：使用 `life-index backup --dest DEST --full`；仅当
    `success=true` 且 `recovery_manifest_path` 指向 timestamped backup 内的
    `.life-index-recovery-manifest.json` 时，才把本次 full backup 视为 complete。
+   同时读取 `files_excluded`；若源文件存在但全部被排除（`files_backed_up == 0`、
+   `files_skipped == 0` 且 `files_excluded > 0`），结果 `success=false`，不算成功。
    不得用 exclude pattern 移除 journals、attachments 或 `entity_graph.yaml`。
 2. **守住真相边界**：manifest 中 journals、attachments、`entity_graph.yaml` 是
    `canonical_source`；`.index/` 是 `rebuildable_derived` 且不恢复为权威数据。
