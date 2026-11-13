@@ -176,3 +176,160 @@ def test_edit_checks_again_under_the_lock(isolated_data_dir, monkeypatch):
     assert result["error"]["details"]["reason"] == "not_round_trippable"
     assert journal.read_bytes() == swapped
     assert list_revisions(journal) == []
+
+
+@pytest.mark.parametrize("value", ["5", "1.5", "true", "null", "{a: 1}", "[1, [2]]"])
+def test_a_malformed_related_entries_value_does_not_raise_after_the_write(isolated_data_dir, value):
+    """The relations store is fed through the shared indexable rule."""
+    from tools.lib.frontmatter import parse_frontmatter
+
+    journal = _journal(isolated_data_dir)
+    journal.write_bytes(
+        f"---\ntitle: T\ndate: 2026-03-04\nrelated_entries: {value}\n---\n\nbody\n".encode()
+    )
+    before, _ = parse_frontmatter(journal.read_text(encoding="utf-8"))
+
+    result = edit_journal(journal_path=journal, frontmatter_updates={"weather": "sunny"})
+
+    assert result["success"] is True, result
+    after, _ = parse_frontmatter(journal.read_text(encoding="utf-8"))
+    assert after.get("related_entries") == before.get("related_entries")
+    assert after["weather"] == "sunny"
+
+
+_FUZZ_KEYS = [
+    "title",
+    "date",
+    "location",
+    "weather",
+    "mood",
+    "entities",
+    "people",
+    "tags",
+    "project",
+    "topic",
+    "summary",
+    "abstract",
+    "links",
+    "related_entries",
+    "attachments",
+    "schema_version",
+    "custom",
+    "place",
+    "occurred",
+    "source",
+    "id",
+    "kind",
+    "expressed_at",
+    "reply_to",
+    "_private",
+    "time",
+    "X Y",
+    "\u4e2d\u6587\u952e",
+]
+_FUZZ_TEXTS = [
+    "plain",
+    "a, b",
+    "with: colon",
+    "# hash",
+    "- dash",
+    "",
+    " lead",
+    "trail ",
+    "two\nlines",
+    'quote"s',
+    "it's",
+    "2026-03-04",
+    "2026-03-04T10:11:12+08:00",
+    "true",
+    "null",
+    "007",
+    "1e3",
+    "~",
+    "[x]",
+    "{y}",
+    "|",
+    ">",
+    "@at",
+    "`tick`",
+    "%pct",
+    "tab\there",
+    "sep" + chr(0x2028),
+    "emoji" + chr(0x1F600),
+    "yes",
+    "No",
+    "0x1F",
+    "1_000",
+    "12:30",
+    ".5",
+    "a" + chr(92) + "b",
+    "\u4e2d\u6587",
+]
+
+
+def _fuzz_value(rng, depth):
+    roll = rng.random()
+    if depth < 3 and roll < 0.15:
+        return [_fuzz_value(rng, depth + 1) for _ in range(rng.randint(0, 3))]
+    if depth < 3 and roll < 0.30:
+        return {
+            rng.choice(_FUZZ_TEXTS[:6] + ["k1", "k2"]): _fuzz_value(rng, depth + 1)
+            for _ in range(rng.randint(0, 3))
+        }
+    if roll < 0.70:
+        return rng.choice(_FUZZ_TEXTS)
+    if roll < 0.78:
+        return rng.randint(-5, 10**6)
+    if roll < 0.84:
+        return rng.choice([0.0, 1.5, -2.25, 1e20, 1e-7, 3.0])
+    if roll < 0.90:
+        return rng.choice([True, False])
+    return None
+
+
+def test_every_frontmatter_the_guard_admits_survives_a_real_edit(isolated_data_dir):
+    """The guard's promise, end to end, on seeded random frontmatter.
+
+    Admitted: the edit succeeds and every field it did not touch comes back as
+    the serializer's form of what was there, types included. Refused: the bytes
+    are unchanged. Nothing raises either way.
+    """
+    import random
+
+    import yaml
+
+    from tools.lib.frontmatter import (
+        _rewrite_form,
+        _same_value,
+        frontmatter_rewrite_blocker,
+        parse_frontmatter,
+    )
+
+    rng = random.Random(20261113)
+    journal = _journal(isolated_data_dir)
+    admitted = refused = 0
+    for round_number in range(160):
+        metadata = {key: _fuzz_value(rng, 0) for key in rng.sample(_FUZZ_KEYS, rng.randint(0, 8))}
+        dumped = yaml.safe_dump(metadata, allow_unicode=True, sort_keys=False) if metadata else ""
+        text = f"---\n{dumped}---\n\nbody words\n"
+        original = text.encode("utf-8")
+        journal.write_bytes(original)
+
+        result = edit_journal(journal_path=journal, frontmatter_updates={"weather": "sunny"})
+
+        if frontmatter_rewrite_blocker(text) is not None:
+            refused += 1
+            assert result["success"] is False, (round_number, metadata)
+            assert journal.read_bytes() == original, (round_number, metadata)
+            continue
+        admitted += 1
+        assert result["success"] is True, (round_number, metadata, result)
+        before, _ = parse_frontmatter(text)
+        after, body = parse_frontmatter(journal.read_text(encoding="utf-8"))
+        expected = _rewrite_form(before)
+        expected["weather"] = "sunny"
+        assert _same_value(after, expected), (round_number, metadata, after)
+        assert body.strip() == "body words", (round_number, metadata)
+
+    assert admitted >= 100
+    assert refused >= 10

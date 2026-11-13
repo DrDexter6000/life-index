@@ -20,7 +20,9 @@ from typing import Dict, List, Optional, Any, Tuple
 # 导入配置 (relative imports from parent tools package)
 from ..lib.paths import get_journals_dir, get_by_topic_dir, get_user_data_dir, resolve_user_data_dir
 from ..lib.frontmatter import (
+    empty_indexable_metadata,
     frontmatter_rewrite_blocker,
+    normalize_indexable_metadata,
     parse_journal_file,
     format_frontmatter,
 )
@@ -598,10 +600,17 @@ def edit_journal(
                         except ValueError:
                             source_rel_path = None
                         if source_rel_path:
+                            # The shared rule turns whatever the file holds in
+                            # this field into ``list[str]``; a malformed value
+                            # must not raise after the file is written.
+                            indexable = (
+                                normalize_indexable_metadata(new_frontmatter)
+                                or empty_indexable_metadata()
+                            )
                             replace_entry_relations(
                                 metadata_conn,
                                 source_rel_path,
-                                new_frontmatter.get("related_entries", []),
+                                indexable["related_entries"],
                             )
                     finally:
                         metadata_conn.close()
