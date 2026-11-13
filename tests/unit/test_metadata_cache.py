@@ -1043,7 +1043,8 @@ class TestUnparsableFrontmatterNeverBreaksTheCache:
 
         assert cached is not None
         assert cached["title"] == ""
-        assert cached["date"] == ""
+        # No metadata survives, except the date carried by the filename.
+        assert cached["date"] == "2026-03-04"
         assert cached["topic"] == []
         assert cached["tags"] == []
         assert cached["mood"] == []

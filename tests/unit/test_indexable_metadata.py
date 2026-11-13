@@ -238,13 +238,14 @@ class TestBothDerivedStoresUseTheSameRule:
 
         conn = sqlite3.connect(str(isolated_data_dir / ".index" / "journals_fts.db"))
         try:
-            title, content = conn.execute(
-                "SELECT title, content FROM journals WHERE path = ?",
+            title, content, fts_date = conn.execute(
+                "SELECT title, content, date FROM journals WHERE path = ?",
                 (_rel(journal, isolated_data_dir),),
             ).fetchone()
         finally:
             conn.close()
         assert title == ""
+        assert fts_date == "2026-03-04"  # from the filename
         assert "unparsable" in content  # raw-text row over the whole file
 
         cached = next(
@@ -253,7 +254,7 @@ class TestBothDerivedStoresUseTheSameRule:
             if item["rel_path"] == _rel(journal, isolated_data_dir)
         )
         assert cached["title"] == ""
-        assert cached["date"] == ""
+        assert cached["date"] == fts_date
         assert cached["topic"] == []
         assert cached["tags"] == []
         json.dumps(cached["metadata"])  # JSON-safe: no dict leaked into a field

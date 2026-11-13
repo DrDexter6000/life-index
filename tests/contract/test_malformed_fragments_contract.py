@@ -342,3 +342,103 @@ def test_malformed_fragment_survives_every_operation(isolated_data_dir, shape):
                 failures.append(f"index --rebuild: exit {cli_rebuild.returncode}")
 
     assert not failures, f"shape {shape!r} broke an operation:\n" + "\n".join(failures)
+
+
+def _hit_paths(response, key: str = "merged_results") -> set[str]:
+    return {
+        str(item.get("path") or "").replace("\\", "/") for item in ((response or {}).get(key) or [])
+    }
+
+
+# YAML keys need not be strings: ``2024: x`` is an int key, and YAML 1.1 reads a
+# bare ``yes``/``on``/``true`` key as a boolean.
+NON_STRING_KEYS = {
+    "key_number": "2024: x",
+    "key_float": "1.5: x",
+    "key_boolean": "true: x",
+    "key_null": "null: x",
+}
+
+
+@pytest.mark.parametrize("shape", sorted(NON_STRING_KEYS))
+def test_non_string_frontmatter_key_does_not_break_index_or_search(isolated_data_dir, shape):
+    """A frontmatter key that is not a string is ignored, not fatal."""
+    from tools.build_index import build_all
+    from tools.search_journals.core import hierarchical_search
+
+    payload = f"---\ntitle: Keyed\ndate: {DATE}\n{NON_STRING_KEYS[shape]}\n---\n\n" + _body()
+    _write_fragments(payload.encode())
+    malformed_path, valid_path = _paths()
+
+    rebuild = build_all(incremental=False)
+    assert rebuild["success"] is True
+    assert rebuild["fts"]["unparsable_paths"] == []
+
+    response = hierarchical_search(query=TOKEN, level=3)
+    assert response["success"] is True
+    hits = {
+        str(item.get("path") or "").replace("\\", "/"): item for item in response["merged_results"]
+    }
+    hit = hits[str(malformed_path).replace("\\", "/")]
+    assert hit["title"] == "Keyed"
+
+    by_date = hierarchical_search(date_from=DATE, date_to=DATE, level=2)
+    assert by_date["success"] is True
+    assert str(malformed_path).replace("\\", "/") in _hit_paths(by_date, "l2_results")
+
+
+UNPARSABLE = (
+    "no_frontmatter",
+    "empty_frontmatter",
+    "invalid_yaml",
+    "list_root",
+    "scalar_root",
+    "title_mapping",
+    "date_impossible",
+    "tags_list_mapping",
+    "not_utf8",
+    "unclosed_frontmatter",
+)
+
+
+@pytest.mark.parametrize("shape", UNPARSABLE)
+def test_unparsable_fragment_is_found_by_its_filename_date(isolated_data_dir, shape):
+    """Both derived stores date an unparsable fragment from its filename.
+
+    A date-range query without a token is answered from the metadata cache; the
+    fragment must not vanish from "what did I write that day" because its
+    frontmatter is broken.
+    """
+    from tools.build_index import build_all
+    from tools.search_journals.core import hierarchical_search
+
+    _write_fragments(SHAPES[shape])
+    malformed_path, _valid_path = _paths()
+    assert build_all(incremental=False)["success"] is True
+
+    response = hierarchical_search(date_from=DATE, date_to=DATE, level=2)
+
+    assert response["success"] is True
+    assert str(malformed_path).replace("\\", "/") in _hit_paths(response, "l2_results")
+
+
+@pytest.mark.parametrize("shape", sorted(SHAPES))
+def test_fallback_scan_returns_the_malformed_fragment(isolated_data_dir, shape):
+    """The fallback content scan searches a malformed fragment; it never skips it.
+
+    The scan runs exactly when the index cannot be trusted, so the fragment's
+    FTS row is no substitute. Two body hits clear the scan's relevance cut-off.
+    """
+    from tools.search_journals.l3_content import search_l3_content
+
+    _write_fragments(SHAPES[shape] + b"\n" + TOKEN.encode() + b" second hit\n")
+    malformed_path, _valid_path = _paths()
+
+    results = search_l3_content(TOKEN)
+
+    found = {str(item["path"]).replace("\\", "/"): item for item in results}
+    hit = found[str(malformed_path).replace("\\", "/")]
+    assert isinstance(hit["title"], str)
+    assert isinstance(hit["date"], str)
+    for field in ("topic", "tags", "mood", "people"):
+        assert all(isinstance(value, str) for value in hit[field]), field

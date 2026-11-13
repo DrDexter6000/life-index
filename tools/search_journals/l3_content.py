@@ -9,7 +9,8 @@ from typing import Any, Dict, List, Optional
 
 # 导入配置 (relative imports from tools/lib)
 from ..lib.paths import get_user_data_dir, get_journals_dir
-from ..lib.journal_files import iter_month_journal_files
+from ..lib.frontmatter import empty_indexable_metadata, normalize_indexable_metadata
+from ..lib.journal_files import fragment_date_from_filename, iter_month_journal_files
 from ..lib.path_contract import build_journal_path_fields
 from ..lib.search_constants import (
     L3_TITLE_MATCH_BONUS,
@@ -59,12 +60,21 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
 
     for journal_file in files_to_search:
         try:
-            content = journal_file.read_text(encoding="utf-8")
+            # Bytes that are not UTF-8 are replaced, not fatal: the rest of the
+            # file is still searchable text.
+            content = journal_file.read_text(encoding="utf-8", errors="replace")
             metadata, body = parse_frontmatter(content)
+            indexable = normalize_indexable_metadata(metadata)
+            if indexable is None:
+                # Same treatment as the fragment's FTS row: the whole file is
+                # searchable text, no metadata, date from the filename.
+                metadata, body = {}, content
+                indexable = empty_indexable_metadata()
+                indexable["date"] = fragment_date_from_filename(journal_file) or ""
 
             # 在标题中搜索
             title_match = False
-            title = metadata.get("title", "")
+            title = indexable["title"]
             if query_lower in title.lower():
                 title_match = True
 
@@ -90,7 +100,7 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
 
                 results.append(
                     {
-                        "date": metadata.get("date", "")[:10],
+                        "date": indexable["date"][:10],
                         "title": title or "无标题",
                         **path_fields,
                         "title_match": title_match,
@@ -99,25 +109,20 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
                         "relevance": relevance,
                         "source": "content_search",
                         # 补充元数据字段
-                        "location": metadata.get("location", ""),
-                        "weather": metadata.get("weather", ""),
-                        "mood": metadata.get("mood", []),
-                        "people": metadata.get("people", []),
-                        "tags": metadata.get("tags", []),
-                        "topic": metadata.get("topic", []),
-                        "abstract": metadata.get("abstract", ""),
-                        "project": metadata.get("project", ""),
+                        "location": indexable["location"],
+                        "weather": indexable["weather"],
+                        "mood": indexable["mood"],
+                        "people": indexable["people"],
+                        "tags": indexable["tags"],
+                        "topic": indexable["topic"],
+                        "abstract": indexable["abstract"],
+                        "project": indexable["project"],
                         # 保留完整的 metadata 供后续使用
                         "metadata": metadata,
                     }
                 )
 
-        except (OSError, IOError, AttributeError, TypeError, ValueError):
-            # A fragment whose frontmatter does not parse can carry a mapping
-            # where a string belongs (``title.lower()``) or a non-string date
-            # (``date[:10]``). The FTS index already returns such a fragment
-            # from its raw-text row, so this fallback scan skips it; its
-            # relevance cut-off and directory walk are unchanged.
+        except (OSError, IOError):
             continue
 
     # 按匹配度排序

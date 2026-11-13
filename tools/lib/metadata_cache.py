@@ -22,7 +22,12 @@ from .frontmatter import (
     normalize_indexable_metadata,
     parse_journal_file,
 )
-from .journal_files import is_live_fragment_path, iter_month_journal_files, scan_journal_files
+from .journal_files import (
+    fragment_date_from_filename,
+    is_live_fragment_path,
+    iter_month_journal_files,
+    scan_journal_files,
+)
 from .path_contract import build_journal_path_fields
 from .chinese_tokenizer import count_cjk_words
 
@@ -174,9 +179,11 @@ def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Option
 
     The stored values come from ``normalize_indexable_metadata`` — the same
     rule the FTS row builder uses — so a row never carries a type SQLite cannot
-    bind. When the frontmatter does not parse (D1) the row is the empty row a
-    file without frontmatter gets today: the fragment stays visible to L2 with
-    no metadata, and one malformed fragment can never make the cache raise.
+    bind. When the frontmatter does not parse the row carries no metadata
+    except ``date``, which falls back to the date in the canonical fragment
+    filename, exactly like the fragment's raw-text FTS row: it stays visible to
+    L2 and to date-range queries, and one malformed fragment can never make the
+    cache raise.
     """
     try:
         # 解析日志文件
@@ -192,10 +199,17 @@ def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Option
             file_path, journals_dir=get_journals_dir(), user_data_dir=get_user_data_dir()
         )
         file_path_str = path_fields["path"]
-        frontmatter = {key: value for key, value in metadata.items() if not key.startswith("_")}
+        # ``parse_journal_file`` adds private ``_``-prefixed keys; the verdict
+        # is about the frontmatter alone. Keys need not be strings (``2024: x``).
+        frontmatter = {
+            key: value
+            for key, value in metadata.items()
+            if not (isinstance(key, str) and key.startswith("_"))
+        }
         indexable = normalize_indexable_metadata(frontmatter)
         if indexable is None:
             indexable = empty_indexable_metadata()
+            indexable["date"] = fragment_date_from_filename(file_path) or ""
         date = indexable["date"][:10]
         title = indexable["title"]
         location = indexable["location"]
