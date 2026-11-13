@@ -520,7 +520,7 @@ Alfred 是档案馆管理员这个角色的名字。用户可以为它另设人�
 `tools/lib/frontmatter.py` 的 `frontmatter_rewrite_blocker(content)`：它用同一个
 `parse_frontmatter()` 读出 mapping，再经 `format_frontmatter()` 序列化并重新解析；
 只有重新解析得到的值（连同类型）与“序列化器本来就该写出的形态”一致才返回 `None`。
-这个形态只允许序列化器有意做的三处规范化，它们都不改变任何读取方看到的内容：总是写出
+这个形态只允许序列化器有意做的三处规范化，它们都不丢失任何值：总是写出
 `schema_version`；已知字段的值为 `null` 时不写这个字段；列表字段里的字符串写成按逗号
 拆开的列表。否则返回一个 reason code：
 
@@ -537,8 +537,7 @@ Alfred 是档案馆管理员这个角色的名字。用户可以为它另设人�
 pending queue。`edit` 在动手前检查一次，拿到写锁后对锁内读到的内容再检查一次，以
 `E0202`（`details.reason` 为上述 reason）拒绝；`migrate` 只在文件确实需要迁移时才问
 这个 guard，被拒绝的文件列入 `failed_files`（读不出的文件连版本都不知道，dry-run 计入
-`unparseable`）。写新文件的工具（`write`、
-`import`）不经过这个 guard。
+`unparseable`）。写新文件的工具（`write`、`import`）不经过这个 guard。
 
 ---
 

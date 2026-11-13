@@ -161,10 +161,10 @@ def _rewrite_form(metadata: Dict[Any, Any]) -> Dict[Any, Any]:
     """The mapping ``format_frontmatter()`` is meant to write for ``metadata``.
 
     The serializer normalizes three things on purpose, and none of them loses
-    anything a reader distinguishes: it always writes ``schema_version``; it
-    leaves out a known field whose value is null (every reader treats that as
-    absent); and it writes a string in a list field as the list of its
-    comma-separated items. Everything else must come back exactly.
+    a value: it always writes ``schema_version``; it leaves out a known field
+    whose value is null (every reader treats that as absent); and it writes a
+    string in a list field as the list of its comma-separated items. Everything
+    else must come back exactly.
     """
     form: Dict[Any, Any] = {}
     for key, value in metadata.items():
