@@ -684,6 +684,10 @@ def linux_leg_script(sha: str, git_source_wsl: str) -> str:
 
     It clones the repository's common Git directory onto the WSL filesystem
     (tests never run through /mnt) and checks out the candidate detached.
+    pytest runs from inside the clone: ``wsl.exe --exec`` starts in the
+    Windows caller's directory under /mnt, so without the ``cd`` the relative
+    ``tests`` argument and ``python -m``'s ``sys.path[0]`` would resolve
+    against the caller's live working tree instead of the candidate.
     The test process starts from an empty environment (``env -i``) with a
     throwaway HOME and ``PYTHONPATH`` pointing at the clone: the shared
     cached environment is never mutated by a run, and nothing that runs
@@ -708,13 +712,16 @@ def linux_leg_script(sha: str, git_source_wsl: str) -> str:
         "cat > \"$TMP/tripwire.py\" <<'PY'\n"
         f"{TRIPWIRE_CODE}"
         "PY\n"
+        # Everything below runs inside the clone: the caller's working tree
+        # must not be imported, collected, or left with bytecode.
+        'cd "$TMP/repo"\n'
         'echo "' + PYTHON_PREFIX + '$("$VENV/bin/python" --version 2>&1)"\n'
         '"$VENV/bin/python" "$TMP/tripwire.py" '
         '"$REAL_HOME/Documents/Life-Index" > "$TMP/tripwire-before"\n'
         "set +e\n"
         'env -i PATH="$VENV/bin:/usr/bin:/bin" HOME="$TMP/home" LANG=C.UTF-8 '
         'LIFE_INDEX_DATA_DIR="$TMP/data" PYTHONUTF8=1 PYTHONIOENCODING=utf-8 '
-        'LIFE_INDEX_INDEX_FTS_ONLY=1 PYTHONPATH="$TMP/repo" '
+        'LIFE_INDEX_INDEX_FTS_ONLY=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$TMP/repo" '
         f"timeout --kill-after=30 {LEG_TIMEOUT}s "
         '"$VENV/bin/python" -m pytest tests '
         f"--timeout={PER_TEST_TIMEOUT} "

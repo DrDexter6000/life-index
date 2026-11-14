@@ -61,7 +61,10 @@ sync, no-LLM scan, the two per-commit public diff scans, the
 packaged-skill mirror check), the public Core assertion sentinel, and the
 full test suite on the local interpreter — with coverage collected in the
 same run, the threshold staying owned by `pyproject.toml` — plus, on
-Windows, the same test suite on Python 3.11 inside WSL on its own clone.
+Windows, the same test suite on Python 3.11 inside WSL on its own clone,
+running pytest from inside that clone on the WSL filesystem (never against
+the caller's working tree through /mnt) and writing no bytecode outside
+its own temporary directory.
 
 Every process that runs candidate code — static checks, sentinel and test
 legs alike — gets one sanitized environment: nothing inherited that starts
@@ -190,6 +193,10 @@ The gate does not call either script: their test targets are part of
 
 ## Version History
 
+- v2.1.1-public (2026-11-14): the WSL leg runs pytest from inside the clone
+  it creates (`cd` after the checkout) and disables bytecode writing, so the
+  leg tests the candidate commit on the WSL filesystem instead of silently
+  collecting the caller's working tree through /mnt.
 - v2.1-public (2026-11-13): the push gate is a native pre-push hook
   (`--install-hook`) that gates every pushed ref; the public-diff scans
   cover every outgoing commit; one sanitized environment (throwaway HOME,

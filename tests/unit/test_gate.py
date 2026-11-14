@@ -792,6 +792,34 @@ def test_linux_leg_test_process_cannot_reach_the_real_home(gate):
     assert 'mkdir -p "$TMP/home" "$TMP/data" "$TMP/basetemp"' in script
 
 
+def test_linux_leg_changes_into_the_clone_before_running_pytest(gate):
+    """The Linux leg runs pytest from inside the clone it just created.
+
+    wsl.exe --exec starts in the Windows caller's directory translated to
+    /mnt/c/..., so without the cd the relative ``tests`` argument and
+    ``python -m``'s sys.path[0] resolve against the live working tree of the
+    checkout the gate was started from — and the clone is never used."""
+    script = gate.module.linux_leg_script(HEAD_SHA, "/mnt/c/some repo/.git")
+    checkout_pos = script.index("--detach")
+    cd_pos = script.index('cd "$TMP/repo"')
+    pytest_pos = script.index('"$VENV/bin/python" -m pytest tests')
+
+    assert checkout_pos < cd_pos < pytest_pos
+    # Exactly one cd, before pytest and never undone: the pytest line's
+    # working directory is the clone, not inherited from the wsl.exe caller.
+    assert script.count('cd "$TMP/repo"') == 1
+
+
+def test_linux_leg_writes_no_bytecode_outside_its_temp_dir(gate):
+    """The leg's pytest must not leave ``__pycache__`` behind: bytecode
+    writing is disabled, so nothing escapes outside $TMP (which the trap
+    removes), not even into a clone were the cd ever lost again."""
+    script = gate.module.linux_leg_script(HEAD_SHA, "/mnt/c/some repo/.git")
+    pytest_line = next(line for line in script.splitlines() if " -m pytest tests " in line)
+
+    assert "PYTHONDONTWRITEBYTECODE=1" in pytest_line
+
+
 def test_linux_leg_never_mutates_the_shared_environment(gate):
     script = gate.module.linux_leg_script(HEAD_SHA, "/mnt/c/some repo/.git")
     assert "pip install" not in script  # no per-run install into the cached venv
