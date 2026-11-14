@@ -1,6 +1,5 @@
 """Tests for migration edge cases and idempotency."""
 
-import pytest
 from pathlib import Path
 
 
@@ -19,7 +18,12 @@ class TestMigrateEdgeCases:
         assert result["migrated_count"] == 1
 
     def test_corrupted_frontmatter_skipped(self, tmp_path: Path):
-        """Files without valid frontmatter still get migrated (treated as v1)."""
+        """A file without a frontmatter block is refused, not wrapped.
+
+        Wrapping the whole file in new frontmatter would change every byte
+        after the (absent) block, so the lossless rewrite rule refuses it;
+        the good file next to it still migrates.
+        """
         from tools.migrate import apply_migrations
 
         journals_dir = tmp_path / "Journals" / "2025" / "01"
@@ -32,14 +36,17 @@ class TestMigrateEdgeCases:
             'topic: ["work"]\n---\n\n# 好的\n',
             encoding="utf-8",
         )
-        # File without frontmatter — treated as v1 and migrated
+        # File without frontmatter — refused, bytes kept
         bare = journals_dir / "life-index_2025-01-02_001.md"
-        bare.write_text("这不是有效的 YAML frontmatter", encoding="utf-8")
+        bare_bytes = "这不是有效的 YAML frontmatter".encode("utf-8")
+        bare.write_bytes(bare_bytes)
 
         result = apply_migrations(tmp_path / "Journals")
-        # Both are treated as v1 and migrated (bare file gets schema_version bump)
-        assert result["migrated_count"] == 2
-        assert result["failed_count"] == 0
+        assert result["migrated_count"] == 1
+        assert result["failed_count"] == 1
+        assert result["failed_files"][0]["path"] == str(bare)
+        assert "no_frontmatter_block" in result["failed_files"][0]["error"]
+        assert bare.read_bytes() == bare_bytes
 
     def test_non_journal_files_ignored(self, tmp_path: Path):
         """Non-journal files (index, report) should be ignored."""
@@ -68,11 +75,7 @@ class TestMigrateEdgeCases:
             day = f"{(i % 28) + 1:02d}"
             month = f"{(i // 28) + 1:02d}"
             journal = (
-                tmp_path
-                / "Journals"
-                / "2025"
-                / month
-                / f"life-index_2025-{month}-{day}_001.md"
+                tmp_path / "Journals" / "2025" / month / f"life-index_2025-{month}-{day}_001.md"
             )
             journal.parent.mkdir(parents=True, exist_ok=True)
             journal.write_text(

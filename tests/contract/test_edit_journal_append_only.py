@@ -202,7 +202,7 @@ def test_edit_journal_append_content_snapshots_prior_body(tmp_path: Path) -> Non
     """append_content= must save the prior body in a revision file.
 
     edit_journal exposes 3 mutation modes (frontmatter-only, replace_content,
-    append_content). All 3 must snapshot prior content via save_revision().
+    append_content). All 3 must snapshot prior content via save_revision_bytes().
     This test covers the append_content path.
     """
     journal_path = _write_journal(tmp_path / "journal.md")

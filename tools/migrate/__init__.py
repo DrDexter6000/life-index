@@ -3,16 +3,24 @@
 from __future__ import annotations
 
 import logging
-import tempfile
 from pathlib import Path
 from typing import Any
 
+from tools.lib.config import FILE_LOCK_TIMEOUT_REBUILD
+from tools.lib.errors import ErrorCode, create_error_response
+from tools.lib.file_lock import FileLock, LockTimeoutError, get_journals_lock_path
 from tools.lib.frontmatter import (
-    format_frontmatter,
     frontmatter_rewrite_blocker,
     parse_frontmatter,
 )
 from tools.lib.journal_files import iter_journal_files
+from tools.lib.journal_rewrite import (
+    OutgoingJournalRefused,
+    render_frontmatter_block,
+    replace_journal_bytes,
+    split_journal_bytes,
+    verify_outgoing_journal,
+)
 from tools.lib.schema import SCHEMA_VERSION, run_migration_chain
 
 logger = logging.getLogger(__name__)
@@ -67,7 +75,14 @@ def scan_journals(journals_dir: Path) -> dict[str, Any]:
         total += 1
         try:
             content = md_file.read_text(encoding="utf-8")
-            reason = frontmatter_rewrite_blocker(content)
+            if split_journal_bytes(content.encode("utf-8")) is None:
+                # --apply refuses to rewrite a file without a frontmatter
+                # block at all; report the same reason dry-run would hit.
+                no_block = True
+                reason: str | None = None
+            else:
+                no_block = False
+                reason = frontmatter_rewrite_blocker(content)
             if reason == "unreadable":
                 version_dist["unparseable"] = version_dist.get("unparseable", 0) + 1
                 continue
@@ -95,9 +110,11 @@ def scan_journals(journals_dir: Path) -> dict[str, Any]:
                 "current_version": file_ver,
                 "missing_fields": missing,
             }
-            if reason is not None:
+            if reason is not None or no_block:
                 # Readable and outdated, but --apply will refuse to rewrite it.
-                entry["rewrite_blocker"] = reason
+                entry["rewrite_blocker"] = (
+                    "no_frontmatter_block" if no_block else (reason or "unreadable")
+                )
             outdated.append(entry)
 
     return {
@@ -128,6 +145,12 @@ def apply_migrations(
 ) -> dict[str, Any]:
     """Execute deterministic migrations on all outdated journals.
 
+    The whole batch runs inside the journals lock: every file is re-read
+    inside that lock and rewritten through the shared primitive
+    (``tools/lib/journal_rewrite.py``), so a concurrent journals writer that
+    follows the lock protocol serializes with the migration instead of being
+    clobbered by it.
+
     Returns:
         {
             "migrated_count": int,
@@ -143,6 +166,31 @@ def apply_migrations(
     if not journals_dir.exists():
         return _apply_empty()
 
+    lock = FileLock(get_journals_lock_path(), timeout=FILE_LOCK_TIMEOUT_REBUILD)
+    try:
+        with lock:
+            return _apply_migrations_locked(journals_dir, target)
+    except LockTimeoutError as exc:
+        # Nothing was read or written; report the empty report plus the
+        # structured lock-timeout envelope.
+        logger.error("无法获取 journals 写入锁，迁移未执行：%s", exc)
+        report = _apply_empty()
+        report.update(
+            create_error_response(
+                ErrorCode.LOCK_TIMEOUT,
+                f"无法获取 journals 写入锁，迁移未执行：{exc}",
+                {
+                    "lock_path": str(get_journals_lock_path()),
+                    "timeout": FILE_LOCK_TIMEOUT_REBUILD,
+                },
+                "等待几秒后重试，或检查是否有其他进程正在写入日志",
+            )
+        )
+        return report
+
+
+def _apply_migrations_locked(journals_dir: Path, target: int) -> dict[str, Any]:
+    """Run the migration loop; the caller already holds the journals lock."""
     migrated = 0
     already_current = 0
     failed: list[dict[str, str]] = []
@@ -151,7 +199,21 @@ def apply_migrations(
 
     for md_file in iter_journal_files(journals_dir):
         try:
-            content = md_file.read_text(encoding="utf-8")
+            # Read inside the lock; these bytes decide the rewrite.
+            raw_bytes = md_file.read_bytes()
+            split = split_journal_bytes(raw_bytes)
+            if split is None:
+                failed.append(
+                    {
+                        "path": str(md_file),
+                        "error": (
+                            "frontmatter rewrite blocked (no_frontmatter_block);"
+                            " file left unchanged"
+                        ),
+                    }
+                )
+                continue
+            content = raw_bytes.decode("utf-8")
             reason = frontmatter_rewrite_blocker(content)
             blocked = {
                 "path": str(md_file),
@@ -184,28 +246,27 @@ def apply_migrations(
 
             # Run migration chain
             result = run_migration_chain(metadata, content=body)
-
-            # Reconstruct the file with migrated frontmatter
-            new_frontmatter = format_frontmatter(result.metadata)
-            new_content = f"{new_frontmatter}\n\n{body}"
         except Exception as exc:
             failed.append({"path": str(md_file), "error": f"{type(exc).__name__}: {exc}"})
             continue
 
-        # Atomic write: write to temp file, then rename
+        # Rewrite through the shared atomic primitive: the migrated
+        # frontmatter block (LF) plus the original suffix bytes verbatim,
+        # committed only after the outgoing file passes its read-back check.
         try:
-            fd, tmp_path = tempfile.mkstemp(
-                suffix=".md",
-                prefix=".migrate_",
-                dir=md_file.parent,
+            new_bytes = render_frontmatter_block(result.metadata) + split.suffix
+            verify_outgoing_journal(raw_bytes, new_bytes, result.metadata, metadata_only=True)
+            replace_journal_bytes(md_file, new_bytes)
+        except OutgoingJournalRefused:
+            failed.append(
+                {
+                    "path": str(md_file),
+                    "error": (
+                        "frontmatter rewrite blocked (not_round_trippable);" " file left unchanged"
+                    ),
+                }
             )
-            try:
-                with open(fd, "w", encoding="utf-8") as f:
-                    f.write(new_content)
-                Path(tmp_path).replace(md_file)
-            except BaseException:
-                Path(tmp_path).unlink(missing_ok=True)
-                raise
+            continue
         except Exception as exc:
             failed.append({"path": str(md_file), "error": str(exc)})
             continue

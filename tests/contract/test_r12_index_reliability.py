@@ -60,7 +60,7 @@ def _edit_journal(journal_path: Path) -> dict:
     """通过 edit_journal 编辑一篇日志，返回编辑结果。"""
     from tools.edit_journal import edit_journal
 
-    with (patch("tools.edit_journal.save_revision", return_value="revisions/rev.md"),):
+    with (patch("tools.edit_journal.save_revision_bytes", return_value="revisions/rev.md"),):
         return edit_journal(
             journal_path=journal_path,
             frontmatter_updates={"mood": ["充实"]},

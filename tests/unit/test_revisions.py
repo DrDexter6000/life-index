@@ -91,8 +91,8 @@ def test_save_revision_generates_unique_path_when_timestamp_repeats(
     original_datetime = revisions.datetime
     revisions.datetime = FrozenDateTime
     try:
-        first = revisions.save_revision(journal, "one")
-        second = revisions.save_revision(journal, "two")
+        first = revisions.save_revision_bytes(journal, b"one")
+        second = revisions.save_revision_bytes(journal, b"two")
     finally:
         revisions.datetime = original_datetime
 

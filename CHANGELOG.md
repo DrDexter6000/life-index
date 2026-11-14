@@ -27,6 +27,64 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
   writer takes the allocated name, the journal moves to the next free number
   and the returned `journal_path`, confirmation, and indexes name the file
   actually created. Persistent collisions fail safely without replacing data.
+- Editing a journal's metadata no longer touches its words. A metadata-only
+  `edit` (or `confirm`) rewrites only the YAML header and leaves every body
+  byte — line endings (CRLF included), indentation, whitespace, the presence
+  or absence of a final newline — exactly as stored. Previously such an edit
+  silently reformatted the body and, on Windows, rewrote LF journals as CRLF.
+- Editing a legacy journal's body (`--replace-content` / `--append-content`)
+  now writes the body region without any CR on every platform: CRLF and lone
+  CR are normalized to LF both in the text carried forward and in the text
+  supplied, instead of leaving mixed line endings behind.
+- A journal the current user cannot write (a read-only attribute on Windows,
+  a 0444 mode for a non-root user on POSIX) is now refused cleanly with the
+  standard write-failure envelope on both platforms: the bytes and the file's
+  mode/attribute are unchanged and no temporary file is left behind
+  (previously Windows left a temp file next to the journal and POSIX silently
+  replaced the file).
+- An edit that changes no field value (and touches no body text) now returns
+  success without rewriting the file and without saving a revision: same-value
+  metadata edits no longer reformat the header or accumulate revision copies.
+- Journals are never truncated mid-write anymore. Every rewrite of an
+  existing journal (`edit`, `migrate`, `confirm`'s underlying edit) writes a
+  complete temporary file and swaps it in atomically while keeping the file's
+  permissions, so a crash or a full disk leaves the previous file intact and a
+  concurrent reader never sees a half-written journal.
+- The revision copy taken before an edit is now byte-identical to the file it
+  preserves (mixed line endings included), and a failed revision save stops
+  the edit instead of replacing the journal.
+- A fragment's own words can no longer be changed through `edit`:
+  `--replace-content` / `--append-content` and updates to `id`, `kind`,
+  `ingested_at`, `schema_version` or `content` on a new-form fragment are
+  refused with the new `E0505` error; a correction is added as a note
+  (`fragment note`, landing in the next package). A `location` change on such
+  a fragment no longer requires a simultaneous `weather` update; legacy
+  journals keep the coupled rule.
+- Files whose frontmatter physically holds a `content:` key whose stored value
+  is a string (or the malformed recoverable `content:` shape), and journal
+  files without a readable frontmatter block at all, are now refused (`E0202`)
+  instead of being rewritten at the cost of that text or of every body byte.
+- Every rewrite of an existing journal is verified before it is committed: the
+  outgoing file is read back with the same reader every tool uses, and unless
+  it reads exactly as intended — the metadata equals the intended mapping,
+  a metadata-only change keeps the body byte-identical, a body edit's text
+  reads back as computed — nothing is written at all (`E0202`), so a partial
+  rule elsewhere can no longer delete or forge stored words.
+- `edit` now rejects update keys that cannot be written safely (non-string,
+  empty, padded with whitespace, or containing a line break or `:`) up front
+  with `E0001`; such keys could previously forge the stored frontmatter or
+  body through the Python API.
+- Editing a journal that is a symbolic link is now refused (`E0200`) instead
+  of silently replacing the link with a regular file; the link, its target
+  and the target's bytes stay exactly as they were, and no revision or temp
+  file is left behind. Read-only journals are likewise refused before any
+  revision copy is taken.
+- `migrate --apply` now runs under the journals lock, so a journal change
+  committed while a migration is running can no longer be silently overwritten
+  by it; per-file rewrites keep each file's body bytes verbatim.
+- `write` journals contain no `\r` on any platform: the file is written as
+  UTF-8 LF bytes, and CRLF or lone CR in the supplied content is normalized to
+  LF. Existing files are left alone.
 
 ### Included in this release
 
@@ -34,6 +92,18 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
   publish and file-authority dedupe.
 - fix(write): publish journals create-only and propagate the committed path
   after a filename collision.
+- feat(edit): lossless metadata-only rewrites, atomic locked replacement
+  through the new shared primitive `tools/lib/journal_rewrite.py`, and the
+  fragment-words guard (`E0505`).
+- fix(edit): body edits write LF-only bytes; an unwritable journal is refused
+  before any temp file exists; a no-change metadata edit rewrites nothing.
+- feat(edit): commit-time read-back verification of every rewrite, up-front
+  rejection of unwritable update keys, and symlink/refusal-before-revision
+  handling; `update_frontmatter_fields()` removed (no production caller).
+- fix(migrate): run `--apply` under the journals lock and rewrite through the
+  shared atomic primitive (body suffix byte-identical).
+- fix(write): write journals as UTF-8 LF bytes on every platform.
+- fix(revisions): revision snapshots are byte-exact copies of the original.
 
 ## [1.6.2] - 2026-08-04
 

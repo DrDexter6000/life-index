@@ -118,14 +118,12 @@ class TestMigrateApply:
         self._create_v1_journal(journal)
         original_content = journal.read_text(encoding="utf-8")
 
-        def fail_replace(self, target):
+        # The rewrite now goes through the shared atomic replace primitive; a
+        # failure there must leave the original bytes and no temp behind.
+        def fail_replace(_path: Path, _data: bytes) -> None:
             raise OSError("replace failed")
 
-        def fail_rename(self, target):
-            raise OSError("rename failed")
-
-        monkeypatch.setattr(Path, "replace", fail_replace)
-        monkeypatch.setattr(Path, "rename", fail_rename)
+        monkeypatch.setattr("tools.migrate.replace_journal_bytes", fail_replace)
 
         result = apply_migrations(tmp_path / "Journals")
 
@@ -133,6 +131,7 @@ class TestMigrateApply:
         assert result["failed_count"] == 1
         assert journal.exists(), "original file should still exist after replacement failure"
         assert journal.read_text(encoding="utf-8") == original_content
+        assert [p.name for p in journal.parent.iterdir() if p.name.startswith(".")] == []
 
 
 class TestUnreadableFrontmatterIsLeftUntouched:
@@ -184,26 +183,29 @@ class TestUnreadableFrontmatterIsLeftUntouched:
         assert report["version_distribution"] == {"unparseable": 1}
         assert report["needs_migration"] == 0
 
-    def test_a_legacy_recoverable_file_still_migrates(self, tmp_path: Path):
-        from tools.lib.frontmatter import parse_frontmatter
-        from tools.lib.schema import SCHEMA_VERSION
+    def test_a_legacy_content_key_file_is_refused_and_kept(self, tmp_path: Path):
+        """A physical ``content:`` key inside the frontmatter is never dropped.
+
+        The reader merges that value into the body, so the parsed mapping no
+        longer carries it and a rewrite would silently lose the stored text.
+        ``--apply`` refuses the rewrite, keeps every byte, and reports the
+        file as failed with the reason naming the key.
+        """
         from tools.migrate import apply_migrations
 
         journal = self._journal(tmp_path)
-        journal.write_text(
+        original = (
             '---\ntitle: "Legacy"\ndate: 2025-06-15\ncontent: "line one\nline two"\n'
-            "---\n\n# body\n",
-            encoding="utf-8",
-        )
+            "---\n\n# body\n"
+        ).encode("utf-8")
+        journal.write_bytes(original)
 
         result = apply_migrations(tmp_path / "Journals")
 
-        assert result["migrated_count"] == 1
-        assert result["failed_count"] == 0
-        metadata, body = parse_frontmatter(journal.read_text(encoding="utf-8"))
-        assert metadata["schema_version"] == SCHEMA_VERSION
-        assert metadata["title"] == "Legacy"
-        assert "line one" in body
+        assert result["migrated_count"] == 0
+        assert result["failed_count"] == 1
+        assert "content_key_in_frontmatter" in result["failed_files"][0]["error"]
+        assert journal.read_bytes() == original
 
 
 class TestNotRoundTrippableFrontmatterIsLeftUntouched:

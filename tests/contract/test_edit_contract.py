@@ -64,7 +64,7 @@ def test_edit_result_matches_golden_snapshot(tmp_path: Path) -> None:
 
     with (
         patch("tools.edit_journal.mark_pending"),
-        patch("tools.edit_journal.save_revision", return_value="REVISION_PATH"),
+        patch("tools.edit_journal.save_revision_bytes", return_value="REVISION_PATH"),
         patch("tools.edit_journal.refresh_index_b", return_value=_index_b_refresh_fixture()),
     ):
         result = edit_journal(

@@ -11,7 +11,6 @@ from tools.lib.frontmatter import (
     parse_journal_file,
     format_frontmatter,
     format_journal_content,
-    update_frontmatter_fields,
     validate_metadata,
     migrate_metadata,
     get_required_fields,
@@ -455,108 +454,6 @@ class TestValidateMetadata:
         issues = validate_metadata(metadata)
 
         assert any(issue["field"] == "related_entries" for issue in issues)
-
-
-class TestUpdateFrontmatterFields:
-    """Tests for update_frontmatter_fields function (lines 223-252)"""
-
-    def test_dry_run(self, tmp_path):
-        """Test dry_run mode doesn't modify file"""
-        file_path = tmp_path / "test.md"
-        original_content = """---
-title: "Original"
-date: 2026-03-10
----
-
-# Original
-
-Content.
-"""
-        file_path.write_text(original_content, encoding="utf-8")
-
-        result = update_frontmatter_fields(file_path, {"title": "Updated"}, dry_run=True)
-
-        assert result["success"] is True
-        assert "title" in result["changes"]
-        assert result["changes"]["title"]["old"] == "Original"
-        assert result["changes"]["title"]["new"] == "Updated"
-
-        # File should not be modified
-        assert file_path.read_text(encoding="utf-8") == original_content
-
-    def test_actual_update(self, tmp_path):
-        """Test actual file update"""
-        file_path = tmp_path / "test.md"
-        original_content = """---
-title: "Original"
-date: 2026-03-10
----
-
-# Original
-
-Content.
-"""
-        file_path.write_text(original_content, encoding="utf-8")
-
-        result = update_frontmatter_fields(file_path, {"title": "Updated"}, dry_run=False)
-
-        assert result["success"] is True
-        assert "title" in result["changes"]
-
-        # File should be modified
-        updated_content = file_path.read_text(encoding="utf-8")
-        assert 'title: "Updated"' in updated_content
-        assert "Content." in updated_content  # Body preserved
-
-    def test_no_changes(self, tmp_path):
-        """Test update with same value"""
-        file_path = tmp_path / "test.md"
-        content = """---
-title: "Same"
-date: 2026-03-10
----
-
-# Title
-
-Content.
-"""
-        file_path.write_text(content, encoding="utf-8")
-
-        result = update_frontmatter_fields(file_path, {"title": "Same"}, dry_run=False)
-
-        assert result["success"] is True
-        assert result["changes"] == {}
-
-    def test_file_not_found(self, tmp_path):
-        """Test handling of file not found error"""
-        file_path = tmp_path / "nonexistent.md"
-
-        result = update_frontmatter_fields(file_path, {"title": "Test"}, dry_run=False)
-
-        assert result["success"] is False
-        assert result["error"] is not None
-
-    def test_add_new_field(self, tmp_path):
-        """Test adding a new field"""
-        file_path = tmp_path / "test.md"
-        content = """---
-title: "Test"
-date: 2026-03-10
----
-
-# Title
-
-Content.
-"""
-        file_path.write_text(content, encoding="utf-8")
-
-        result = update_frontmatter_fields(file_path, {"weather": "Sunny"}, dry_run=False)
-
-        assert result["success"] is True
-        assert "weather" in result["changes"]
-
-        updated_content = file_path.read_text(encoding="utf-8")
-        assert 'weather: "Sunny"' in updated_content
 
 
 class TestParseJournalFile:

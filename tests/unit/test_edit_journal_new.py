@@ -239,9 +239,7 @@ class TestUpdateIndicesForChange:
 
         # Create old index
         old_index = tmp_path / "主题_work.md"
-        old_index.write_text(
-            "# 主题：work\n\n- [2026-03-14] [Test](path.md)\n", encoding="utf-8"
-        )
+        old_index.write_text("# 主题：work\n\n- [2026-03-14] [Test](path.md)\n", encoding="utf-8")
 
         journal_path = tmp_path / "test.md"
         journal_path.write_text("# Test", encoding="utf-8")
@@ -300,9 +298,7 @@ class TestUpdateIndicesForChange:
         from tools.edit_journal import update_indices_for_change
 
         old_index = tmp_path / "项目_OldProject.md"
-        old_index.write_text(
-            "# 项目：OldProject\n\n- [Test](path.md)\n", encoding="utf-8"
-        )
+        old_index.write_text("# 项目：OldProject\n\n- [Test](path.md)\n", encoding="utf-8")
 
         journal_path = tmp_path / "test.md"
         journal_path.write_text("# Test", encoding="utf-8")
@@ -530,9 +526,7 @@ class TestEditJournal:
             "---\ntitle: Test\ndate: 2026-03-14\n---\n\n# Content\n", encoding="utf-8"
         )
 
-        with patch(
-            "tools.edit_journal.mark_pending", return_value=False
-        ) as mock_update:
+        with patch("tools.edit_journal.mark_pending", return_value=False):
             result = edit_journal(journal, {}, append_content="New paragraph")
 
         assert result["success"] is True
@@ -551,12 +545,8 @@ class TestEditJournal:
             encoding="utf-8",
         )
 
-        with patch(
-            "tools.edit_journal.mark_pending", return_value=False
-        ) as mock_update:
-            result = edit_journal(
-                journal, {}, replace_content="# New Content\n\nReplaced."
-            )
+        with patch("tools.edit_journal.mark_pending", return_value=False):
+            result = edit_journal(journal, {}, replace_content="# New Content\n\nReplaced.")
 
         assert result["success"] is True
         assert result["content_modified"] is True
@@ -635,9 +625,7 @@ class TestEditJournal:
 
         with patch("tools.edit_journal.get_journals_dir", return_value=journal.parent.parent):
             with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path / "by-topic"):
-                with patch(
-                    "tools.edit_journal.mark_pending", return_value=False
-                ):
+                with patch("tools.edit_journal.mark_pending", return_value=False):
                     result = edit_journal(journal, {"topic": ["learn"]})
 
         assert result["success"] is True
@@ -664,9 +652,7 @@ class TestEditJournal:
 
         with patch("tools.edit_journal.get_journals_dir", return_value=journal.parent.parent):
             with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path / "by-topic"):
-                with patch(
-                    "tools.edit_journal.mark_pending", return_value=False
-                ):
+                with patch("tools.edit_journal.mark_pending", return_value=False):
                     result = edit_journal(journal, {"project": "NewProject"})
 
         assert result["success"] is True
@@ -693,9 +679,7 @@ class TestEditJournal:
 
         with patch("tools.edit_journal.get_journals_dir", return_value=journal.parent.parent):
             with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path / "by-topic"):
-                with patch(
-                    "tools.edit_journal.mark_pending", return_value=False
-                ):
+                with patch("tools.edit_journal.mark_pending", return_value=False):
                     result = edit_journal(journal, {"tags": ["new"]})
 
         assert result["success"] is True
@@ -717,6 +701,7 @@ class TestEditJournal:
 
         import tools.lib.paths as paths
         import tools.lib.pending_writes as pw_mod
+
         idx = tmp_path / ".index"
         idx.mkdir()
         with (
@@ -753,12 +738,16 @@ class TestEditJournal:
             encoding="utf-8",
         )
 
-        # Mock Path.write_text to raise IOError
-        with patch("pathlib.Path.write_text", side_effect=IOError("Disk full")):
+        # The journal write now goes through the shared atomic replace
+        # primitive; an I/O failure there must surface as WRITE_FAILED.
+        with patch("tools.edit_journal.replace_journal_bytes", side_effect=IOError("Disk full")):
             result = edit_journal(journal, {"weather": "Sunny"})
 
         assert result["success"] is False
         assert result["error"]["code"] == "E0200"  # WRITE_FAILED
+        assert journal.read_text(encoding="utf-8") == (
+            "---\ntitle: Test\ndate: 2026-03-14\n---\n\n# Content\n"
+        )
 
     def test_edit_os_error_handling(self, tmp_path):
         """Edit handles OSError gracefully"""
@@ -770,12 +759,16 @@ class TestEditJournal:
             encoding="utf-8",
         )
 
-        # Mock Path.write_text to raise OSError
-        with patch("pathlib.Path.write_text", side_effect=OSError("Permission denied")):
+        with patch(
+            "tools.edit_journal.replace_journal_bytes", side_effect=OSError("Permission denied")
+        ):
             result = edit_journal(journal, {"weather": "Sunny"})
 
         assert result["success"] is False
         assert result["error"]["code"] == "E0200"  # WRITE_FAILED
+        assert journal.read_text(encoding="utf-8") == (
+            "---\ntitle: Test\ndate: 2026-03-14\n---\n\n# Content\n"
+        )
 
     def test_edit_field_update_same_value(self, tmp_path):
         """Edit doesn't record change when value is same"""
@@ -842,7 +835,7 @@ class TestEditJournal:
             'title: "Test"\n'
             "date: 2026-03-14\n"
             'links: ["https://example.com/a"]\n'
-            'attachments: [{"filename": "old.png", "rel_path": "../../../attachments/2026/03/old.png"}]\n'
+            'attachments: [{"filename": "old.png", "rel_path": "../../../attachments/2026/03/old.png"}]\n'  # noqa: E501
             "---\n\n"
             "# Content\n",
             encoding="utf-8",
@@ -968,7 +961,7 @@ class TestEditJournal:
             # First call adds to updated_indices
             updated = update_indices_for_change(journal_path, old_data, new_data)
             # Second call should not add duplicate
-            updated2 = update_indices_for_change(journal_path, old_data, new_data)
+            update_indices_for_change(journal_path, old_data, new_data)
 
         assert str(idx_file) in updated
 
@@ -1054,7 +1047,7 @@ class TestEditJournal:
         new_data = {"topic": ["", "work"], "date": "2026-03-14", "title": "Test"}
 
         with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
-            updated = update_indices_for_change(journal_path, old_data, new_data)
+            update_indices_for_change(journal_path, old_data, new_data)
 
         # Only 'work' should be added, empty string should be skipped
         work_idx = tmp_path / "主题_work.md"
@@ -1072,7 +1065,7 @@ class TestEditJournal:
         new_data = {"tags": ["", "important"], "date": "2026-03-14", "title": "Test"}
 
         with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
-            updated = update_indices_for_change(journal_path, old_data, new_data)
+            update_indices_for_change(journal_path, old_data, new_data)
 
         # Only 'important' should be added, empty string should be skipped
         tag_idx = tmp_path / "标签_important.md"
@@ -1080,7 +1073,7 @@ class TestEditJournal:
 
     def test_update_indices_topic_index_already_in_updated(self, tmp_path):
         """Test topic index already in updated_indices when adding"""
-        from tools.edit_journal import update_indices_for_change, add_to_index
+        from tools.edit_journal import update_indices_for_change
 
         journal_path = tmp_path / "Journals" / "2026" / "03" / "test.md"
         journal_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1090,14 +1083,11 @@ class TestEditJournal:
         idx_file = tmp_path / "主题_work.md"
         idx_file.write_text("# 主题：work\n\n", encoding="utf-8")
 
-        old_data = {"topic": ["work"]}  # work is already in old
         new_data = {"topic": ["work"], "date": "2026-03-14", "title": "Test"}
 
         with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
             # First add the index to updated_indices via removal
-            updated = update_indices_for_change(
-                journal_path, {"topic": ["work", "learn"]}, new_data
-            )
+            update_indices_for_change(journal_path, {"topic": ["work", "learn"]}, new_data)
 
         # The index should be in updated_indices from the removal of 'learn'
         # and the addition of 'work' should not add duplicate

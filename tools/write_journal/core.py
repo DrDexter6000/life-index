@@ -50,6 +50,7 @@ from .utils import (
     get_year_month,
 )
 from ..lib.frontmatter import format_journal_content as format_content
+from ..lib.journal_rewrite import normalize_lf
 from .attachments import (
     AttachmentStaging,
     compensate_published_attachments,
@@ -940,8 +941,10 @@ def _commit_primary_journal_and_attachments(
                 else:
                     raise FileExistsError("could not allocate a unique temporary journal path")
                 os.close(fd)
-                with open(temp_path, "w", encoding="utf-8") as f:
-                    f.write(full_content)
+                # Binary mode: the LF-normalized content is written as UTF-8
+                # bytes, so no platform newline translation can reintroduce CR.
+                with open(temp_path, "wb") as f:
+                    f.write(full_content.encode("utf-8"))
                     f.flush()
                     os.fsync(f.fileno())
         except (OSError, IOError, RuntimeError) as exc:
@@ -1729,7 +1732,10 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                 journal_path, month_dir, year, month = _generate_journal_path(date_str, timer)
                 attachment_staging = _process_attachments(data, result, date_str, dry_run, timer)
                 try:
-                    full_content = format_content(data)
+                    # write 产物在所有平台上都是 LF：正文里携带的 CRLF 或
+                    # 孤立 CR 统一归一为 LF，新日志不含任何 CR。既有文件
+                    # 不做迁移。
+                    full_content = normalize_lf(format_content(data))
                 except (ValueError, OSError, IOError, RuntimeError) as exc:
                     if attachment_staging is not None and attachment_staging.stage_root is not None:
                         cleanup_errors = discard_attachment_staging(attachment_staging)

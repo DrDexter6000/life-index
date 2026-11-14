@@ -563,6 +563,7 @@ relationships:
 | E0502 | 字段不识别 | ask_user |
 | E0503 | 无变更指定 | ask_user |
 | E0504 | 修改地点时缺少天气 | ask_user |
+| E0505 | 碎片原话不可编辑（改用 `fragment note` 补记更正） | ask_user |
 
 ### 索引模块 (E06xx)
 
@@ -780,6 +781,8 @@ python -m tools.write_journal --data '<json>'
 - `prepare_journal_metadata()` 和直接 `write_journal()` 路径都会为自动日期记录 `field_sources.date="auto"`
 - `content` 在产品 / workflow 语义上通常应提供，但并非这里定义的同级硬校验项
 - `title` / `topic` / `abstract` 更准确地说是 **Agent / Web workflow 负责补齐**，不是 `write_journal()` 当前源码的硬必填
+- 新日志文件在所有平台上都是 UTF-8、LF 字节：`content` 里携带的 CRLF 或孤立 CR 统一归一为
+  LF，新写入的 journal 不含任何 `\r`。既有文件不做迁移，原样保留
 
 ### Structured Input Authority
 
@@ -5104,10 +5107,51 @@ python -m tools.edit_journal --journal "<path>" [options]
 
 ### 编辑规则
 
-- 只要修改 `location`，就必须同时提交新的 `weather`
+- 只要修改 `location`，就必须同时提交新的 `weather`；**新形态 fragment 例外**（见下文
+  *碎片原话与身份字段*）：文件名按碎片规则分类、且锁内读到的 frontmatter 带
+  `kind: fragment` 与非空 `id` 的文件，`location` 修改不再要求同步 `weather`
 - 推荐顺序：先调用 `query_weather` 获取天气；如果失败，允许 Agent 手动联网查询天气后再继续编辑
 - 如果最终拿不到新的天气，本次地点修改不得成功写入
 - 调用前必须先解决 target selection 与 mutation intent；`edit_journal` 不负责替调用方猜测编辑目标或变更类型
+
+### 重写的字节保证（lossless rewrite）
+
+重写机制（锁内单次字节快照、临时文件、原子替换）在 `docs/ARCHITECTURE.md` 的
+*Rewrite of an existing journal* 一处描述；这里只列调用方可观察的结果：
+
+- **仅改元数据**（`--set-*` / confirm 的字段更新）：frontmatter 区块之后的所有字节
+  **逐字节不变** —— 分隔空行、缩进、混合行尾（CRLF）、行首尾空白、有无最后换行，全部
+  原样保留；`content_modified` 为 `false`
+- **改正文**（legacy journal 的 `--replace-content` / `--append-content`）：写出的正文
+  区域不含任何 CR —— 携带的旧正文与调用方提供的文本里的 CRLF、孤立 CR 都归一为 LF；
+  `content_modified` 恰好在正文字节实际变化时为 `true`
+- 失败时机不同，结果不同：**替换之前**的任何失败（含当前用户无权写入该文件、或该路径
+  是符号链接，返回 `E0200`）原文件字节不变、目录里没有残留的临时文件、也没有新 revision；
+  **替换之后**文件已是新字节，其后的派生存储（FTS / 元数据缓存 / 索引）失败按既有契约
+  非阻塞上报，不回滚文件
+- 每次提交前，重写结果会先用公共 reader 读回核验（frontmatter 与意图一致、仅改元数据时
+  后缀与读到的正文不变、改正文时正文与计算结果一致）；核验不过即拒绝（`E0202`
+  `not_round_trippable`），字节不变
+- 保存 revision 时，revision 副本与被替换前的文件**逐字节一致**；revision 保存失败则
+  日志不被替换
+- 没有任何字段值变化（类型敏感比较）、也没有正文操作时：返回 `success`，不重写文件、
+  不保存 revision（`revision_path` 为 `null`，`content_modified` 为 `false`）
+
+### 碎片原话与身份字段（new-form fragment）
+
+文件名按碎片规则分类（`life-index_YYYY-MM-DD_NNN.md`）、且锁内读到的 frontmatter 带
+`kind: fragment` 与非空 `id` 的文件是**新形态 fragment**：它的正文是用户本人的原话，不可
+通过 `edit` 修改。身份判定用锁内读到的 frontmatter，同一次调用里改 `kind` / `id` 也绕不过。
+
+- `--replace-content` / `--append-content` 被拒绝，`error.code` 为 `E0505`
+  （`FRAGMENT_WORDS_IMMUTABLE`），message 说明碎片原话不编辑、更正以 `fragment note`
+  补记
+- `id`、`kind`、`ingested_at`、`schema_version`、`content` 字段的更新被拒绝（`E0505`，
+  `details.field` 指明字段）
+- 其余元数据（`location`、`weather`、`place`、`expressed_at`、`date`、`occurred`、
+  `source`、`reply_to`、附件等）照常可编辑；`location` 修改不要求同步 `weather`
+- legacy journal（不满足上述身份判定）保持既有规则：`location` 必须同步 `weather`，
+  正文可经 `--replace-content` / `--append-content` 修改
 
 ### 不可重写 frontmatter 的拒绝
 
@@ -5117,12 +5161,23 @@ envelope：
 
 - `error.code` 为 `E0202`（`FRONTMATTER_INVALID`）
 - `error.message` 与 `error.details.reason` 指明原因：`unreadable`（frontmatter 区块读不出
-  mapping root）或 `not_round_trippable`（区块可读，但序列化器写不回去，例如非字符串键、
-  `_` 开头的键、`!!set`、`!!pairs`）
+  mapping root）、`content_key_in_frontmatter`（区块里物理存在 `content:` 键且存储值为字符串
+  ——含可恢复的 malformed `content:` 形态——重写解析结果会丢掉该键存储的文本）、
+  `not_round_trippable`（区块可读，但序列化器写不回去，例如非字符串键、`_` 开头的键、
+  `!!set`、`!!pairs`；提交前的读回核验不过也是这个 reason）或 `no_frontmatter_block`
+  （文件没有字节级 frontmatter 区块——把整份文件包进新区块会改掉正文的每一个字节）
 - 文件字节保持不变；不创建 revision，不更新索引/缓存，不入 pending queue，不留锁
 
 该拒绝适用于所有编辑类型（仅修改 frontmatter、追加正文、替换正文）以及 `--dry-run`。
 调用方不得自行重试或改用其它方式修复该文件；应把文件与原因告知用户。
+
+另外的请求级拒绝（同样保持文件字节不变）：
+
+- `frontmatter_updates` 试图更新 `content` 键：普通 journal 以 `E0001`（`INVALID_INPUT`）
+  拒绝——正文只能经 `--replace-content` / `--append-content` 修改，不能从 frontmatter
+  更新里夹带（新形态 fragment 对该键的拒绝码为 `E0505`）
+- `frontmatter_updates` 的键本身不可写入（非字符串、空串、带首尾空白、含换行或 `:`）：
+  以 `E0001` 拒绝——键会被原样写进 frontmatter，这样的键可以伪造文件内容
 
 ### 地点 / 天气耦合语义
 
@@ -5186,8 +5241,10 @@ queue，由下次搜索 preflight 或 `life-index index` 修复；`skipped` 不�
 | E0500 | 日志不存在 | ask_user |
 | E0502 | 字段不识别 | ask_user |
 | E0503 | 无变更 | ask_user |
-| E0504 | 修改地点时缺少天气 | ask_user |
-| E0202 | frontmatter 无法在不丢失内容的前提下重写（`details.reason` 为 `unreadable` / `not_round_trippable`） | fail |
+| E0504 | 修改地点时缺少天气（legacy journal；新形态 fragment 不适用） | ask_user |
+| E0505 | 碎片原话不可编辑：新形态 fragment 的 `--replace-content` / `--append-content` 与 `id` / `kind` / `ingested_at` / `schema_version` / `content` 更新被拒绝，更正以 `fragment note` 补记 | ask_user |
+| E0202 | frontmatter 无法在不丢失内容的前提下重写（`details.reason` 为 `unreadable` / `content_key_in_frontmatter` / `not_round_trippable` / `no_frontmatter_block`） | fail |
+| E0001 | `frontmatter_updates` 尝试更新 `content` 键（普通 journal） | ask_user |
 
 ---
 
@@ -7620,9 +7677,20 @@ life-index version
 > **可读但写不回去的 frontmatter**：区块可读、但序列化器写不回去（非字符串键、`_` 开头
 > 的键、`!!set`、`!!pairs` 等）的文件，版本读得出来，所以 dry-run 按它的真实版本计数；
 > 需要迁移时照常列入 `outdated_files`，并多带一个 `rewrite_blocker`（值为
-> `not_round_trippable`）。`--apply` 不重写这样的文件，列入 `failed_files` 且 `error` 含该
-> reason，文件字节保持不变。已是当前版本的文件本来就不会被重写，计入 `already_current`。
-> 判定规则见 `docs/ARCHITECTURE.md` 的 *Frontmatter 重写边界*。
+> `not_round_trippable`）。区块里物理存在字符串 `content:` 键的文件同理，`rewrite_blocker`
+> 为 `content_key_in_frontmatter`——重写解析结果会丢掉该键存储的文本。`--apply` 不重写
+> 这样的文件，列入 `failed_files` 且 `error` 含该 reason，文件字节保持不变。已是当前版本的
+> 文件本来就不会被重写，计入 `already_current`。判定规则见 `docs/ARCHITECTURE.md` 的
+> *Frontmatter 重写边界*。
+>
+> **没有 frontmatter 区块的文件**：一个连字节级 `---` 区块都没有的 journal 文件（无/残缺
+> 分隔线、BOM 开头）dry-run 照常按 v1 计入 `outdated_files` 并多带
+> `rewrite_blocker: no_frontmatter_block`；`--apply` 不把它包进新区块（那会改掉正文的
+> 每一个字节），而是列入 `failed_files`，字节保持不变。
+>
+> **锁与重写字节**：`--apply` 整批在 journals 锁内执行（拿不到锁时返回零计数的报告并附
+> `E0005` 错误 envelope），每个文件在锁内重新读取，经共享原子原语重写：迁移后的
+> frontmatter 块（LF）+ 原后缀逐字节不变。
 >
 > **单个文件不会中断整次迁移**：`--apply` 对某个文件算不出迁移结果时（`schema_version`
 > 不是数字、frontmatter 含序列化器写不回去的非字符串键等），该文件列入 `failed_files`、

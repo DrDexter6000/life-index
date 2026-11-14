@@ -527,18 +527,25 @@ Alfred 是档案馆管理员这个角色的名字。用户可以为它另设人�
 
 - `unreadable`：带 `---` 区块但读不出 mapping root（list/scalar root、无法恢复的 YAML、
   递归结构）——重写会删掉用户写下的 YAML 文本。
+- `content_key_in_frontmatter`：区块里物理存在 `content:` 键且存储值为字符串（含可恢复
+  的 malformed `content:` 形态）——读取侧会
+  把该值并进正文并从 mapping 里删掉它，重写解析结果会静默丢掉这段存储的文本。
 - `not_round_trippable`：区块可读，但序列化器无法复现解析结果（非字符串键、`_` 开头的
   键、`!!set`、`!!pairs` 等）——重写会改写或丢失值。
 
 这个检查偏向拒绝：序列化器与上述形态一旦不一致，结果是拒绝重写，而不是有损重写。
 
-没有 `---` 区块、空区块，以及只是排版会变化的 YAML 都可重写；比较的是解析后的值，不是
-文本。重写既有文件的工具（`edit`、`migrate`、`update_frontmatter_fields()`）在计算或
+空区块，以及只是排版会变化的 YAML 都可重写；比较的是解析后的值，不是
+文本。重写既有文件的工具（`edit`、`migrate`）在计算或
 写入前调用这个 guard：被拒绝时文件字节不变，不创建 revision，不更新索引/缓存，不入
-pending queue。`edit` 在动手前检查一次，拿到写锁后对锁内读到的内容再检查一次，以
-`E0202`（`details.reason` 为上述 reason）拒绝；`migrate` 只在文件确实需要迁移时才问
-这个 guard，被拒绝的文件列入 `failed_files`（读不出的文件连版本都不知道，dry-run 计入
-`unparseable`）。写新文件的工具（`write`、`import`）不经过这个 guard。
+pending queue。这些工具的整条重写路径（读取快照、guard、fragment 身份判定、revision、
+替换）都在 journals 锁内的一次字节快照上执行，共用 `tools/lib/journal_rewrite.py` 的
+原语（见 §5.7 *Rewrite of an existing journal*）；一个连字节级 frontmatter 区块都没有
+的文件（无/残缺分隔线、BOM 开头、带前导空白的开栏线）同样以 `E0202`（`details.reason`
+为 `no_frontmatter_block`）拒绝——把整份文件包进新区块会改掉正文的每一个字节。`migrate`
+只在文件确实需要迁移时才问这个 guard，被拒绝的文件列入 `failed_files`（读不出的文件
+连版本都不知道，dry-run 计入 `unparseable`）。写新文件的工具（`write`、`import`）
+不经过这个 guard。
 
 ### 4.4 每种类的必需字段（per-kind required fields）
 
@@ -830,6 +837,47 @@ the execution truth for the compatibility summaries `write_outcome`,
 
 This is a bounded file transaction, not a WAL, background worker, database, or
 new queue protocol.
+
+#### Rewrite of an existing journal (`edit` / `migrate` / `confirm`)
+
+Every tool that rewrites an **existing** journal file goes through one shared
+primitive, `tools/lib/journal_rewrite.py`, inside the journals lock: the file's
+bytes are read once under the lock, split into the stored frontmatter block
+(opening delimiter through the closing delimiter line with its line ending) and
+the untouched suffix. The split opens a block only where the text parser reads
+one (`frontmatter.frontmatter_opens_block`), and the block boundary comes from
+the **one** whole-line delimiter rule
+(`frontmatter.is_frontmatter_delimiter_line`) the parser also uses, so the byte
+split and the parser can never disagree about where the frontmatter ends. A
+metadata-only change writes a newly formatted frontmatter block (LF)
+plus the original suffix bytes **verbatim** — mixed line endings, indentation,
+trailing whitespace and the presence or absence of a final newline survive, and
+a reader without the lock never sees a half-written file, because the new bytes
+go to a same-directory temp file (exclusive create, the original file's mode,
+fsync) that is `os.replace`d onto the journal (bounded retry for Windows
+transient WinError 5/32; temp removed on every failure path; the journal is
+never truncated in place; the post-replace parent-directory fsync is
+best-effort — its errors are ignored). A journal that cannot be replaced — a
+symbolic link, or not writable by the current user
+(`journal_rewrite.ensure_replaceable_journal`, called before any revision is
+saved) — is refused with `PermissionError` before any temp exists, so both
+platforms fail identically with nothing left behind. Immediately before the
+replace, the outgoing file itself is read back with the public reader and
+verified (`journal_rewrite.verify_outgoing_journal`): the rendered block
+survived, the metadata reads back as the intended mapping (type-sensitively),
+a metadata-only rewrite keeps the suffix and the reader-visible body
+byte-identical, and a content edit's body reads back as computed — otherwise
+the rewrite is refused (`E0202` `not_round_trippable`) with nothing written.
+Body edits on legacy journals (`--replace-content` / `--append-content`)
+rewrite the body region through the one shared LF normalizer
+(`journal_rewrite.normalize_lf`): the written region contains no CR at all —
+neither in the text carried forward nor in the text the caller supplied. A
+metadata edit that changes no field value (type-sensitive comparison, the same
+rule as the outgoing check) rewrites nothing and keeps no revision. A new-form
+fragment's words are never rewritten (`edit` refuses with `E0505`). The
+revision copy `edit` keeps is byte-exact, and `migrate --apply` holds the same
+journals lock for its whole batch, so a concurrent journals writer serializes
+with it instead of being clobbered.
 
 #### Fragment write path (`fragment add`)
 

@@ -90,6 +90,7 @@ class ErrorCode:
     FIELD_NOT_RECOGNIZED = "E0502"
     NO_CHANGES_SPECIFIED = "E0503"
     LOCATION_WEATHER_REQUIRED = "E0504"
+    FRAGMENT_WORDS_IMMUTABLE = "E0505"
 
     # ========== Index Module (06xx) ==========
     INDEX_BUILD_FAILED = "E0600"
@@ -161,6 +162,7 @@ class LifeIndexError(Exception):
         ErrorCode.JOURNAL_NOT_FOUND: RecoveryStrategy.ASK_USER,
         ErrorCode.NO_CHANGES_SPECIFIED: RecoveryStrategy.ASK_USER,
         ErrorCode.LOCATION_WEATHER_REQUIRED: RecoveryStrategy.ASK_USER,
+        ErrorCode.FRAGMENT_WORDS_IMMUTABLE: RecoveryStrategy.ASK_USER,
         # Search errors: Continue degraded or return empty
         ErrorCode.INDEX_NOT_FOUND: RecoveryStrategy.CONTINUE,
         ErrorCode.NO_RESULTS: RecoveryStrategy.CONTINUE_EMPTY,
@@ -265,6 +267,9 @@ ERROR_DESCRIPTIONS = {
     ErrorCode.FIELD_NOT_RECOGNIZED: "Field not recognized for editing",
     ErrorCode.NO_CHANGES_SPECIFIED: "No changes specified",
     ErrorCode.LOCATION_WEATHER_REQUIRED: "Location changes require weather update",
+    ErrorCode.FRAGMENT_WORDS_IMMUTABLE: (
+        "A fragment's own words cannot be edited; add a correction with `fragment note`"
+    ),
     # Index
     ErrorCode.INDEX_BUILD_FAILED: "Failed to build index",
     ErrorCode.INDEX_CORRUPTED: "Index is corrupted",

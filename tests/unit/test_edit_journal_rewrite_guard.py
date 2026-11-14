@@ -104,7 +104,11 @@ def test_edit_refuses_without_touching_the_journal(isolated_data_dir, shape, mod
     assert reason in error["message"]
     assert journal.read_bytes() == original
     assert list_revisions(journal) == []
-    assert _derived_state(isolated_data_dir) == before
+    after = _derived_state(isolated_data_dir)
+    # Taking the journals lock may create the empty .cache/journals.lock file;
+    # that is lock infrastructure, not a derived store of journal content.
+    after["cache"].pop("journals.lock", None)
+    assert after == before
 
 
 # Shapes the serializer normalizes on purpose: an edit goes through, and the
@@ -149,28 +153,32 @@ def test_edit_still_rewrites_what_the_serializer_only_normalizes(isolated_data_d
 
 
 def test_edit_checks_again_under_the_lock(isolated_data_dir, monkeypatch):
-    """The content read under the lock is what gets rewritten, so it is what is checked."""
-    import tools.edit_journal as edit_module
+    """The single snapshot that decides the edit is read inside the lock.
+
+    Another writer commits (and releases the lock) between this call's
+    pre-lock checks and its lock acquisition; the bytes read under the lock —
+    the only bytes this edit ever looks at — are the swapped ones, so the
+    rewrite guard refuses them.
+    """
+    from tools.lib.file_lock import FileLock
 
     journal = _journal(isolated_data_dir)
     journal.write_bytes(b"---\ntitle: T\ndate: 2026-03-04\n---\n\nbody\n")
     swapped = b"---\ntitle: T\ndate: 2026-03-04\n2024: x\n---\n\nother words\n"
-    real_apply = edit_module._apply_edit_updates
-    calls = []
 
-    def apply_then_swap(**kwargs):
-        computed = real_apply(**kwargs)
-        calls.append(1)
-        if len(calls) == 1:
-            # Another writer replaces the file after the first check passed.
+    class SwapBeforeAcquire(FileLock):
+        def __enter__(self):
+            # The other writer's commit lands just before this edit takes
+            # the lock; everything this edit reads happens after it.
             journal.write_bytes(swapped)
-        return computed
+            return super().__enter__()
 
-    monkeypatch.setattr(edit_module, "_apply_edit_updates", apply_then_swap)
+    import tools.edit_journal as edit_module
+
+    monkeypatch.setattr(edit_module, "FileLock", SwapBeforeAcquire)
 
     result = edit_journal(journal_path=journal, frontmatter_updates={"weather": "sunny"})
 
-    assert len(calls) == 1
     assert result["success"] is False
     assert result["error"]["code"] == "E0202"
     assert result["error"]["details"]["reason"] == "not_round_trippable"

@@ -125,11 +125,15 @@ def frontmatter_rewrite_blocker(content: str) -> Optional[str]:
     """Reason an existing file's frontmatter cannot be written back, or ``None``.
 
     A tool that rewrites an existing frontmatter first proves it can write it
-    back. Two reason codes block a rewrite:
+    back. Three reason codes block a rewrite:
 
     - ``"unreadable"``: a present block has no readable mapping root, so
       ``parse_frontmatter`` reads it as no fields and a rewrite would delete the
       user's YAML text.
+    - ``"content_key_in_frontmatter"``: the block physically holds a
+      ``content`` key whose value the reader moves into the body
+      (:func:`_merge_legacy_content_into_body`), so the parsed mapping no
+      longer carries it — a rewrite would silently drop that text.
     - ``"not_round_trippable"``: the block is readable, but serializing the
       parsed mapping and parsing the result does not give back what the
       serializer is meant to write for it (:func:`_rewrite_form`): a non-string
@@ -146,6 +150,8 @@ def frontmatter_rewrite_blocker(content: str) -> Optional[str]:
     metadata, body, unreadable = _read_frontmatter(content)
     if unreadable:
         return "unreadable"
+    if _physical_content_key(content):
+        return "content_key_in_frontmatter"
 
     try:
         rendered = format_frontmatter(metadata)
@@ -155,6 +161,30 @@ def frontmatter_rewrite_blocker(content: str) -> Optional[str]:
         return "not_round_trippable"
 
     return None if same else "not_round_trippable"
+
+
+def _physical_content_key(content: str) -> bool:
+    """Whether the raw frontmatter block physically holds a dropped ``content``.
+
+    True when the raw block's YAML maps ``content`` to a string (the reader
+    merges that value into the body and deletes the key, so a rewrite of the
+    parsed mapping loses the stored text), or when the block is malformed in
+    exactly the recoverable legacy shape — asked through the recovery
+    parser's own pattern, so the two can never disagree. A non-string
+    ``content`` value is an ordinary key the serializer writes back, so it
+    does not block.
+    """
+    sections = _split_frontmatter_sections(content)
+    if sections is None:
+        return False
+    fm_content = sections[0]
+    try:
+        loaded: Any = yaml.safe_load(fm_content)
+    except (yaml.YAMLError, ValueError):
+        return _legacy_content_recovery_starts(fm_content)
+    if isinstance(loaded, dict):
+        return isinstance(loaded.get("content"), str)
+    return False
 
 
 def _rewrite_form(metadata: Dict[Any, Any]) -> Dict[Any, Any]:
@@ -418,18 +448,46 @@ def indexable_date(indexable: Dict[str, Any], file_path: Path) -> str:
     return fragment_date_from_filename(file_path) or ""
 
 
+def is_frontmatter_delimiter_line(line: str) -> bool:
+    """The one rule for a whole-line ``---`` frontmatter delimiter.
+
+    ``str.strip()`` semantics (Unicode whitespace, so a trailing U+3000 or
+    U+00A0 still reads as a delimiter). Both the text parser
+    (:func:`_split_frontmatter_sections`) and the byte-level journal
+    rewriter split (:func:`tools.lib.journal_rewrite.split_journal_bytes`)
+    go through this single predicate, so they can never disagree about
+    where a frontmatter block ends.
+    """
+    return line.strip() == "---"
+
+
+def frontmatter_opens_block(content: str) -> bool:
+    """Whether a text opens a whole-line frontmatter block a rewriter may replace.
+
+    Two conditions together: the text must **start with** ``---`` (the
+    condition :func:`_read_frontmatter` itself applies, so a leading-space
+    opener like ``" ---"`` never opens a block) and the first line must be a
+    whole-line delimiter (:func:`is_frontmatter_delimiter_line`). The
+    byte-level rewriter split uses this rule, so it never accepts an opening
+    the reader does not read. The reader stays more lenient: a malformed
+    opener such as ``---title: x`` is still read through its historical
+    substring split, and a rewriter refuses that file.
+    """
+    return content.startswith("---") and is_frontmatter_delimiter_line(content.split("\n", 1)[0])
+
+
 def _split_frontmatter_sections(content: str) -> Optional[Tuple[str, str]]:
     """Split the ``---`` fenced block from the body.
 
-    Delimiters are recognised as whole lines (the convention every other
-    frontmatter reader in the repository uses), so a field value may contain
+    Delimiters are recognised as whole lines via the one shared rule
+    (:func:`is_frontmatter_delimiter_line`), so a field value may contain
     ``---`` without truncating the metadata.  Malformed files that do not use
     whole-line fences keep the historical substring split.
     """
     lines = content.split("\n")
-    if lines and lines[0].strip() == "---":
+    if lines and is_frontmatter_delimiter_line(lines[0]):
         for index in range(1, len(lines)):
-            if lines[index].strip() == "---":
+            if is_frontmatter_delimiter_line(lines[index]):
                 return "\n".join(lines[1:index]), "\n".join(lines[index + 1 :])
 
     parts = content.split("---", 2)
@@ -496,6 +554,18 @@ def _normalize_temporal_values(value: Any, seen: Optional[set] = None) -> Any:
     return value
 
 
+# The one pattern behind both the legacy `content: "..."` recovery and the
+# rewrite blocker's physical-content check. ``\s`` deliberately spans a line
+# break: the recoverable legacy shape may put the opening quote on the line
+# after ``content:``.
+_LEGACY_CONTENT_RECOVERY_RE = re.compile(r'^content:\s*"', re.MULTILINE)
+
+
+def _legacy_content_recovery_starts(fm_content: str) -> bool:
+    """Whether the recovery parser would pull a ``content`` value out of the block."""
+    return _LEGACY_CONTENT_RECOVERY_RE.search(fm_content) is not None
+
+
 def _recover_legacy_content_frontmatter(
     fm_content: str, body: str
 ) -> Tuple[Optional[Dict[str, Any]], str]:
@@ -504,7 +574,7 @@ def _recover_legacy_content_frontmatter(
     Returns ``None`` as the metadata when no mapping can be recovered; the
     caller then treats the frontmatter as unreadable.
     """
-    content_match = re.search(r'^content:\s*"', fm_content, re.MULTILINE)
+    content_match = _LEGACY_CONTENT_RECOVERY_RE.search(fm_content)
     if not content_match:
         return None, body
 
@@ -811,56 +881,6 @@ def format_journal_content(data: Dict[str, Any]) -> str:
 
     body = "\n".join(lines)
     return f"{frontmatter}\n\n\n{body}"
-
-
-def update_frontmatter_fields(
-    file_path: Path, updates: Dict[str, Any], dry_run: bool = False
-) -> Dict[str, Any]:
-    """
-    更新日志文件的 frontmatter 字段
-
-    Args:
-        file_path: 日志文件路径
-        updates: 要更新的字段字典
-        dry_run: 是否模拟运行
-
-    Returns:
-        包含变更信息的字典
-    """
-    result: Dict[str, Any] = {
-        "success": False,
-        "changes": {},
-        "error": None,
-    }
-
-    try:
-        content = file_path.read_text(encoding="utf-8")
-        blocker = frontmatter_rewrite_blocker(content)
-        if blocker is not None:
-            result["error"] = f"frontmatter rewrite blocked ({blocker})"
-            return result
-        metadata, body = parse_frontmatter(content)
-
-        # 记录变更
-        for key, new_value in updates.items():
-            old_value = metadata.get(key)
-            if old_value != new_value:
-                result["changes"][key] = {"old": old_value, "new": new_value}
-                metadata[key] = new_value
-
-        if dry_run:
-            result["success"] = True
-            return result
-
-        # 写入文件
-        new_content = format_frontmatter(metadata) + "\n\n" + body
-        file_path.write_text(new_content, encoding="utf-8")
-        result["success"] = True
-
-    except (IOError, OSError, UnicodeDecodeError) as e:
-        result["error"] = str(e)
-
-    return result
 
 
 def get_summary(fm: Dict[str, Any]) -> Optional[str]:

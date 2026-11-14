@@ -14,7 +14,8 @@ For every cell the requirement is the same:
   row), and the valid fragment is unaffected.
 
 ``edit`` refuses a frontmatter it cannot write back without loss (the shapes in
-:data:`EDIT_BLOCKED`) with ``E0202`` and leaves the bytes unchanged. A file
+:data:`EDIT_BLOCKED`, including the shapes with no byte-level frontmatter block
+at all) with ``E0202`` and leaves the bytes unchanged. A file
 whose bytes are not UTF-8 is the other documented refusal: the bytes cannot be
 rewritten without corrupting them, so edit returns ``E0200`` instead of
 raising. All other shapes must still edit successfully.
@@ -131,6 +132,12 @@ EDIT_BLOCKED = {
     "non_string_key_null": "not_round_trippable",
     "non_string_key_number": "not_round_trippable",
     "private_key_only": "not_round_trippable",
+    # No byte-level frontmatter block at all (no/broken delimiters, or a BOM
+    # ahead of the opener): wrapping the whole file would change every body
+    # byte, so the lossless rewrite rule refuses.
+    "no_frontmatter": "no_frontmatter_block",
+    "unclosed_frontmatter": "no_frontmatter_block",
+    "utf8_bom": "no_frontmatter_block",
 }
 
 

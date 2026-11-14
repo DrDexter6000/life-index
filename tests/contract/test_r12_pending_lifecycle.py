@@ -175,7 +175,7 @@ class TestPendingLifecycle:
 
         clear_pending()  # Start clean
 
-        with (patch("tools.edit_journal.save_revision", return_value="revisions/rev.md"),):
+        with (patch("tools.edit_journal.save_revision_bytes", return_value="revisions/rev.md"),):
             result = edit_journal(
                 journal_path=journal_file,
                 frontmatter_updates={"title": "test_r12_edited_title"},
@@ -274,7 +274,7 @@ class TestPendingLifecycle:
             journal_file = Path(written_path)
 
         with (
-            patch("tools.edit_journal.save_revision", return_value="revisions/rev.md"),
+            patch("tools.edit_journal.save_revision_bytes", return_value="revisions/rev.md"),
             patch(
                 "tools.edit_journal.upsert_fts_row",
                 side_effect=RuntimeError("synthetic edit write-through failure"),
