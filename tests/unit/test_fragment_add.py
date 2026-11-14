@@ -19,8 +19,10 @@ required coverage:
 """
 
 import json
+import os
 import re
 import sqlite3
+import stat
 from pathlib import Path
 
 import pytest
@@ -464,6 +466,22 @@ class TestNoOverwrite:
         ), "the fragment must land on the next sequence number"
         metadata, body = _read_stored(result)
         assert body == "撞路径的碎片"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permission modes")
+@pytest.mark.parametrize("umask", [0o022, 0o077])
+def test_published_file_mode_follows_process_umask(data_dir, umask):
+    original_umask = os.umask(0)
+    os.umask(original_umask)
+    try:
+        os.umask(umask)
+        result = add_fragment({"text": "权限跟随 umask", "expressed_at": EXPRESSED})
+    finally:
+        os.umask(original_umask)
+
+    assert result["success"] is True
+    published_mode = stat.S_IMODE(Path(result["journal_path"]).stat().st_mode)
+    assert published_mode == 0o666 & ~umask
 
 
 # ---------------------------------------------------------------------------
@@ -967,7 +985,9 @@ class TestFaultInjection:
         message = result["error"]["message"]
         assert "refused a hard link" in message
         assert "without overwriting" in message
-        assert "nothing was written" in message
+        assert "no fragment was committed" in message
+        assert "nothing was written" not in message
+        assert result["error"]["recovery_strategy"] == "fail"
         assert result["error"]["details"]["os_error"] == "[Errno 1] Incorrect function"
         assert _side_effect(result, "journal_commit")["status"] == "failed"
         assert not any(
@@ -1037,6 +1057,51 @@ class TestFaultInjection:
         assert not attachments_root.exists() or not any(
             path.is_file() for path in attachments_root.rglob("*")
         )
+
+    def test_journal_link_failure_reports_attachment_compensation_leftover(
+        self, data_dir, tmp_path, monkeypatch
+    ):
+        from tools.fragment import core as fragment_core
+
+        source = tmp_path / "evidence.txt"
+        source.write_bytes(b"attachment bytes")
+        leftover = data_dir / "attachments" / "2026" / "11" / "evidence.txt"
+        original_link = fragment_core.os.link
+        original_unlink = Path.unlink
+
+        def failing_journal_link(source_path, target):
+            if Path(target).suffix == ".md":
+                raise OSError("journal hard link refused")
+            return original_link(source_path, target)
+
+        def failing_attachment_cleanup(path, *args, **kwargs):
+            if path == leftover:
+                raise PermissionError("attachment is held open")
+            return original_unlink(path, *args, **kwargs)
+
+        monkeypatch.setattr(fragment_core.os, "link", failing_journal_link)
+        monkeypatch.setattr(Path, "unlink", failing_attachment_cleanup)
+        result = add_fragment(
+            {
+                "text": "附件补偿失败必须可见",
+                "expressed_at": EXPRESSED,
+                "attachments": [{"source_path": str(source)}],
+            }
+        )
+
+        assert result["success"] is False
+        assert result["error"]["code"] == "E0200"
+        assert leftover.is_file()
+        assert "nothing was written" not in result["error"]["message"]
+        assert "no fragment was committed" in result["error"]["message"]
+        assert "attachment compensation failed" in result["error"]["message"]
+        assert result["error"]["recovery_strategy"] == "fail"
+        assert any(
+            str(leftover) in item for item in result["error"]["details"]["leftover_attachments"]
+        )
+        attachment_record = _side_effect(result, "attachments")
+        assert attachment_record["status"] == "failed"
+        assert str(leftover) in attachment_record["error"]
 
     def test_attachment_publish_failure_keeps_attachments_side_effect_name(
         self, data_dir, tmp_path, monkeypatch

@@ -6,13 +6,12 @@ fragment add 的写入事务。
 `fragment add` 存的是用户本人的原话：没有标题、没有摘要、没有解释、没有
 确认步骤、没有网络。事务复用 `write` 的共享助手（journals 锁、附件
 staging/publish/compensate、序列号分配、FTS 行与 metadata-cache 行写穿），
-按 import 复用，不移动、不修改那些函数。与 `write` 的三点不同：
+按 import 复用，不移动、不修改那些函数。两者都以 create-only hard link 发布，
+路径被并发占用时顺延序号重试，绝不覆盖既有文件。与 `write` 的两点不同：
 
-1. 发布是 create-only 的（`os.link`，目标已存在即失败），路径被并发占用时
-   顺延序号重试，有界次内仍冲突则报错，绝不覆盖既有文件；
-2. 去重（`source.channel` + `source.message_id`）以文件为权威，窗口是候选日
+1. 去重（`source.channel` + `source.message_id`）以文件为权威，窗口是候选日
    所在月与相邻两个月的 fragment 文件，不依赖 metadata cache；
-3. 提交后只写穿 FTS 行与 metadata-cache 行；月/年生成的索引不重建
+2. 提交后只写穿 FTS 行与 metadata-cache 行；月/年生成的索引不重建
    （side effect 记 `skipped`），不做地点默认值、天气、entity 富化、关联
    候选、确认快照与 entity 候选捕获。
 """
@@ -20,7 +19,6 @@ staging/publish/compensate、序列号分配、FTS 行与 metadata-cache 行写�
 import json
 import os
 import re
-import tempfile
 import uuid
 from datetime import date, datetime
 from pathlib import Path
@@ -46,7 +44,11 @@ from ..write_journal.attachments import (
     publish_staged_attachments,
     stage_attachments,
 )
-from ..write_journal.core import _generate_journal_path, _record_side_effect
+from ..write_journal.core import (
+    _generate_journal_path,
+    _record_side_effect,
+    _update_side_effect_record,
+)
 from ..write_journal.utils import generate_filename, get_next_sequence
 
 logger = get_logger(__name__)
@@ -91,6 +93,7 @@ _OCCURRED_SHAPES = (
 
 # 发布冲突时的有界重试次数（每次顺延一个序号；绝不 replace 既有文件）。
 _MAX_PUBLISH_ATTEMPTS = 8
+_MAX_TEMP_NAME_ATTEMPTS = 8
 
 _DEDUPE_CHECK_COMPLETE = "complete"
 _DEDUPE_CHECK_INCOMPLETE = "incomplete"
@@ -101,7 +104,7 @@ _GENERATED_INDEXES_RECOVERY = "life-index generate-index --rebuild"
 _HARD_LINK_PUBLISH_MESSAGE = (
     "the fragment could not be published because the data directory's filesystem "
     "refused a hard link; fragment add needs a hard link to publish without "
-    "overwriting, and nothing was written"
+    "overwriting, and no fragment was committed"
 )
 
 
@@ -468,8 +471,16 @@ def _render_fragment_file(payload: Dict[str, Any], text: str) -> bytes:
 def _write_temp_bytes(month_dir: Path, content: bytes) -> Path:
     """Stage the fragment bytes beside the final path, fsynced, binary mode."""
     month_dir.mkdir(parents=True, exist_ok=True)
-    fd, temp_name = tempfile.mkstemp(dir=str(month_dir), prefix=".fragment-", suffix=".tmp")
-    temp_path = Path(temp_name)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    for _ in range(_MAX_TEMP_NAME_ATTEMPTS):
+        temp_path = month_dir / f".fragment-{os.urandom(8).hex()}.tmp"
+        try:
+            fd = os.open(temp_path, flags, 0o666)
+        except FileExistsError:
+            continue
+        break
+    else:
+        raise FileExistsError("could not allocate a unique temporary fragment path")
     try:
         with os.fdopen(fd, "wb") as handle:
             handle.write(content)
@@ -956,6 +967,7 @@ def add_fragment(data: Dict[str, Any]) -> Dict[str, Any]:
     journal_path: Optional[Path] = None
     temp_path: Optional[Path] = None
     staging: Optional[AttachmentStaging] = None
+    leftover_attachments: List[str] = []
 
     try:
         if not isinstance(data, dict):
@@ -1064,13 +1076,12 @@ def add_fragment(data: Dict[str, Any]) -> Dict[str, Any]:
                         error=_HARD_LINK_PUBLISH_MESSAGE,
                         recovery_strategy=(
                             "use a data directory on a filesystem that supports hard links, "
-                            "then retry fragment add; nothing was written"
+                            "then retry fragment add; no fragment was committed"
                         ),
                     )
                     raise _JournalPublishFailed(str(exc)) from exc
             finally:
-                # A failure before publish leaves no journal file, no temp file,
-                # and no transaction-owned staging bytes.
+                # Before publish, clean temp/staging and report compensation leftovers.
                 if not committed:
                     if temp_path is not None and temp_path.exists():
                         try:
@@ -1084,9 +1095,24 @@ def add_fragment(data: Dict[str, Any]) -> Dict[str, Any]:
                         else:
                             cleanup_errors = discard_attachment_staging(staging)
                         if cleanup_errors:
+                            leftover_attachments.extend(cleanup_errors)
                             logger.error(
                                 "fragment transaction cleanup failed: %s",
                                 "; ".join(cleanup_errors),
+                            )
+                            _update_side_effect_record(
+                                result,
+                                name="attachments",
+                                status=SideEffectExecutionStatus.FAILED,
+                                error=(
+                                    "attachment compensation failed: "
+                                    f"{'; '.join(cleanup_errors)}"
+                                ),
+                                recovery_strategy=(
+                                    "inspect and remove only the transaction-owned orphan "
+                                    f"attachment path(s): {'; '.join(cleanup_errors)}; "
+                                    "then retry fragment add"
+                                ),
                             )
 
             assert temp_path is not None
@@ -1141,23 +1167,41 @@ def add_fragment(data: Dict[str, Any]) -> Dict[str, Any]:
         error["dedupe_check"] = result.get("dedupe_check")
         return error
     except _PublishCollision as exc:
-        error = create_error_response(
-            ErrorCode.FRAGMENT_PUBLISH_COLLISION,
+        message = (
             f"fragment publish collided {_MAX_PUBLISH_ATTEMPTS} times near {exc.last_path}; "
-            "existing files were not modified",
-            {"last_allocated_path": str(exc.last_path)},
-            "retry fragment add; existing files were not modified",
+            "existing files were not modified"
+        )
+        collision_details: Dict[str, Any] = {"last_allocated_path": str(exc.last_path)}
+        suggestion = "retry fragment add; existing files were not modified"
+        if leftover_attachments:
+            message += "; attachment compensation failed"
+            collision_details["leftover_attachments"] = list(leftover_attachments)
+            suggestion += "; inspect details.leftover_attachments before retrying"
+        error = create_error_response(
+            ErrorCode.PUBLISH_COLLISION,
+            message,
+            collision_details,
+            suggestion,
         )
         error["side_effects"] = result["side_effects"]
         error["dedupe_check"] = result.get("dedupe_check")
         return error
     except _JournalPublishFailed as exc:
+        message = str(exc)
+        publish_details: Dict[str, Any] = {"os_error": exc.os_error}
+        suggestion = (
+            "use a data directory on a filesystem that supports hard links, "
+            "then retry fragment add; no fragment was committed"
+        )
+        if leftover_attachments:
+            message += "; attachment compensation failed"
+            publish_details["leftover_attachments"] = list(leftover_attachments)
+            suggestion += "; inspect details.leftover_attachments before retrying"
         error = create_error_response(
             ErrorCode.WRITE_FAILED,
-            str(exc),
-            {"os_error": exc.os_error},
-            "use a data directory on a filesystem that supports hard links, "
-            "then retry fragment add; nothing was written",
+            message,
+            publish_details,
+            suggestion,
         )
         error["side_effects"] = result["side_effects"]
         error["dedupe_check"] = result.get("dedupe_check")

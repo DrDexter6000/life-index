@@ -70,7 +70,7 @@ class ErrorCode:
     DATE_INVALID = "E0204"
     ATTACHMENT_COPY_FAILED = "E0205"
     FRAGMENT_KEY_CONFLICT = "E0206"
-    FRAGMENT_PUBLISH_COLLISION = "E0207"
+    PUBLISH_COLLISION = "E0207"
 
     # ========== Search Module (03xx) ==========
     INDEX_NOT_FOUND = "E0300"
@@ -148,13 +148,15 @@ class LifeIndexError(Exception):
         ErrorCode.FILE_NOT_FOUND: RecoveryStrategy.ASK_USER,
         ErrorCode.PATH_INVALID: RecoveryStrategy.FAIL,
         ErrorCode.PATH_TRAVERSAL_DETECTED: RecoveryStrategy.FAIL,
+        # Write errors: Fail
+        ErrorCode.WRITE_FAILED: RecoveryStrategy.FAIL,
         # Input errors: Ask user
         ErrorCode.INVALID_INPUT: RecoveryStrategy.ASK_USER,
         ErrorCode.CONTENT_EMPTY: RecoveryStrategy.ASK_USER,
         ErrorCode.DATE_INVALID: RecoveryStrategy.ASK_USER,
         ErrorCode.ATTACHMENT_COPY_FAILED: RecoveryStrategy.CONTINUE,
         ErrorCode.FRAGMENT_KEY_CONFLICT: RecoveryStrategy.ASK_USER,
-        ErrorCode.FRAGMENT_PUBLISH_COLLISION: RecoveryStrategy.RETRY,
+        ErrorCode.PUBLISH_COLLISION: RecoveryStrategy.RETRY,
         # Edit errors: Ask user
         ErrorCode.JOURNAL_NOT_FOUND: RecoveryStrategy.ASK_USER,
         ErrorCode.NO_CHANGES_SPECIFIED: RecoveryStrategy.ASK_USER,
@@ -244,8 +246,8 @@ ERROR_DESCRIPTIONS = {
     ErrorCode.FRAGMENT_KEY_CONFLICT: (
         "This fragment source channel/message_id is already stored with different text"
     ),
-    ErrorCode.FRAGMENT_PUBLISH_COLLISION: (
-        "Fragment publish collided with existing files; nothing was overwritten"
+    ErrorCode.PUBLISH_COLLISION: (
+        "Journal or fragment publish collided with existing files; nothing was overwritten"
     ),
     # Search
     ErrorCode.INDEX_NOT_FOUND: "Search index not found",

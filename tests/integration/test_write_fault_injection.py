@@ -86,13 +86,6 @@ def test_attachment_target_appearing_after_staging_is_never_overwritten_or_remov
     data_dir = _configure_sandbox(monkeypatch, tmp_path)
     source = tmp_path / "same.txt"
     source.write_bytes(b"transaction bytes")
-    real_replace = Path.replace
-
-    def inject_collision_then_fail_journal(self: Path, target: Path):
-        if self.suffix == ".tmp":
-            raise OSError("synthetic journal rename failure")
-        return real_replace(self, target)
-
     real_stage = attachment_ops.stage_attachments
 
     def stage_then_create_collision(*args, **kwargs):
@@ -103,7 +96,6 @@ def test_attachment_target_appearing_after_staging_is_never_overwritten_or_remov
         return staging
 
     monkeypatch.setattr(write_core, "stage_attachments", stage_then_create_collision)
-    monkeypatch.setattr(Path, "replace", inject_collision_then_fail_journal)
 
     result = write_core.write_journal(_payload(source))
     target = data_dir / "attachments" / "2026" / "03" / "same.txt"
@@ -119,7 +111,7 @@ def test_url_attachment_full_transaction_publishes_and_compensates(tmp_path: Pat
     data_dir = _configure_sandbox(monkeypatch, tmp_path)
     downloaded_to: list[Path] = []
     published_before_commit_failure: list[bytes] = []
-    real_replace = Path.replace
+    real_link = write_core.os.link
 
     async def fake_download(url: str, target_dir: Path, date_str: str, timeout: float = 30.0):
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -128,15 +120,15 @@ def test_url_attachment_full_transaction_publishes_and_compensates(tmp_path: Pat
         downloaded_to.append(path)
         return {"success": True, "path": str(path), "content_type": "text/plain", "size": 12}
 
-    def fail_journal_rename(self: Path, target: Path):
-        if self.suffix == ".tmp":
+    def fail_journal_link(source: Path, target: Path):
+        if target.suffix == ".md":
             published = data_dir / "attachments" / "2026" / "03" / "remote.txt"
             published_before_commit_failure.append(published.read_bytes())
-            raise OSError("synthetic URL journal rename failure")
-        return real_replace(self, target)
+            raise OSError("synthetic URL journal hard-link failure")
+        return real_link(source, target)
 
     monkeypatch.setattr(attachment_ops, "download_attachment_from_url", fake_download)
-    monkeypatch.setattr(Path, "replace", fail_journal_rename)
+    monkeypatch.setattr(write_core.os, "link", fail_journal_link)
     payload = _payload()
     payload["attachments"] = [{"source_url": "https://example.test/remote.txt"}]
 
@@ -156,16 +148,16 @@ def test_compensation_skips_final_path_replaced_by_external_data(tmp_path: Path,
     source.write_bytes(b"transaction bytes")
     external = tmp_path / "external.txt"
     external.write_bytes(b"external replacement")
-    real_replace = Path.replace
+    real_link = write_core.os.link
 
-    def replace_attachment_then_fail_journal(self: Path, target: Path):
-        if self.suffix == ".tmp":
+    def replace_attachment_then_fail_journal(source_path: Path, target: Path):
+        if target.suffix == ".md":
             final = data_dir / "attachments" / "2026" / "03" / "same.txt"
             external.replace(final)
             raise OSError("synthetic journal failure after external replacement")
-        return real_replace(self, target)
+        return real_link(source_path, target)
 
-    monkeypatch.setattr(Path, "replace", replace_attachment_then_fail_journal)
+    monkeypatch.setattr(write_core.os, "link", replace_attachment_then_fail_journal)
 
     result = write_core.write_journal(_payload(source))
     final = data_dir / "attachments" / "2026" / "03" / "same.txt"
@@ -316,7 +308,7 @@ def test_partial_attachment_publish_is_compensated(tmp_path: Path, monkeypatch):
     )
 
 
-def test_journal_atomic_rename_failure_compensates_published_attachment(
+def test_journal_hard_link_failure_compensates_published_attachment(
     tmp_path: Path,
     monkeypatch,
 ):
@@ -324,14 +316,14 @@ def test_journal_atomic_rename_failure_compensates_published_attachment(
     data_dir = _configure_sandbox(monkeypatch, tmp_path)
     source_file = tmp_path / "evidence.txt"
     source_file.write_text("synthetic attachment", encoding="utf-8")
-    real_replace = Path.replace
+    real_link = write_core.os.link
 
-    def fail_journal_rename(self: Path, target: Path):
-        if self.suffix == ".tmp":
-            raise OSError("synthetic journal atomic-rename failure")
-        return real_replace(self, target)
+    def fail_journal_link(source: Path, target: Path):
+        if target.suffix == ".md":
+            raise OSError("synthetic journal hard-link failure")
+        return real_link(source, target)
 
-    monkeypatch.setattr(Path, "replace", fail_journal_rename)
+    monkeypatch.setattr(write_core.os, "link", fail_journal_link)
 
     result = write_core.write_journal(_payload(source_file))
 
@@ -388,20 +380,20 @@ def test_temp_journal_cleanup_failure_does_not_skip_attachment_compensation(
     data_dir = _configure_sandbox(monkeypatch, tmp_path)
     source_file = tmp_path / "evidence.txt"
     source_file.write_text("synthetic attachment", encoding="utf-8")
-    real_replace = Path.replace
+    real_link = write_core.os.link
     real_unlink = Path.unlink
 
-    def fail_journal_rename(self: Path, target: Path) -> Path:
-        if self.suffix == ".tmp":
-            raise OSError("synthetic journal atomic-rename failure")
-        return real_replace(self, target)
+    def fail_journal_link(source: Path, target: Path) -> None:
+        if target.suffix == ".md":
+            raise OSError("synthetic journal hard-link failure")
+        real_link(source, target)
 
     def fail_temp_journal_cleanup(self: Path, *args: Any, **kwargs: Any) -> None:
         if self.suffix == ".tmp":
             raise OSError("synthetic temp journal cleanup failure")
         return real_unlink(self, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "replace", fail_journal_rename)
+    monkeypatch.setattr(write_core.os, "link", fail_journal_link)
     monkeypatch.setattr(Path, "unlink", fail_temp_journal_cleanup)
 
     result = write_core.write_journal(_payload(source_file))
@@ -417,7 +409,7 @@ def test_temp_journal_cleanup_failure_does_not_skip_attachment_compensation(
     assert _files_under(data_dir / "attachments") == []
     assert attachment_record["status"] == "compensated"
     assert len(temp_leftovers) == 1
-    assert "journal atomic-rename failure" in journal_record["error"]
+    assert "journal hard-link failure" in journal_record["error"]
     assert "temp journal cleanup failure" in journal_record["error"]
     assert str(temp_leftovers[0]) in journal_record["error"]
     assert str(temp_leftovers[0]) in journal_record["recovery_strategy"]
@@ -427,10 +419,10 @@ def test_derived_artifact_failures_cannot_create_half_updated_success(
     tmp_path: Path,
     monkeypatch,
 ):
-    """No derived artifact may observe a journal before its durable rename."""
+    """No derived artifact may observe a journal before its durable publish."""
     data_dir = _configure_sandbox(monkeypatch, tmp_path)
     calls: list[str] = []
-    real_replace = Path.replace
+    real_link = write_core.os.link
 
     monkeypatch.setattr(
         write_core,
@@ -453,12 +445,12 @@ def test_derived_artifact_failures_cannot_create_half_updated_success(
         lambda *_args: calls.append("index_b") or {"success": True},
     )
 
-    def fail_journal_rename(self: Path, target: Path):
-        if self.suffix == ".tmp":
-            raise OSError("synthetic journal atomic-rename failure")
-        return real_replace(self, target)
+    def fail_journal_link(source: Path, target: Path):
+        if target.suffix == ".md":
+            raise OSError("synthetic journal hard-link failure")
+        return real_link(source, target)
 
-    monkeypatch.setattr(Path, "replace", fail_journal_rename)
+    monkeypatch.setattr(write_core.os, "link", fail_journal_link)
 
     result = write_core.write_journal(_payload())
 
@@ -552,20 +544,20 @@ def test_attachment_compensation_failure_is_reported(
     data_dir = _configure_sandbox(monkeypatch, tmp_path)
     source_file = tmp_path / "evidence.txt"
     source_file.write_text("synthetic attachment", encoding="utf-8")
-    real_replace = Path.replace
+    real_link = write_core.os.link
     real_unlink = Path.unlink
 
-    def fail_journal_rename(self: Path, target: Path):
-        if self.suffix == ".tmp":
-            raise OSError("synthetic journal atomic-rename failure")
-        return real_replace(self, target)
+    def fail_journal_link(source: Path, target: Path):
+        if target.suffix == ".md":
+            raise OSError("synthetic journal hard-link failure")
+        return real_link(source, target)
 
     def fail_final_attachment_cleanup(self: Path, *args, **kwargs):
         if "attachments" in self.parts and ".write-stage-" not in str(self):
             raise OSError("synthetic compensation failure")
         return real_unlink(self, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "replace", fail_journal_rename)
+    monkeypatch.setattr(write_core.os, "link", fail_journal_link)
     monkeypatch.setattr(Path, "unlink", fail_final_attachment_cleanup)
 
     result = write_core.write_journal(_payload(source_file))
@@ -577,6 +569,12 @@ def test_attachment_compensation_failure_is_reported(
     assert record["status"] == "failed"
     assert "compensation failed" in record["error"]
     assert "orphan attachment" in record["recovery_strategy"]
+    leftover = data_dir / "attachments" / "2026" / "03" / "evidence.txt"
+    assert leftover.is_file()
+    assert "nothing was written" not in result["error"]["message"]
+    assert "attachment compensation failed" in result["error"]["message"]
+    assert result["error"]["recovery_strategy"] == "fail"
+    assert any(str(leftover) in item for item in result["error"]["details"]["leftover_attachments"])
 
 
 @pytest.mark.parametrize(

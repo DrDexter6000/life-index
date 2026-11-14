@@ -534,7 +534,7 @@ relationships:
 | E0204 | 日期格式无效 | ask_user |
 | E0205 | 附件复制失败 | continue |
 | E0206 | 碎片去重键冲突（同 channel/message_id 已存不同正文） | ask_user |
-| E0207 | 碎片 create-only 发布冲突（未覆盖任何既有文件） | retry |
+| E0207 | `write` / `fragment add` create-only 发布冲突（未覆盖任何既有文件） | retry |
 
 ### 搜索模块 (E03xx)
 
@@ -765,6 +765,9 @@ python -m tools.write_journal --data '<json>'
 }
 ```
 
+返回的 `journal_path` 是实际创建文件的权威路径。若分配的文件名被并发写入者占用，
+日志顺延到下一个可用序号，绝不替换既有文件；确认载荷与派生索引也使用该实际路径。
+
 ### Round 7 新增返回字段
 
 - `entity_candidates`：write-time candidate layer 输出。来自 frontmatter + 正文中的实体候选匹配；只作为候选，不直接写回 `entity_graph.yaml`
@@ -979,6 +982,8 @@ python -m tools.write_journal confirm --journal "Journals/2026/03/life-index_202
 | E0203 | content 为空 | ask_user |
 | E0204 | 日期格式无效 | ask_user |
 | E0205 | 附件复制失败 | continue |
+| E0207 | PUBLISH_COLLISION：create-only 发布有界重试后仍冲突；未覆盖任何既有文件。附件补偿失败时 message 明确指出，`details.leftover_attachments` 列出残留路径 | retry |
+| E0200 | 其他写入失败。日志硬链接发布被拒时未提交 journal，`details.os_error` 保留原始 OS 错误；附件补偿失败时 message 明确指出，`details.leftover_attachments` 列出残留路径 | fail |
 | E0400 | 天气 API 失败 | skip_optional |
 
 ---
@@ -1126,8 +1131,8 @@ effect，reason 说明碎片写入不重建它们，恢复命令为
 | E0001 | 输入无效（未知键、字段畸形、空白字段、`source_url` 附件等；错误点名） | ask_user |
 | E0205 | 附件无法全部 staging（错误点名附件；零提交） | continue |
 | E0206 | FRAGMENT_KEY_CONFLICT：同 channel/message_id 已存不同正文 | ask_user |
-| E0207 | FRAGMENT_PUBLISH_COLLISION：create-only 发布有界重试后仍冲突；未覆盖任何既有文件 | retry |
-| E0200 | 其他写入失败。日志发布的硬链接被数据目录文件系统拒绝时记 `journal_commit: failed`，message 明确说明 `fragment add` 需要硬链接以无覆盖发布且未写入任何内容，`details.os_error` 保留原始 OS 错误；附件发布失败仍记 `attachments` | fail |
+| E0207 | PUBLISH_COLLISION：create-only 发布有界重试后仍冲突；未覆盖任何既有文件。附件补偿失败时 message 明确指出，`details.leftover_attachments` 列出残留路径 | retry |
+| E0200 | 其他写入失败。日志发布的硬链接被数据目录文件系统拒绝时记 `journal_commit: failed`，message 明确说明 `fragment add` 需要硬链接以无覆盖发布且未提交 fragment，`details.os_error` 保留原始 OS 错误；附件补偿失败时 message 明确指出，`details.leftover_attachments` 列出残留路径；附件发布失败仍记 `attachments` | fail |
 | E0005 | journals 锁超时（与 `write` 同一 envelope） | retry |
 
 ---

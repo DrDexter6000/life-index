@@ -5,6 +5,7 @@ Life Index - Write Journal Tool - Core
 """
 
 import json
+import os
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, Sequence
@@ -76,6 +77,31 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 _CONFIRMATION_CANDIDATE_SNAPSHOT_FILE = "confirmation_candidates.json"
+_MAX_PUBLISH_ATTEMPTS = 8
+_MAX_TEMP_NAME_ATTEMPTS = 8
+_HARD_LINK_PUBLISH_MESSAGE = (
+    "the journal could not be published because the data directory's filesystem "
+    "refused a hard link; write needs a hard link to publish without overwriting, "
+    "and no journal was committed"
+)
+
+
+class _PublishCollision(RuntimeError):
+    """Create-only publish collided on every allocated sequence number."""
+
+    def __init__(self, last_path: Path):
+        super().__init__(str(last_path))
+        self.last_path = last_path
+        self.leftover_attachments: list[str] = []
+
+
+class _JournalPublishFailed(RuntimeError):
+    """The data directory's filesystem refused the journal hard link."""
+
+    def __init__(self, os_error: str):
+        super().__init__(_HARD_LINK_PUBLISH_MESSAGE)
+        self.os_error = os_error
+        self.leftover_attachments: list[str] = []
 
 
 def _confirmation_snapshot_key(journal_path: Path) -> str:
@@ -865,19 +891,36 @@ def _commit_primary_journal_and_attachments(
     result: Dict[str, Any],
     journal_path: Path,
     month_dir: Path,
+    date_str: str,
     full_content: str,
     timer: Timer,
     attachment_staging: AttachmentStaging | None,
-) -> None:
-    """Publish the journal and attachments within the compensating boundary."""
-    temp_path = journal_path.with_suffix(".tmp")
+) -> Path:
+    """Publish the journal create-only and return the path actually created."""
+    temp_path: Path | None = None
     try:
-        month_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"写入日志文件：{journal_path}")
         try:
             with timer.measure("file_write"):
+                month_dir.mkdir(parents=True, exist_ok=True)
+                for _ in range(_MAX_TEMP_NAME_ATTEMPTS):
+                    temp_path = month_dir / f".write-{os.urandom(8).hex()}.tmp"
+                    try:
+                        fd = os.open(
+                            temp_path,
+                            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                            0o666,
+                        )
+                    except FileExistsError:
+                        continue
+                    break
+                else:
+                    raise FileExistsError("could not allocate a unique temporary journal path")
+                os.close(fd)
                 with open(temp_path, "w", encoding="utf-8") as f:
                     f.write(full_content)
+                    f.flush()
+                    os.fsync(f.fileno())
         except (OSError, IOError, RuntimeError) as exc:
             _record_side_effect(
                 result,
@@ -900,48 +943,63 @@ def _commit_primary_journal_and_attachments(
         if attachment_staging:
             publish_staged_attachments(attachment_staging)
 
-        # 原子性重命名
-        try:
-            temp_path.replace(journal_path)
-        except (OSError, IOError, RuntimeError) as exc:
+        published_path: Path | None = None
+        for attempt in range(_MAX_PUBLISH_ATTEMPTS):
+            if attempt:
+                sequence = get_next_sequence(date_str)
+                journal_path = month_dir / generate_filename(date_str, sequence)
+            try:
+                os.link(temp_path, journal_path)
+            except FileExistsError:
+                logger.debug(f"publish collision, allocating next sequence: {journal_path}")
+                continue
+            except (OSError, IOError) as exc:
+                _record_side_effect(
+                    result,
+                    name="journal_commit",
+                    phase="commit",
+                    status=SideEffectExecutionStatus.FAILED,
+                    blocking=True,
+                    error=f"{_HARD_LINK_PUBLISH_MESSAGE}: {exc}",
+                    recovery_strategy=(
+                        "use a data directory on a filesystem that supports hard links, "
+                        "then retry the write; no journal was committed"
+                    ),
+                )
+                raise _JournalPublishFailed(str(exc)) from exc
+            result["side_effects"].append(
+                {
+                    "name": "journal_commit",
+                    "phase": "commit",
+                    "status": SideEffectExecutionStatus.COMPLETE,
+                    "blocking": True,
+                }
+            )
+            result["journal_path"] = str(journal_path)
+            published_path = journal_path
+            break
+        if published_path is None:
             _record_side_effect(
                 result,
                 name="journal_commit",
                 phase="commit",
                 status=SideEffectExecutionStatus.FAILED,
                 blocking=True,
-                error=str(exc),
-                recovery_strategy="retry the write after resolving the filesystem error",
+                error=(
+                    f"journal publish collided {_MAX_PUBLISH_ATTEMPTS} times "
+                    f"under {journal_path.parent}"
+                ),
+                recovery_strategy="retry the write; existing files were not modified",
             )
-            raise
-        _record_side_effect(
-            result,
-            name="journal_commit",
-            phase="commit",
-            status=SideEffectExecutionStatus.COMPLETE,
-            blocking=True,
-        )
-        staging_cleanup_errors = discard_attachment_staging(attachment_staging)
-        if staging_cleanup_errors:
-            leftover_paths = "; ".join(staging_cleanup_errors)
-            _update_side_effect_record(
-                result,
-                name="attachments",
-                status=SideEffectExecutionStatus.FAILED,
-                phase="post_commit",
-                blocking=False,
-                error=f"attachment staging cleanup failed: {leftover_paths}",
-                recovery_strategy=f"remove the transaction staging path: {leftover_paths}",
-            )
-        result["journal_path"] = str(journal_path)
-        logger.info(f"日志文件写入成功：{journal_path}")
+            raise _PublishCollision(journal_path)
     except (OSError, IOError, RuntimeError) as exc:
         temp_cleanup_errors: list[str] = []
-        try:
-            if temp_path.exists():
-                temp_path.unlink()
-        except OSError as cleanup_exc:
-            temp_cleanup_errors.append(f"{temp_path}: {cleanup_exc}")
+        if temp_path is not None:
+            try:
+                if temp_path.exists():
+                    temp_path.unlink()
+            except OSError as cleanup_exc:
+                temp_cleanup_errors.append(f"{temp_path}: {cleanup_exc}")
         journal_committed = _journal_was_committed(result)
         if temp_cleanup_errors:
             journal_failure = next(
@@ -955,7 +1013,10 @@ def _commit_primary_journal_and_attachments(
             )
             if journal_failure is not None:
                 temp_details = "; ".join(temp_cleanup_errors)
-                journal_failure["error"] = f"{exc}; temp journal cleanup failed: {temp_details}"
+                original_error = journal_failure.get("error", str(exc))
+                journal_failure["error"] = (
+                    f"{original_error}; temp journal cleanup failed: {temp_details}"
+                )
                 journal_failure["recovery_strategy"] = (
                     "remove the uncommitted temp journal path: "
                     f"{temp_details}; then retry the write"
@@ -971,6 +1032,8 @@ def _commit_primary_journal_and_attachments(
                 f"temp journal cleanup failed: {item}" for item in temp_cleanup_errors
             )
             if compensation_errors:
+                if isinstance(exc, (_PublishCollision, _JournalPublishFailed)):
+                    exc.leftover_attachments.extend(compensation_errors)
                 failure_details.append(f"compensation failed: {'; '.join(compensation_errors)}")
                 _update_side_effect_record(
                     result,
@@ -1012,6 +1075,35 @@ def _commit_primary_journal_and_attachments(
                     "warning", "attachment staging cleanup failed: %s", cleanup_errors
                 )
         raise
+
+    assert temp_path is not None
+    assert published_path is not None
+    try:
+        temp_path.unlink()
+    except OSError as exc:
+        _record_side_effect(
+            result,
+            name="journal_cleanup",
+            phase="post_commit",
+            status=SideEffectExecutionStatus.FAILED,
+            blocking=False,
+            error=f"{temp_path}: {exc}",
+            recovery_strategy=f"remove the leftover temporary file {temp_path}",
+        )
+    staging_cleanup_errors = discard_attachment_staging(attachment_staging)
+    if staging_cleanup_errors:
+        leftover_paths = "; ".join(staging_cleanup_errors)
+        _update_side_effect_record(
+            result,
+            name="attachments",
+            status=SideEffectExecutionStatus.FAILED,
+            phase="post_commit",
+            blocking=False,
+            error=f"attachment staging cleanup failed: {leftover_paths}",
+            recovery_strategy=f"remove the transaction staging path: {leftover_paths}",
+        )
+    logger.info(f"日志文件写入成功：{published_path}")
+    return published_path
 
 
 def _update_postcommit_derived_projections(
@@ -1248,17 +1340,19 @@ def _commit_journal_to_disk(
     result: Dict[str, Any],
     journal_path: Path,
     month_dir: Path,
+    date_str: str,
     year: int,
     month: int,
     full_content: str,
     timer: Timer,
     attachment_staging: AttachmentStaging | None,
-) -> None:
-    """Commit primary bytes, then refresh post-commit derived projections."""
-    _commit_primary_journal_and_attachments(
+) -> Path:
+    """Commit primary bytes, then refresh projections for the created path."""
+    journal_path = _commit_primary_journal_and_attachments(
         result=result,
         journal_path=journal_path,
         month_dir=month_dir,
+        date_str=date_str,
         full_content=full_content,
         timer=timer,
         attachment_staging=attachment_staging,
@@ -1271,6 +1365,7 @@ def _commit_journal_to_disk(
         month=month,
         timer=timer,
     )
+    return journal_path
 
 
 def _build_post_write_confirmation(
@@ -1645,11 +1740,12 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                         result, journal_path, location, weather, full_content, timer
                     )
 
-                _commit_journal_to_disk(
+                journal_path = _commit_journal_to_disk(
                     data=data,
                     result=result,
                     journal_path=journal_path,
                     month_dir=month_dir,
+                    date_str=date_str,
                     year=year,
                     month=month,
                     full_content=full_content,
@@ -1722,12 +1818,54 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
             ),
         )
 
+    except _PublishCollision as exc:
+        message = (
+            f"journal publish collided {_MAX_PUBLISH_ATTEMPTS} times near {exc.last_path}; "
+            "existing files were not modified"
+        )
+        collision_details: Dict[str, Any] = {"last_allocated_path": str(exc.last_path)}
+        suggestion = "retry the write; existing files were not modified"
+        if exc.leftover_attachments:
+            message += "; attachment compensation failed"
+            collision_details["leftover_attachments"] = list(exc.leftover_attachments)
+            suggestion += "; inspect details.leftover_attachments before retrying"
+        error = create_error_response(
+            ErrorCode.PUBLISH_COLLISION,
+            message,
+            collision_details,
+            suggestion,
+        )
+        error["side_effects"] = result["side_effects"]
+        return error
+    except _JournalPublishFailed as exc:
+        message = str(exc)
+        publish_details: Dict[str, Any] = {"os_error": exc.os_error}
+        suggestion = (
+            "use a data directory on a filesystem that supports hard links, "
+            "then retry the write; no journal was committed"
+        )
+        if exc.leftover_attachments:
+            message += "; attachment compensation failed"
+            publish_details["leftover_attachments"] = list(exc.leftover_attachments)
+            suggestion += "; inspect details.leftover_attachments before retrying"
+        error = create_error_response(
+            ErrorCode.WRITE_FAILED,
+            message,
+            publish_details,
+            suggestion,
+        )
+        error["side_effects"] = result["side_effects"]
+        return error
     except (ValueError, IOError, RuntimeError, OSError) as e:
         if _journal_was_committed(result):
             _degrade_committed_envelope(
                 result,
                 e,
-                confirmation_context=(journal_path, location, weather),
+                confirmation_context=(
+                    Path(result["journal_path"] or journal_path),
+                    location,
+                    weather,
+                ),
                 log_recovery=True,
             )
         else:
@@ -1740,7 +1878,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         _degrade_committed_envelope(
             result,
             exc,
-            confirmation_context=(journal_path, location, weather),
+            confirmation_context=(Path(result["journal_path"] or journal_path), location, weather),
             log_recovery=True,
         )
 

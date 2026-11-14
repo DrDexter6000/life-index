@@ -2197,8 +2197,7 @@ class TestWriteJournalTransactionBoundaries:
             item for item in result["side_effects"] if item["name"] == "legacy_indices"
         )
         assert legacy_record["status"] == "failed"
-        temp_file = month_dir / "life-index_2026-03-14_001.md.tmp"
-        assert not temp_file.exists()
+        assert list(month_dir.glob(".write-*.tmp")) == []
 
     def test_index_update_failure_with_runtime_error(self, tmp_path):
         """Test that RuntimeError during index update is handled"""
@@ -2389,9 +2388,6 @@ class TestWriteJournalTransactionBoundaries:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         lock_path.touch()
 
-        # Track temp file operations
-        temp_file_path = month_dir / "life-index_2026-03-14_001.md.tmp"
-
         with patch("tools.write_journal.core.get_journals_dir", return_value=journals_dir):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
@@ -2423,15 +2419,13 @@ class TestWriteJournalTransactionBoundaries:
                                                 "tools.write_journal.core.update_topic_index",
                                                 side_effect=RuntimeError("Index error"),
                                             ):
-                                                # Ensure temp file doesn't exist for cleanup  # noqa: E501
-                                                # (simulating already deleted)
                                                 result = write_journal(data)
 
         assert result["success"] is True
         assert result["write_outcome"] == "success_degraded"
         assert result["error"] is None
         assert Path(result["journal_path"]).exists()
-        assert not temp_file_path.exists()
+        assert list(month_dir.glob(".write-*.tmp")) == []
 
 
 class TestWriteJournalAbstractUpdate:
@@ -2636,8 +2630,8 @@ class TestWriteJournalSequenceRetry:
         # Should write to _002.md since _001.md exists
         assert "_002.md" in result["journal_path"]
 
-    def test_file_exists_last_retry_uses_existing_sequence(self, tmp_path):
-        """Test that last retry uses the sequence even if file exists"""
+    def test_file_exists_last_retry_fails_without_overwriting(self, tmp_path):
+        """Persistent allocation races exhaust publish retries without data loss."""
         data = {
             "date": "2026-03-14",
             "content": "Test content",
@@ -2701,8 +2695,9 @@ class TestWriteJournalSequenceRetry:
                                                     ):
                                                         result = write_journal(data)
 
-        # On last retry, it should still succeed (overwrites existing)
-        assert result["success"] is True
+        assert result["success"] is False
+        assert result["error"]["code"] == "E0207"
+        assert existing_file.read_text(encoding="utf-8") == "existing content"
 
 
 class TestWriteJournalProjectIndexUpdate:

@@ -22,13 +22,18 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 - Fragments are published without ever overwriting an existing file
   (create-only hard link, next-sequence retry on collision), written as UTF-8
   LF bytes on every platform including Windows, and land in the search index
-  immediately via the same FTS/metadata-cache write-through `write` uses. The
-  existing `write` command and its behavior are unchanged.
+  immediately via the same FTS/metadata-cache write-through `write` uses.
+- Journal `write` now has the same no-overwrite guarantee: if a concurrent
+  writer takes the allocated name, the journal moves to the next free number
+  and the returned `journal_path`, confirmation, and indexes name the file
+  actually created. Persistent collisions fail safely without replacing data.
 
 ### Included in this release
 
 - feat(fragment): add `fragment add` Core route (C1, C2) with no-overwrite
   publish and file-authority dedupe.
+- fix(write): publish journals create-only and propagate the committed path
+  after a filename collision.
 
 ## [1.6.2] - 2026-08-04
 

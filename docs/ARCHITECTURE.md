@@ -802,11 +802,16 @@ the execution truth for the compatibility summaries `write_outcome`,
    Final publication is atomic and create-only; a transaction never replaces a
    target it did not create, and compensation verifies creation identity before
    deleting a published path. Failed staging cleanup reports its concrete path.
-2. The journal is written to a temporary file; staged attachments are then
-   published, followed by the journal's atomic rename (`journal_commit`).
-3. Any failure before that rename removes the temp journal and compensates only
-   attachments published by this transaction. No derived view runs before the
-   durable journal commit.
+2. The journal is written and fsynced under a unique temporary name; staged
+   attachments are then published. The journal itself is published create-only
+   with a hard link (`journal_commit`). A `FileExistsError` allocates the next
+   sequence number, with a bounded number of retries; exhaustion fails with
+   `PUBLISH_COLLISION`, and no filesystem error falls back to a replacing rename.
+3. Any failure before a successful journal link removes the temp journal and
+   compensates only attachments published by this transaction. No derived view
+   runs before the durable journal commit. Once the link succeeds, the journal
+   is committed and its actual path drives every result and derived projection;
+   a temp-name cleanup failure is non-blocking and recorded separately.
 4. Monthly abstract, legacy navigation indexes, metadata relations, the
    metadata cache row upsert (`metadata_cache_row`), the FTS row write-through
    (`fts_row`), pending freshness, Index B, entity candidate capture, and
@@ -831,17 +836,9 @@ new queue protocol.
 `tools/fragment/` stores the user's own words as a fragment by importing the
 shared write helpers above (lock, sequence allocation, attachment
 staging/publish/compensate, FTS row and metadata-cache write-through); it moves
-or edits none of them. Two rules differ from `write`, both aimed at "never
-overwrite, never duplicate":
+or edits none of them. Both commands use the create-only journal publication
+described above. The fragment-specific dedupe rule is:
 
-- **No-overwrite publish**: the staged bytes are fsynced and published with a
-  create-only hard link (`os.link`, the same primitive the import pipeline
-  uses), so a path allocated a moment ago — for example by the import
-  pipeline, which publishes without the journals lock — can never be replaced.
-  A `FileExistsError` allocates the next sequence number, with a bounded
-  number of retries; exhaustion fails with `FRAGMENT_PUBLISH_COLLISION`
-  instead of falling back to a clobbering replace. A filesystem that refuses
-  hard links fails the write with a clear error.
 - **File-authority dedupe**: when `source.channel` + `source.message_id` are
   both supplied, a retry is recognized by scanning the fragment **files** in
   the candidate month and its two calendar neighbours (bytes prefilter, then
