@@ -38,9 +38,33 @@ def _search_kwargs(params: object) -> dict[str, Any]:
     return {field.name: getattr(params, field.name) for field in fields(params)}
 
 
-def test_health_dispatch_matches_the_direct_canonical_application() -> None:
+def test_health_dispatch_matches_the_direct_canonical_application(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import subprocess
+
+    import tools.__main__ as main_module
     from tools.__main__ import build_health_payload
     from tools.host_agent_channel.dispatcher import dispatch
+
+    real_run_git = main_module._run_git_local
+
+    def offline_run_git(checkout: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
+        if args and args[0] == "ls-remote":
+            # The only network-bound git probe in the health payload: a
+            # timeout on one of the two calls would flip that call's
+            # freshness to "unknown" and fail the equality for a reason
+            # unrelated to what this test proves. Return one fixed,
+            # well-formed result instead of running git.
+            return subprocess.CompletedProcess(
+                args=["git", *args],
+                returncode=0,
+                stdout="0000000000000000000000000000000000000000\trefs/heads/main\n",
+                stderr="",
+            )
+        return real_run_git(checkout, args)
+
+    monkeypatch.setattr(main_module, "_run_git_local", offline_run_git)
 
     direct = build_health_payload()
     via_dispatcher = dispatch("health", {})
