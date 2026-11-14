@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import json
 import os
 import shutil
@@ -27,7 +28,8 @@ BUILD_INPUT_FILES = (
     "bootstrap-manifest.json",
 )
 
-# pip spawns an isolated build env on every invocation; under a fully loaded
+# Without an in-environment backend (see _offline_build_args) pip spawns an
+# isolated build env on every invocation; under a fully loaded
 # gate machine that leg alone can exceed short timeouts. The binding constraint
 # is the required blocker CI gate's 120s per-test cap (pytest -m blocker
 # --timeout=120); the local coverage-gate script's 300s suite allowance is not
@@ -108,6 +110,19 @@ def _snapshot_build_root(tmp_path: Path) -> Path:
     return snapshot
 
 
+def _offline_build_args() -> list[str]:
+    """Build with the interpreter's own setuptools and wheel when it has them.
+
+    An isolated build downloads the build requirements on every run, so the
+    outcome depended on how fast the package index answered. The wheel's
+    contents come from the packaging config, not from where the backend was
+    installed, so the in-environment backend proves the same thing offline.
+    """
+    if importlib.util.find_spec("setuptools") and importlib.util.find_spec("wheel"):
+        return ["--no-build-isolation", "--no-index"]
+    return []
+
+
 def test_built_wheel_contains_packaged_skill_artifacts(tmp_path: Path) -> None:
     """PyPI wheels must carry sync-skill artifacts in an importable package path."""
     build_root = _snapshot_build_root(tmp_path)
@@ -120,6 +135,7 @@ def test_built_wheel_contains_packaged_skill_artifacts(tmp_path: Path) -> None:
             "wheel",
             str(build_root),
             "--no-deps",
+            *_offline_build_args(),
             "--wheel-dir",
             str(tmp_path),
         ],
