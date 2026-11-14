@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .paths import get_index_dir, get_fts_db_path, get_journals_dir, get_user_data_dir
 from .chinese_tokenizer import get_dict_hash
 from .search_constants import FTS_LIMIT, FTS_MIN_RELEVANCE, TOKENIZER_VERSION
+from .sqlite_wal import connect_wal
 
 # Bump this whenever the FTS table schema changes (columns added/removed).
 # Ensures incremental updates auto-trigger a full rebuild when needed.
@@ -39,6 +40,10 @@ USER_DATA_DIR = get_user_data_dir()  # deprecated: use get_user_data_dir()
 JOURNALS_DIR = get_journals_dir()  # deprecated: use get_journals_dir()
 
 
+# Opening the FTS database while another process is opening or writing it is
+# covered by the shared WAL open helper: see ``tools/lib/sqlite_wal.py``.
+
+
 def init_fts_db(*, force_recreate: bool = False) -> sqlite3.Connection:
     """Initialize FTS5 database.
 
@@ -50,8 +55,7 @@ def init_fts_db(*, force_recreate: bool = False) -> sqlite3.Connection:
     """
     get_index_dir().mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(str(get_fts_db_path()))
-    conn.execute("PRAGMA journal_mode=WAL")
+    conn = connect_wal(get_fts_db_path())
     cursor = conn.cursor()
 
     if force_recreate:

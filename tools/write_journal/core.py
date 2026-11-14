@@ -6,6 +6,7 @@ Life Index - Write Journal Tool - Core
 
 import json
 import os
+import sqlite3
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, Sequence
@@ -683,12 +684,34 @@ def _resolve_related_candidates(
     location: str,
     weather: str,
 ) -> None:
-    """Find related entries and build initial confirmation payload."""
-    metadata_conn = init_metadata_cache()
+    """Find related entries and build initial confirmation payload.
+
+    Related-entry candidates are advisory: when the metadata cache still
+    cannot be opened after its bounded wait (another process holds it mid-
+    initialization or write), the write proceeds without candidates and
+    records the degraded step instead of failing the journal.
+    """
+    candidate_entries: list[dict[str, Any]] = []
     try:
-        candidate_entries = get_all_cached_metadata(metadata_conn)
-    finally:
-        metadata_conn.close()
+        metadata_conn = init_metadata_cache()
+        try:
+            candidate_entries = get_all_cached_metadata(metadata_conn)
+        finally:
+            metadata_conn.close()
+    except sqlite3.Error as exc:
+        _record_side_effect(
+            result,
+            name="related_candidates",
+            phase="pre_commit",
+            status=SideEffectExecutionStatus.FAILED,
+            blocking=False,
+            error=str(exc),
+            recovery_strategy=(
+                "no action needed for this write: the journal is committed and "
+                "related candidates are advisory, the cache was only busy; run "
+                "life-index index --rebuild only if this record keeps appearing"
+            ),
+        )
     current_entry = {
         "date": data.get("date"),
         "topic": data.get("topic"),

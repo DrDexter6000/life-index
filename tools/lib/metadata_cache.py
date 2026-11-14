@@ -31,6 +31,7 @@ from .journal_files import (
 )
 from .path_contract import build_journal_path_fields
 from .chinese_tokenizer import count_cjk_words
+from .sqlite_wal import connect_wal
 
 # v2.0.0: freshness is decided per row from (mtime, size) against a stat-only
 # walk (reconcile) instead of a whole-archive content hash; the sidecar
@@ -78,8 +79,7 @@ def init_metadata_cache() -> sqlite3.Connection:
     """初始化元数据缓存数据库"""
     get_cache_dir().mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(str(get_metadata_db_path()))
-    conn.execute("PRAGMA journal_mode=WAL")  # 启用 WAL 模式提升并发性能
+    conn = connect_wal(get_metadata_db_path())
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
