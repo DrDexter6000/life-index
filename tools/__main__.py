@@ -10,6 +10,7 @@ Usage:
 Commands:
     write     Write a journal entry
     confirm   Apply write confirmation updates
+    fragment  Store the user's own words as a fragment
     search    Search journals (pure dual-pipeline)
     smart-search  Deterministic evidence scaffold for host agents
     edit      Edit a journal entry
@@ -1008,6 +1009,7 @@ def main() -> None:
     cmd_map = {
         "write": "tools.write_journal.__main__",
         "confirm": "tools.write_journal.__main__",
+        "fragment": "tools.fragment.__main__",
         "search": "tools.search_journals.__main__",
         "edit": "tools.edit_journal.__main__",
         "journal": "tools.journal.__main__",
@@ -1068,6 +1070,7 @@ def print_usage() -> None:
     print("Commands:")
     print("  write     Write a journal entry")
     print("  confirm   Apply write confirmation updates")
+    print("  fragment  Store the user's own words as a fragment")
     print("  search    Search journals")
     print("  edit      Edit a journal entry")
     print("  journal   Read journals through stable get/list contracts")

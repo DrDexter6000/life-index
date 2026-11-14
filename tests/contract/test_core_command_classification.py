@@ -46,6 +46,7 @@ EXPECTED_CORE_REFS = {
     "entity": ("C5",),
     "entity-graph-eval": ("C5", "C7"),
     "eval": ("C7",),
+    "fragment": ("C1", "C2"),
     "generate-index": ("C3",),
     "health": ("C6",),
     "import": ("C1", "C2"),

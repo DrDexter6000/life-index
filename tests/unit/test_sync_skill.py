@@ -735,6 +735,7 @@ def test_sync_skill_default_source_root_falls_back_to_packaged_artifacts(
     assert (target / "SKILL.md").is_file()
     assert sorted(path.name for path in (target / "references").glob("*.md")) == [
         "ENTITY_MAINTENANCE_PLAYBOOK.md",
+        "FRAGMENT_PLAYBOOK.md",
         "GROUNDED_QUERY_PLAYBOOK.md",
         "PHOTO_IMPORT_REVIEW_PLAYBOOK.md",
         "WEATHER_FLOW.md",

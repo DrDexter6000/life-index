@@ -533,6 +533,8 @@ relationships:
 | E0203 | 内容为空 | ask_user |
 | E0204 | 日期格式无效 | ask_user |
 | E0205 | 附件复制失败 | continue |
+| E0206 | 碎片去重键冲突（同 channel/message_id 已存不同正文） | ask_user |
+| E0207 | 碎片 create-only 发布冲突（未覆盖任何既有文件） | retry |
 
 ### 搜索模块 (E03xx)
 
@@ -978,6 +980,155 @@ python -m tools.write_journal confirm --journal "Journals/2026/03/life-index_202
 | E0204 | 日期格式无效 | ask_user |
 | E0205 | 附件复制失败 | continue |
 | E0400 | 天气 API 失败 | skip_optional |
+
+---
+
+## fragment
+
+### 端点
+
+```bash
+life-index fragment add --data '<json>'
+life-index fragment add --data-file <path>
+life-index fragment add --data -            # JSON on stdin
+python -m tools fragment add --data '<json>'
+```
+
+`fragment add` 把用户刚说过的话原样存为一条**碎片**：无标题、无摘要、无解
+释、无确认步骤、无网络。返回成功即已落盘、可被 `search` 找到、可用返回的
+`rel_path` 通过 `journal get` 读回。`write` 命令及其一切行为保持不变；带标题
+与 topic 的既有日志仍走 `write`。
+
+### 参数
+
+| 名称 | 类型 | 必填 | 规则 |
+|------|------|------|------|
+| text | string | 是 | 用户原话。行尾统一为 LF、去首尾空白，其余一字不改；trim 后为空则拒绝 |
+| expressed_at | string | 否 | ISO 8601 date-time，**必须带 offset**，真实解析（拒绝不存在的日历日期）。省略时用本机当前时区、带 offset、秒精度的时间 |
+| occurred | object | 否 | `{from, to, precision}`；`from`/`to` 为年、`YYYY-MM`、`YYYY-MM-DD` 或完整 date-time（真实日历），`precision` ∈ `year\|month\|day\|time` |
+| source | object | 否 | 可选非空字符串 `channel` / `input` / `persona` / `message_id`；空白串按错误拒绝，不当缺失处理 |
+| location | string | 否 | 一行文字。**永不施加任何默认值** |
+| place | object | 否 | `lat`、`lon`（范围内数字）、`from` ∈ `device\|stated\|carried` 必填；可选 `observed_at`（带 offset 的 date-time）、`carried_from`（来源碎片的非空字符串 id；只校验形状，不检查该碎片是否存在） |
+| weather | string | 否 | 一行文字。永不查询 |
+| reply_to | array | 否 | `{id}`（非空字符串）对象列表，可选 `version`（整数或非空字符串）、`quote`（字符串）；只校验形状，不检查指向的条目是否存在 |
+| attachments | array | 否 | `{source_path, description?}` 对象列表；仅本地文件，含 `source_url` 的条目直接拒绝（本命令永不联网）。**不**从 text 中扫描文件路径 |
+
+未知顶层键一律拒绝并点名；`title`、`topic`、`people`、`mood`、`tags`、
+`abstract`、`project`、`content` 被拒绝时说明：碎片只存用户本人的原话与事
+实。嵌套对象内的未知键同样拒绝并点名。`location` / `weather` 的空白值也按
+错误拒绝（事实字段不接受空白）。
+
+### 存储形态（stored form）
+
+frontmatter 固定六字段：`schema_version: 3`、`kind: fragment`、`id`（32 位
+小写十六进制，`uuid4().hex`）、`date`（`expressed_at` 自身墙钟时间去掉
+offset，**不**换算到本机时区）、`expressed_at`、`ingested_at`；其后仅写调用
+方实际提供的可选字段（字段顺序由共享序列化器决定）。正文就是 `text`（LF、
+去首尾空白；共享解析器读取正文时会做同样的 strip，因此读回与写入幂等），
+无标题行，文件以单个换行符结尾。文件以字节写入：UTF-8、LF、无 BOM，所有
+平台一致。月目录与文件名日期取 `date` 的同一日历日。
+
+### 去重（retry without duplicates）
+
+仅当 `source.channel` 与 `source.message_id` 同时存在时生效。**权威是文件本
+身，不是 metadata cache**：在 journals 锁内扫描候选日所在月与相邻两个月的
+fragment 文件，按 channel + message_id 双相等匹配。仅当 message_id 全部由可证明
+序列化时始终原样写出的 ASCII 字母、数字、`.`、`_`、`-` 组成时使用文本预筛；
+其他 id 解析窗口内每个可读文件，不会因 YAML 转义而绕过去重：
+
+- 一个匹配且存储正文与新 text 经同样的行尾、首尾空白规范化后相等：返回成功，
+  `deduplicated: true`，携带存储的 `id`、`journal_path`、`rel_path`、
+  `expressed_at`、`ingested_at`，以及 frontmatter 中已存附件的 `rel_path` 列表
+  `attachments`（与首次写入返回一致）；不写任何文件；side effects 描述**本次**
+  调用（`journal_commit: skipped`，reason `already stored`）。
+- 一个匹配但正文不同：错误 `FRAGMENT_KEY_CONFLICT`（E0206），零写入，
+  envelope 的 `details.existing` 携带已存的 `id` 与 `rel_path`。
+- 匹配文件缺少非空 `id`：同一错误，message 点名该文件的 `rel_path` 并说明存储文件
+  没有 fragment id；零写入，绝不返回空 id 的去重成功。
+- 多个匹配：同一错误，逐一列出。
+- 窗口内已存在目录无法列举、文件无法读取或不是合法 UTF-8，或未被安全预筛排除的
+  文件 frontmatter 不可解析为 mapping：写入照常进行，`dedupe_check: "incomplete"`
+  并在 `dedupe_unreadable_count` 给出总数；否则 `"complete"`；未提供 key 时为
+  `"not_requested"`。
+
+**窗口契约**：重试的候选日落在已存碎片所在日的一个日历月之内（含相邻月跨
+界）时，重试会被识别；更早的重试不被识别，会存为新碎片。
+
+### 事务与附件
+
+取 journals 锁（与 `write` 相同的超时与 `LOCK_TIMEOUT` 锁错误 envelope）。
+锁内依次：去重检查 → 分配路径 → staging 附件 → 写临时文件（字节、fsync）→
+create-only 发布（`os.link`，目标已存在即顺延序号有界重试，绝不覆盖；文件
+系统拒绝硬链接时明确报错，绝不退回 replace）。附件**全有或全无**：任一附
+件无法 staging，则零提交、零孤儿附件、零临时文件，错误点名该附件。发布前
+的任何失败都不留下日志文件与临时文件。
+
+### 提交后（what is and is not refreshed）
+
+提交后仅在本次调用内尽力写穿**一行 FTS**与**一行 metadata cache**（side
+effect 记 `complete` / `queued` / `failed` 与恢复命令，与 `write` 相同）。
+月度/年度生成的索引**不**重建：一条 `generated_indexes: skipped` side
+effect，reason 说明碎片写入不重建它们，恢复命令为
+`life-index generate-index --rebuild`（一次性刷新月、年、根与导航索引）。
+无 by-topic 条目（碎片没有 topic）。以下能力**完全不调用**：地点默认值、天
+气、entity 富化、关联候选、确认快照、entity 候选捕获。
+
+### 返回值
+
+```json
+{
+  "success": true,
+  "id": "ad86283d8d39441ab4dce4419307bdde",
+  "journal_path": "C:/.../Journals/2026/11/life-index_2026-11-12_001.md",
+  "rel_path": "Journals/2026/11/life-index_2026-11-12_001.md",
+  "expressed_at": "2026-11-12T15:02:10+01:00",
+  "ingested_at": "2026-11-13T23:20:33+01:00",
+  "deduplicated": false,
+  "dedupe_check": "complete",
+  "attachments": ["../../../attachments/2026/11/photo.jpg"],
+  "side_effects": [
+    {"name": "attachments", "phase": "pre_commit", "status": "complete", "blocking": true},
+    {"name": "journal_stage", "phase": "pre_commit", "status": "complete", "blocking": true},
+    {"name": "journal_commit", "phase": "commit", "status": "complete", "blocking": true},
+    {"name": "metadata_cache_row", "phase": "post_commit", "status": "complete", "blocking": false},
+    {"name": "fts_row", "phase": "post_commit", "status": "complete", "blocking": false},
+    {"name": "mark_pending", "phase": "post_commit", "status": "skipped", "blocking": false},
+    {
+      "name": "generated_indexes",
+      "phase": "post_commit",
+      "status": "skipped",
+      "blocking": false,
+      "reason": "a fragment write does not regenerate the monthly/yearly indexes",
+      "recovery_strategy": "life-index generate-index --rebuild"
+    }
+  ],
+  "write_outcome": "success",
+  "index_status": "complete",
+  "side_effects_status": "complete",
+  "error": null,
+  "metrics": {"total_ms": 42.5}
+}
+```
+
+无 `needs_confirmation` 字段（碎片没有确认流程）。去重命中时
+`journal_commit: skipped` 使 `derive_write_statuses` 不适用，状态字段直接描
+述本次调用：`write_outcome: "success"`、`index_status: "not_started"`、
+`side_effects_status: "complete"`。
+
+**id 与读取语义**：这里返回的 `id` 是碎片的持久身份，供 `reply_to` 与后续
+引用使用；当前 `journal get --id` 仍接受相对路径，因此请用返回的 `rel_path`
+读回碎片。
+
+### 错误码
+
+| 代码 | 说明 | 恢复策略 |
+|------|------|----------|
+| E0001 | 输入无效（未知键、字段畸形、空白字段、`source_url` 附件等；错误点名） | ask_user |
+| E0205 | 附件无法全部 staging（错误点名附件；零提交） | continue |
+| E0206 | FRAGMENT_KEY_CONFLICT：同 channel/message_id 已存不同正文 | ask_user |
+| E0207 | FRAGMENT_PUBLISH_COLLISION：create-only 发布有界重试后仍冲突；未覆盖任何既有文件 | retry |
+| E0200 | 其他写入失败。日志发布的硬链接被数据目录文件系统拒绝时记 `journal_commit: failed`，message 明确说明 `fragment add` 需要硬链接以无覆盖发布且未写入任何内容，`details.os_error` 保留原始 OS 错误；附件发布失败仍记 `attachments` | fail |
+| E0005 | journals 锁超时（与 `write` 同一 envelope） | retry |
 
 ---
 

@@ -69,6 +69,8 @@ class ErrorCode:
     CONTENT_EMPTY = "E0203"
     DATE_INVALID = "E0204"
     ATTACHMENT_COPY_FAILED = "E0205"
+    FRAGMENT_KEY_CONFLICT = "E0206"
+    FRAGMENT_PUBLISH_COLLISION = "E0207"
 
     # ========== Search Module (03xx) ==========
     INDEX_NOT_FOUND = "E0300"
@@ -151,6 +153,8 @@ class LifeIndexError(Exception):
         ErrorCode.CONTENT_EMPTY: RecoveryStrategy.ASK_USER,
         ErrorCode.DATE_INVALID: RecoveryStrategy.ASK_USER,
         ErrorCode.ATTACHMENT_COPY_FAILED: RecoveryStrategy.CONTINUE,
+        ErrorCode.FRAGMENT_KEY_CONFLICT: RecoveryStrategy.ASK_USER,
+        ErrorCode.FRAGMENT_PUBLISH_COLLISION: RecoveryStrategy.RETRY,
         # Edit errors: Ask user
         ErrorCode.JOURNAL_NOT_FOUND: RecoveryStrategy.ASK_USER,
         ErrorCode.NO_CHANGES_SPECIFIED: RecoveryStrategy.ASK_USER,
@@ -237,6 +241,12 @@ ERROR_DESCRIPTIONS = {
     ErrorCode.CONTENT_EMPTY: "Content cannot be empty",
     ErrorCode.DATE_INVALID: "Invalid date format (expected YYYY-MM-DD)",
     ErrorCode.ATTACHMENT_COPY_FAILED: "Failed to copy attachment file",
+    ErrorCode.FRAGMENT_KEY_CONFLICT: (
+        "This fragment source channel/message_id is already stored with different text"
+    ),
+    ErrorCode.FRAGMENT_PUBLISH_COLLISION: (
+        "Fragment publish collided with existing files; nothing was overwritten"
+    ),
     # Search
     ErrorCode.INDEX_NOT_FOUND: "Search index not found",
     ErrorCode.SEARCH_FAILED: "Search operation failed",

@@ -38,6 +38,7 @@ triggers:
 
 | 意图 | 触发词 | 工具 |
 |:---:|:---|:---|
+| 记录用户原话（碎片） | "把这句话记下来"、"记下我说的话"、"存下这条消息"、"save this quote"、"fragment" | 首次 `fragment add` 前加载 [Fragment playbook](references/FRAGMENT_PLAYBOOK.md) |
 | 记录日志 | "记日志"、"记录一下"、"写日记"、"记下来"、"log this"、"record this"、"write journal" | `write_journal` |
 | 搜索日志 | "查找日志"、"搜索记录"、"找一下关于...的日记"、"search journal"、"find log" | `search_journals` |
 | 智能搜索 | "帮我回忆..."、"我和女儿之间有哪些珍贵的回忆？"、"smart search" | `smart_search`（确定性 scaffold；合成与判断由宿主 agent 完成） |
@@ -60,6 +61,7 @@ triggers:
 
 ```bash
 # 统一 CLI（推荐）
+.venv/bin/life-index fragment add --data '{"text":"用户刚说的话（原样）","expressed_at":"2026-11-12T15:02:10+01:00"}'  # 碎片：无标题、无摘要、无确认
 .venv/bin/life-index write --data '{"title":"...","content":"...","date":"2026-03-14","topic":["work"],"abstract":"...","mood":[],"people":[],"project":"","tags":[],"links":[]}'
 .venv/bin/life-index confirm --journal "Journals/2026/03/life-index_2026-03-14_001.md" --location "Beijing, China" --weather "Sunny 25°C"
 .venv/bin/life-index search --query "关键词" --topic work --level 3

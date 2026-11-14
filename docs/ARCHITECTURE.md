@@ -151,6 +151,7 @@ surface exists.
 | entity | Core | C5 |
 | entity-graph-eval | Core | C5, C7 |
 | eval | Core | C7 |
+| fragment | Core | C1, C2 |
 | generate-index | Core | C3 |
 | health | Core | C6 |
 | import | Core | C1, C2 |
@@ -824,6 +825,38 @@ the execution truth for the compatibility summaries `write_outcome`,
 
 This is a bounded file transaction, not a WAL, background worker, database, or
 new queue protocol.
+
+#### Fragment write path (`fragment add`)
+
+`tools/fragment/` stores the user's own words as a fragment by importing the
+shared write helpers above (lock, sequence allocation, attachment
+staging/publish/compensate, FTS row and metadata-cache write-through); it moves
+or edits none of them. Two rules differ from `write`, both aimed at "never
+overwrite, never duplicate":
+
+- **No-overwrite publish**: the staged bytes are fsynced and published with a
+  create-only hard link (`os.link`, the same primitive the import pipeline
+  uses), so a path allocated a moment ago — for example by the import
+  pipeline, which publishes without the journals lock — can never be replaced.
+  A `FileExistsError` allocates the next sequence number, with a bounded
+  number of retries; exhaustion fails with `FRAGMENT_PUBLISH_COLLISION`
+  instead of falling back to a clobbering replace. A filesystem that refuses
+  hard links fails the write with a clear error.
+- **File-authority dedupe**: when `source.channel` + `source.message_id` are
+  both supplied, a retry is recognized by scanning the fragment **files** in
+  the candidate month and its two calendar neighbours (bytes prefilter, then
+  frontmatter parse) — never the metadata cache, which a concurrent
+  `index --rebuild` may empty under only the index lock. Same key + same text
+  returns the stored fragment (`deduplicated: true`, nothing written); same
+  key + different text fails with `FRAGMENT_KEY_CONFLICT`. Files are written
+  as bytes (UTF-8, LF, no BOM) on every platform, and `date` is
+  `expressed_at`'s own wall clock (the offset is removed, no zone conversion).
+
+After the publish only the single FTS row and the single metadata-cache row
+are written through (same side-effect records and recovery commands as
+`write`); the monthly/yearly generated indexes are deliberately not
+regenerated (`generated_indexes: skipped` with the
+`life-index generate-index --rebuild` recovery command).
 
 #### Disaster-recovery boundary
 

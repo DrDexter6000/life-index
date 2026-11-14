@@ -6,6 +6,30 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+### What users get
+
+- A host agent can now store what the user just said as a **fragment** with
+  `life-index fragment add` (`--data '<json>'`, `--data-file <path>`, or
+  `--data -` for stdin): the user's own words, verbatim — no title, no
+  summary, no interpretation, no confirmation step, no network. The moment the
+  command returns success the fragment is on disk, findable by `search`, and
+  readable through `journal get` with the returned `rel_path`.
+- Retries are safe: when `source.channel` + `source.message_id` are supplied, a
+  retry within one calendar month of the stored fragment is recognized from the
+  files themselves (never the metadata cache) and returns `deduplicated: true`
+  without writing anything; the same key with different text fails with a
+  clear `FRAGMENT_KEY_CONFLICT` error instead of silently duplicating.
+- Fragments are published without ever overwriting an existing file
+  (create-only hard link, next-sequence retry on collision), written as UTF-8
+  LF bytes on every platform including Windows, and land in the search index
+  immediately via the same FTS/metadata-cache write-through `write` uses. The
+  existing `write` command and its behavior are unchanged.
+
+### Included in this release
+
+- feat(fragment): add `fragment add` Core route (C1, C2) with no-overwrite
+  publish and file-authority dedupe.
+
 ## [1.6.2] - 2026-08-04
 
 ### What users get
