@@ -114,13 +114,15 @@ def _notes_region_issue(file_path: Path) -> str | None:
     return None
 
 
-def _entry_id_check() -> CheckResult:
+def _entry_id_check() -> Dict[str, Any]:
     """The identity check over live entry files (rules: ARCHITECTURE, *Entry identity*).
 
-    Live entry files only. An entry without an id is one warning-level
-    finding carrying the count (the fix is ``migrate``); a malformed id is an
-    issue naming the file; a duplicated id is one issue naming every file
-    that carries it. Neither is ever changed here.
+    Live entry files only. A malformed id is an issue naming the file; a
+    duplicated id is one issue naming every file that carries it. An entry
+    without an id is not an integrity defect — the archive simply has not
+    been migrated yet — so it is reported as ``without_id`` (the count) and a
+    ``note`` naming the fix (``migrate``), never as an issue: it does not
+    make ``verify`` fail. Nothing is ever changed here.
     """
     check = CheckResult(name="entry_ids", status="ok", count=0)
     missing: list[Path] = []
@@ -141,11 +143,6 @@ def _entry_id_check() -> CheckResult:
             malformed.append(file_path)
         else:
             missing.append(file_path)
-    if missing:
-        check.status = "warning"
-        check.issues.append(
-            f"{len(missing)} entry file(s) have no id; run `life-index migrate` to assign one"
-        )
     for file_path in malformed:
         check.status = "warning"
         check.issues.append(f"{_rel_path(file_path)}: malformed entry id")
@@ -153,7 +150,13 @@ def _entry_id_check() -> CheckResult:
         if len(rel_paths) > 1:
             check.status = "warning"
             check.issues.append(f"duplicate entry id {stored_id}: " + ", ".join(sorted(rel_paths)))
-    return check
+    entry: Dict[str, Any] = asdict(check)
+    entry["without_id"] = len(missing)
+    if missing:
+        entry["note"] = (
+            f"{len(missing)} entry file(s) have no id; run `life-index migrate` to assign one"
+        )
+    return entry
 
 
 def _load_fts_paths() -> set[str]:
@@ -316,7 +319,7 @@ def run_verify() -> Dict[str, Any]:
     result["checks"].append(asdict(topic_check))
 
     # Check 5: entry identity (live entry files only)
-    result["checks"].append(asdict(_entry_id_check()))
+    result["checks"].append(_entry_id_check())
 
     # Count total issues
     total_issues = sum(len(c.get("issues", [])) for c in result["checks"])

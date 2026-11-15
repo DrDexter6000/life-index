@@ -29,10 +29,11 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
   outgoing check, a malformed id, or a duplicated id. Malformed and
   duplicated ids are never replaced: those files are left exactly as they are
   and reported.
-- `life-index verify` gains an `entry_ids` check (live entry files only): one
-  warning with the count for entries without an id (fix: run `migrate`), an
+- `life-index verify` gains an `entry_ids` check (live entry files only): an
   issue per file with a malformed id, and one issue per duplicated id naming
-  every file that carries it.
+  every file that carries it. Entries without an id are counted
+  (`without_id`, with a `note` naming `migrate`) but are not an issue: an
+  archive that has not been migrated yet still verifies.
 
 - When the user confirms that something in a fragment was wrong ("it was
   Tuesday, not Monday"), the host agent can now record the correction with

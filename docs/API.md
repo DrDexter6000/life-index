@@ -6042,7 +6042,7 @@ python -m tools verify [--json]
 | `fts_consistency` | FTS 索引条目与实际日志文件的一致性（缺失 / 孤儿） |
 | `attachment_refs` | 正文中引用的附件文件是否存在 |
 | `topic_consistency` | `by-topic/` 索引中链接的日志路径是否有效 |
-| `entry_ids` | 条目身份（只看 live entry 文件；规则见 `docs/ARCHITECTURE.md` 的 *Entry identity* 一节）：没有 id 的条目共记一条带计数的 warning（修复命令为 `migrate`）；畸形 id 逐文件记 issue；跨文件重复的 id 每个记一条 issue、点名每个携带它的文件。本检查只报告，绝不修改 |
+| `entry_ids` | 条目身份（只看 live entry 文件；规则见 `docs/ARCHITECTURE.md` 的 *Entry identity* 一节）：没有 id 的条目不是完整性缺陷（档案只是还没迁移）：记在该检查的 `without_id`（数量）与 `note`（修复命令为 `migrate`）里，不计入 issue，不使 `verify` 失败；畸形 id 逐文件记 issue；跨文件重复的 id 每个记一条 issue、点名每个携带它的文件。本检查只报告，绝不修改 |
 
 `fts_consistency` 的 canonical journal 集合不包含 co-located `.revisions/` 编辑快照；FTS rebuild 同样不索引这些快照。真实 canonical journal 缺失和真实孤儿 FTS 行仍会报告。
 

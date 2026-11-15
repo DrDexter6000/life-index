@@ -684,8 +684,8 @@ note 区损坏的文件：`fragment note` 拒绝在其后追加（E0209），原
   一个（schema 已是当前版本的文件也会被补）；畸形值（非字符串，或不是 32 个小写
   十六进制字符的字符串）绝不替换——文件原样保留并被报告；跨文件重复的合法 id 同样
   绝不修改——每个携带它的文件路径都被报告。`verify` 的 `entry_ids` 检查（只看
-  live entry 文件）把缺失报成一条带计数的 warning（修复命令是 `migrate`）、畸形
-  与重复各报 issue 并点名文件。`SCHEMA_VERSION` 不因 id 而递增：补 id 是与 schema
+  live entry 文件）把缺失记为计数与提示（`without_id` / `note`，修复命令是 `migrate`；不算 issue，
+  不使 `verify` 失败——档案只是还没迁移）、畸形与重复各报 issue 并点名文件。`SCHEMA_VERSION` 不因 id 而递增：补 id 是与 schema
   链并列的第二个独立重写理由。
 - **`write` 的 id 写入保障**：payload 里会成为 frontmatter 键的键（除 `content` 与
   `_` 前缀键外全部）遵守与 `edit` 更新键相同的唯一键规则

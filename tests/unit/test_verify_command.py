@@ -421,7 +421,7 @@ class TestVerifyCommand:
 class TestEntryIdFindings:
     """The identity check over live entry files: missing / malformed / duplicate."""
 
-    def test_entries_without_an_id_are_one_finding_with_the_count(
+    def test_entries_without_an_id_are_a_counted_note_not_an_issue(
         self, verify_paths: dict[str, Path]
     ) -> None:
         _write_journal(
@@ -444,10 +444,12 @@ class TestEntryIdFindings:
         result = run_verify()
         entry_id_check = _check(result, "entry_ids")
 
-        assert entry_id_check["status"] == "warning"
-        assert entry_id_check["issues"] == [
+        assert entry_id_check["status"] == "ok"
+        assert entry_id_check["issues"] == []
+        assert entry_id_check["without_id"] == 2
+        assert entry_id_check["note"] == (
             "2 entry file(s) have no id; run `life-index migrate` to assign one"
-        ]
+        )
 
     def test_a_malformed_id_names_the_file(self, verify_paths: dict[str, Path]) -> None:
         _write_journal(
