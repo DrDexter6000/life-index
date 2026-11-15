@@ -694,7 +694,20 @@ note 区损坏的文件：`fragment note` 拒绝在其后追加（E0209），原
   进正文。发布前把最终渲染的日志用公共 reader 读回：存储 `id` 必须就是生成的 id，
   否则拒绝、零发布。结果里的 `id` 在日志文件提交的那一刻写入结果，此后的一切结果
   （含降级 envelope）都带着它；调用方的字典永远不会被加上 `id`。
-- 本包不改读取契约：`journal get` 按 id 取条目等读取侧能力属于后续包。
+- **按 id 读取（lookup）**：`journal get --id`（及 `batch-get` 的 id 选择器）由
+  `tools/lib/entry_id_lookup.py` 的唯一查找函数解析：**文件是唯一权威**——一次
+  只读扫描，候选文件与 `get --path` 会服务的文件完全一致（共享
+  `tools/lib/journal_ref.py` 的 canonical 路径形状与"解析后仍在数据目录内"判
+  定；更深嵌套的条目与指向数据目录外的符号链接不是候选），每个候选文件只读
+  一次并解析 frontmatter；无缓存、无索引、无锁、不建目录。匹配条目的响应由该
+  次扫描读到的字节构建，不重开文件。扫描是严格的：列不出的目录、读不出（含
+  UTF-8 解码失败）的候选文件计入未读数。每个被请求 id 的结局：
+  恰好一个文件携带→返回（扫描不完整时响应附 `data.lookup.unread_paths`）；
+  多个文件携带→`JOURNAL_ID_AMBIGUOUS` 点名每个 `rel_path`，绝不静默任选；无人
+  携带且扫描完整→`JOURNAL_NOT_FOUND`；无人携带且扫描不完整→
+  `JOURNAL_LOOKUP_INCOMPLETE`（带未读数），绝不报 `JOURNAL_NOT_FOUND`。读取
+  契约（`m16.journal.v1`）的 `id` 字段返回该存储 id（无合法 id 时为 `null`），
+  `rel_path` 仍是路径。
 
 ---
 

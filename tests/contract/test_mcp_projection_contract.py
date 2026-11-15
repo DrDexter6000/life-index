@@ -218,6 +218,43 @@ def test_projection_rejects_a_forbidden_tool_before_dispatch(monkeypatch) -> Non
         asyncio.run(server.call_tool("write", {"title": "must not run"}))
 
 
+def test_registry_and_generated_text_no_longer_say_the_id_is_a_path() -> None:
+    """The `id` parameter text must teach the durable id, not the path."""
+    from tools.host_agent_channel.registry import CAPABILITY_REGISTRY
+
+    capability = CAPABILITY_REGISTRY["journal.get"]
+    id_description = {
+        field.name: field.metadata["description"] for field in fields(capability.params_type)
+    }["id"]
+
+    assert "equal to the relative path" not in id_description
+    assert "Current v0" not in id_description
+    assert "equal to the relative path" not in capability.description
+    assert "Durable entry id" in id_description
+    assert "`id` field of journal get/list output" in id_description
+
+
+@pytest.mark.usefixtures("optional_mcp_sdk")
+def test_mcp_projection_id_description_speaks_the_durable_id() -> None:
+    from tools.host_agent_channel.registry import CAPABILITY_REGISTRY
+    from tools.mcp_projection.server import create_mcp_server
+
+    capability = CAPABILITY_REGISTRY["journal.get"]
+    tools = _tool_map(create_mcp_server())
+    tool = tools["journal.get"]
+
+    assert tool.description == capability.description
+    assert "durable entry id" in tool.description
+    id_property = tool.inputSchema["properties"]["id"]
+    assert (
+        id_property["description"]
+        == {field.name: field.metadata["description"] for field in fields(capability.params_type)}[
+            "id"
+        ]
+    )
+    assert "equal to the relative path" not in id_property["description"]
+
+
 def test_projection_source_has_no_broad_discovery_or_d5_transport() -> None:
     source = "\n".join(
         path.read_text(encoding="utf-8") for path in sorted(PROJECTION_ROOT.rglob("*.py"))

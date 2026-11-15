@@ -33,7 +33,7 @@ class HealthParams:
 
 @dataclass(frozen=True)
 class JournalGetParams:
-    """One canonical journal selector; the current v0 id is its relative path."""
+    """One canonical journal selector: a relative path or a durable entry id."""
 
     path: str | None = field(
         default=None,
@@ -41,7 +41,13 @@ class JournalGetParams:
     )
     id: str | None = field(
         default=None,
-        metadata={"description": "Current v0 journal id (equal to the relative path)."},
+        metadata={
+            "description": (
+                "Durable entry id: the `id` field of journal get/list output (32"
+                " lowercase hex characters). A value starting with `Journals/` is"
+                " treated as a relative path."
+            )
+        },
     )
 
 
@@ -156,8 +162,8 @@ CAPABILITY_REGISTRY: Mapping[str, CapabilityDefinition] = MappingProxyType(
         "journal.get": CapabilityDefinition(
             method_id="journal.get",
             description=(
-                "Read one canonical journal entry by id or relative path. Logical read; it "
-                "performs no derived-state write."
+                "Read one canonical journal entry by durable entry id or relative path. "
+                "Logical read; it performs no derived-state write."
             ),
             params_type=JournalGetParams,
             operation_class=OperationClass.READ,

@@ -692,11 +692,12 @@ class TestExpectIdRecovery:
             {"expect_id": "0" * 32},  # wrong id
         ],
     )
-    def test_recovery_names_metadata_id(self, data_dir, extra):
+    def test_recovery_names_journal_get_id(self, data_dir, extra):
         result = self._refusal(data_dir, extra)
         suggestion = result["error"]["suggestion"]
-        assert "metadata.id" in suggestion
-        assert "never the top-level path id" in suggestion
+        assert "the entry id that `fragment add` returned" in suggestion
+        assert "`id` in `journal get` output" in suggestion
+        assert "metadata.id" not in suggestion
 
     def test_recovery_for_target_without_id(self, data_dir):
         _basis(data_dir)
@@ -718,4 +719,4 @@ class TestExpectIdRecovery:
         )
         assert result["error"]["code"] == "E0208"
         assert result["error"]["details"]["reason"] == "expect_id_unexpected"
-        assert "metadata.id" in result["error"]["suggestion"]
+        assert "`null` means the file has none" in result["error"]["suggestion"]

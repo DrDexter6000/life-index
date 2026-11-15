@@ -8,13 +8,42 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ### What users get
 
+- **Breaking change of the `journal` read payload** (`schema_version` is now
+  `m16.journal.v1`): in `journal get`, every `journal batch-get` item and every
+  `journal list` item, `id` used to be the entry's file path and is now the
+  durable entry id stored in the file's own frontmatter (`null` when the file
+  has none). `rel_path` still carries the path, unchanged. A consumer that
+  used `id` as a path must read `rel_path` instead.
+- `journal get --id <id>` now finds an entry by its durable id — wherever the
+  file currently lives. The files themselves are the only authority: one
+  read-only scan of the live entries (no cache, no index, no lock) reads each
+  file once; the returned entry is built from the bytes of that scan. Moving
+  or renaming a file (e.g. to another month directory) does not break id
+  lookup.
+- Id lookup never guesses. If two files carry the same id the read fails with
+  `JOURNAL_ID_AMBIGUOUS` naming every file; if no file carries the id and the
+  scan could not read something, the read fails with
+  `JOURNAL_LOOKUP_INCOMPLETE` naming how many paths stayed unread — never a
+  plain "not found"; and when the id is found despite unreadable strays, the
+  entry is returned with `data.lookup.unread_paths` so one broken stray file
+  cannot disable id lookup for the whole archive.
+- A `--id` value starting with `Journals/` is still treated as a path,
+  permanently; anything that is neither a durable id nor such a path is
+  refused as invalid input. `batch-get` accepts mixed path and id selectors,
+  resolves all id selectors of one call in a single scan, and two selectors
+  that resolve to the same file return one item.
+- Everything that tells an agent which id to use now points at the same
+  value: the channel registry/MCP tool description for `journal.get`, the
+  `fragment note` `E0208` recovery text, and the fragment playbook all say
+  the id to send (`expect_id`, `based_on[].id`) is the `id` field of
+  `journal get` output — omit it when it is `null`.
 - Every entry file now carries a durable `id` in its own frontmatter: new
   entries (from `write`, `fragment add`, and both import publish paths) get
   one when they are created, and old entries get one from `life-index migrate`
   — nothing can change it afterwards (`edit` refuses every form of `id`
-  update, and a caller-supplied `id` to `write` is rejected). A later package
-  will switch the read contract to this id; today the id is stored, returned
-  by `write`, and never rewritten.
+  update, and a caller-supplied `id` to `write` is rejected). The id is
+  stored, returned by `write`, and never rewritten; the read contract now
+  speaks it too (next bullet).
 - `write` returns the new entry's `id` whenever a journal was committed
   (including degraded post-commit outcomes); a dry run returns `id: null`.
 - `life-index migrate` assigns missing ids: a file at the current schema
@@ -138,6 +167,10 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ### Included in this release
 
+- feat(journal): the read contract speaks durable ids (`m16.journal.v1`):
+  `id` from the file's frontmatter, `--id <durable id>` lookup through one
+  strict read-only scan (`tools/lib/entry_id_lookup.py`), mixed selectors in
+  `batch-get`, and the registry/playbook/E0208 guidance repointed.
 - feat(fragment): add `fragment add` Core route (C1, C2) with no-overwrite
   publish and file-authority dedupe.
 - fix(write): publish journals create-only and propagate the committed path

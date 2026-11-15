@@ -276,14 +276,14 @@ def _mismatch_response(message: str, details: Dict[str, Any]) -> Dict[str, Any]:
     )
     if str(details.get("reason", "")).startswith("expect_id"):
         # The three expect_id_* reasons get one clause, the same guidance the
-        # playbook gives: the id to send is the stored fragment id
-        # (``metadata.id`` in `journal get` output), never the top-level
-        # path id.
+        # playbook gives: the id to send is the entry id `journal get`
+        # returns as `id` (the same value `fragment add` returned); a file
+        # whose `id` is null has none, so both fields are omitted.
         recovery = (
-            "expect_id (and based_on[].id) is the fragment id that"
-            " `fragment add` returned — `metadata.id` in `journal get`"
-            " output, never the top-level path id; copy it from metadata.id"
-            " and retry; nothing was written"
+            "expect_id (and based_on[].id) is the entry id that"
+            " `fragment add` returned — `id` in `journal get` output"
+            " (`null` means the file has none: omit it); copy it and retry;"
+            " nothing was written"
         )
     return create_error_response(ErrorCode.FRAGMENT_NOTE_MISMATCH, message, details, recovery)
 

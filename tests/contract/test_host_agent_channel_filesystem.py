@@ -27,6 +27,19 @@ def _seed_data(data_dir: Path) -> str:
     return journal.relative_to(data_dir).as_posix()
 
 
+_SEED_ENTRY_ID = "c" * 32
+
+
+def _seed_entry_id(data_dir: Path) -> str:
+    journal = data_dir / "Journals" / "2026" / "05" / "life-index_2026-05-28_001.md"
+    text = journal.read_text(encoding="utf-8")
+    journal.write_text(
+        text.replace("date: 2026-05-28", f"date: 2026-05-28\nid: {_SEED_ENTRY_ID}"),
+        encoding="utf-8",
+    )
+    return _SEED_ENTRY_ID
+
+
 def _snapshot(root: Path) -> dict[str, str]:
     """Capture both directory topology and exact file content."""
     snapshot: dict[str, str] = {}
@@ -56,6 +69,24 @@ def test_health_and_journal_get_are_physically_read_only(isolated_data_dir: Path
     assert dispatch("health", {})["success"] is True
     assert dispatch("journal.get", {"path": journal_path})["success"] is True
 
+    assert _snapshot(isolated_data_dir) == before
+
+
+def test_journal_get_by_durable_id_is_physically_read_only(isolated_data_dir: Path) -> None:
+    """The id lookup scans files only: no cache, no index, no lock, no dirs."""
+    from tools.host_agent_channel.dispatcher import dispatch
+
+    _seed_data(isolated_data_dir)
+    entry_id = _seed_entry_id(isolated_data_dir)
+    before = _snapshot(isolated_data_dir)
+
+    result = dispatch("journal.get", {"id": entry_id})
+
+    assert result["success"] is True
+    assert result["schema_version"] == "m16.journal.v1"
+    assert result["data"]["id"] == entry_id
+    assert result["data"]["rel_path"] == "Journals/2026/05/life-index_2026-05-28_001.md"
+    assert "lookup" not in result["data"]
     assert _snapshot(isolated_data_dir) == before
 
 

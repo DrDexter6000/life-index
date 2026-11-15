@@ -22,8 +22,9 @@ When the user has just said something, a short thought, or dictation and the tas
 4. **重试安全**：带 `source.channel` + `source.message_id` 重发同一句话会返回
    `deduplicated: true`（什么都不写）；同键不同正文返回 `E0206` 键冲突——
    此时不要重试，按 `details.existing` 处理。识别窗口是一个日历月（含相邻月）。
-5. **读回**：用返回的 `rel_path` 执行 `journal get --path <rel_path>`；返回的
-   `id` 是这条碎片的持久身份，供以后 `reply_to` 引用。带更正 note 的碎片：
+5. **读回**：用返回的 `rel_path` 执行 `journal get --path <rel_path>`（或用
+   `journal get --id <id>`）；返回的 `id` 是这条碎片的持久身份，文件移动或改名
+   后仍可取回，供以后 `reply_to` 引用。带更正 note 的碎片：
    `content` 始终是原话，`notes` 数组单独给出每条更正。
 6. `write` 保持不变：带标题与 topic 的整理性日志（legacy title-and-topic
    journal）仍走 `write`。分不清"存原话"还是"写日志"时，问用户一次。
@@ -47,9 +48,9 @@ When the user has just said something, a short thought, or dictation and the tas
    出现在那条碎片的**原文**里（先 `journal get` 抄原文，不要凭记忆写）；note 里
    的文字不算原文。`id` 给出时必须是那条碎片的 `id`。
 4. **`expect_id` 与 `based_on[].id` 用碎片自身的 id**：即 `fragment add` 返回的
-   `id`，也就是 `journal get` 输出里的 `metadata.id`——**不是**顶层的 `id` 字段
-   （那是 `rel_path` 路径 id，拿来当 `expect_id` 只会得到 `E0208`）。目标带
-   `id` 时必须给 `expect_id`；`metadata.id` 缺失（legacy 文件）就两个都省略。
+   `id`，也就是 `journal get` 输出顶层的 `id`（同一个值；`null` 表示该文件没有
+   id，此时两个都省略）。目标带 `id` 时必须给 `expect_id`；传 `rel_path` 等其他
+   值只会得到 `E0208`。
 5. **重试安全**：同样的 text + `by` + 依据列表重发返回 `deduplicated: true`，什么
    都不写；`by`、text 或依据有任何不同就是另一条 note。
 6. **读回**：`journal get --path <rel_path>` 的 `notes` 数组按存入顺序给出每条

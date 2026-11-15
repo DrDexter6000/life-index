@@ -1141,8 +1141,8 @@ effect，reason 说明碎片写入不重建它们，恢复命令为
 `side_effects_status: "complete"`。
 
 **id 与读取语义**：这里返回的 `id` 是碎片的持久身份，供 `reply_to` 与后续
-引用使用；当前 `journal get --id` 仍接受相对路径，因此请用返回的 `rel_path`
-读回碎片。
+引用使用；`journal get --id <id>` 按它取回碎片（文件移动或改名后仍然有效），
+`journal get --path <rel_path>` 也始终可用。
 
 ### 错误码
 
@@ -1175,9 +1175,9 @@ note 区，读者拿到的原文与 note 是两样东西，搜更正后的词也
 | 名称 | 类型 | 必填 | 规则 |
 |------|------|------|------|
 | path | string | 是 | 被更正碎片的 `rel_path`；必须是数据目录内的 live fragment 文件（现有准入判定），不能是符号链接；不接受 revisions/digest/树外路径 |
-| expect_id | string | 目标带 `id` 时必填 | 必须等于目标 frontmatter 的 `id`；目标无 `id` 时必须省略 |
+| expect_id | string | 目标带 `id` 时必填 | 必须等于目标 frontmatter 的 `id`（即 `journal get` 输出的顶层 `id`，也是 `fragment add` 返回的 `id`）；目标无 `id`（该值为 `null`）时必须省略 |
 | text | string | 是 | 用户确认过的更正；与碎片正文同样规范化（LF、去首尾空白），非空；不得包含目标的 `notes_boundary` 值；任何一行不得以 note 开/闭标记前缀（`<!-- life-index:note ` / `<!-- /life-index:note `）开头——同样的字符在行中间是普通文字 |
-| based_on | array | 是，非空 | 每项 `{path, id?, quote}`：用户在哪条碎片里确认了更正。`path` 同样必须是 live fragment 且非符号链接；`id` 给出时必须等于该文件 frontmatter 的 `id`；`quote` 必填非空，必须逐字出现在该文件**原文**（LF 归一化）中——note 里的文字不算 |
+| based_on | array | 是，非空 | 每项 `{path, id?, quote}`：用户在哪条碎片里确认了更正。`path` 同样必须是 live fragment 且非符号链接；`id` 给出时必须等于该文件 frontmatter 的 `id`（即 `journal get` 输出的顶层 `id`，为 `null` 时省略）；`quote` 必填非空，必须逐字出现在该文件**原文**（LF 归一化）中——note 里的文字不算 |
 | by | string | 是 | 非空一行：谁写入了这条 note |
 | noted_at | string | 否 | 带 offset 的 ISO 8601 date-time；默认现在（本机时区、秒精度） |
 
@@ -1446,7 +1446,7 @@ python -m tools journal list --recent
 | 名称 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | `--path` | string | 与 `--id` 二选一 | - | journal 相对路径，必须形如 `Journals/YYYY/MM/life-index_YYYY-MM-DD_NNN.md` |
-| `--id` | string | 与 `--path` 二选一 | - | v0 journal id；当前等同于 `rel_path` |
+| `--id` | string | 与 `--path` 二选一 | - | 持久 entry id（32 个小写十六进制字符，即 `journal get` / `journal list` 输出的 `id`）。以 `Journals/` 开头的值按 `--path` 处理；其他值以 `JOURNAL_ARGUMENT_INVALID` 拒绝 |
 | `--json` | flag | 否 | false | 兼容参数；当前输出始终为 JSON |
 
 #### `journal batch-get`
@@ -1454,7 +1454,7 @@ python -m tools journal list --recent
 | 名称 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | `--path` | string[] | 与 `--id` 至少一项 | - | journal 相对路径，可重复；每项必须匹配 `journal get` 路径规则 |
-| `--id` | string[] | 与 `--path` 至少一项 | - | v0 journal id，可重复；当前等同于 `rel_path` |
+| `--id` | string[] | 与 `--path` 至少一项 | - | 持久 entry id，可重复；同一调用内全部 id 选择器由**一次**档案扫描解析。以 `Journals/` 开头的值按 `--path` 处理 |
 | `--json` | flag | 否 | false | 兼容参数；当前输出始终为 JSON |
 
 #### `journal list --recent`
@@ -1469,26 +1469,54 @@ python -m tools journal list --recent
 ### 路径与身份语义
 
 - `rel_path` 是相对 `LIFE_INDEX_DATA_DIR` 的稳定路径，使用 `/` 分隔符。
-- v0 `id` 等同于 `rel_path`。未来若引入 durable id，会通过新的
-  `schema_version` 或 additive 字段迁移，消费者不应自行猜测新 id。
-- `--path` / `--id` 拒绝空路径、绝对路径、NUL 字节、路径遍历，以及不匹配
+- `id` 是文件自身 frontmatter 里存储的持久 entry id（规则见
+  `docs/ARCHITECTURE.md` 的*条目身份*一节）：文件存了合法 id 时返回该值，
+  否则返回 `null`——绝不是路径，也不是任何计算值。`metadata.id` 仍原样展示
+  文件存储的内容。
+- `--id <value>` 的解析：合法 id（32 个小写十六进制字符）由一次对 live entry
+  文件的只读扫描解析（文件是唯一权威；无缓存、无索引）；以 `Journals/` 开头的
+  值永远按 `--path` 处理；其他值以 `JOURNAL_ARGUMENT_INVALID` 拒绝。
+- 按 id 查找的结局（扫描的候选文件与 `get --path` 会服务的文件完全一致——
+  共享同一套判定，实现于 `tools/lib/journal_ref.py`：canonical 路径形状
+  （`Journals/<目录>/<目录>/life-index_*.md`，恰好四段）加上解析后仍在数据
+  目录内；更深层嵌套的条目、dot-directory（如 `.revisions/`）与指向数据
+  目录外的符号链接都不是候选，既不算命中也不算未读）：
+  - 恰好一个文件携带该 id：返回该条目（响应由扫描时读到的字节构建，不重开文件）。
+  - 两个及以上文件携带：`JOURNAL_ID_AMBIGUOUS`，`error.details.rel_paths`
+    点名每个文件；绝不静默任选。
+  - 没有文件携带且扫描完整：`JOURNAL_NOT_FOUND`。
+  - 没有文件携带且扫描不完整（某目录无法列出或某文件无法读取）：
+    `JOURNAL_LOOKUP_INCOMPLETE`，`error.details.unread_paths` 给出未能读取的
+    路径数；绝不报 `JOURNAL_NOT_FOUND`。
+  - 恰好一个文件携带但扫描不完整：仍返回该条目，并在 `data.lookup.unread_paths`
+    报告未读路径数——一个永远读不出的杂散文件不会让整个档案的 id 查找失效。
+  - 扫描中每个文件只读一次；UTF-8 解码失败的文件按"无法读取"计入未读数。
+- `--path` / 路径形 `--id` 拒绝空路径、绝对路径、NUL 字节、路径遍历，以及不匹配
   `Journals/YYYY/MM/life-index_YYYY-MM-DD_NNN.md` 的输入。
 - `journal list --recent` 只扫描 `Journals/YYYY/MM/life-index_*.md`，不会返回
   `INDEX.md`、topic/year/month 派生索引或其他非 journal 文件。
+- `batch-get` 可混用 path 与 id 选择器；条目顺序与该命令既往行为一致：先全部
+  `--path`（按给出顺序），再全部 `--id`（按给出顺序）。两个选择器解析到同一
+  文件时只产生一个条目，位置在该文件第一次被选到处；若其中一个是 id 选择器，
+  该条目由 id 扫描的那次读取构建（一次路径重读不会取代它）。任一选择器失败
+  （缺失路径、`JOURNAL_ID_AMBIGUOUS`、`JOURNAL_LOOKUP_INCOMPLETE`、未找到的
+  id）都使整批失败；`--id` 值两端的空白在分类前剥除（`get` 与 `batch-get`
+  同一规则）。
 
 ### `journal get` 返回值
 
 ```json
 {
   "success": true,
-  "schema_version": "m16.journal.v0",
+  "schema_version": "m16.journal.v1",
   "data": {
-    "id": "Journals/2026/05/life-index_2026-05-28_001.md",
+    "id": "5f0d3b6a9c214e7f8d2ab3c4d5e6f701",
     "rel_path": "Journals/2026/05/life-index_2026-05-28_001.md",
     "journal_route_path": "2026/05/life-index_2026-05-28_001.md",
     "metadata": {
       "title": "示例日志",
       "date": "2026-05-28",
+      "id": "5f0d3b6a9c214e7f8d2ab3c4d5e6f701",
       "attachments": []
     },
     "content": "# 示例日志\n\n正文内容",
@@ -1503,7 +1531,7 @@ python -m tools journal list --recent
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `data.id` | string | v0 journal id，当前等同于 `rel_path` |
+| `data.id` | string \| null | 文件存储的持久 entry id（合法时），文件没有合法 id 时为 `null`；从不是路径 |
 | `data.rel_path` | string | 相对 `LIFE_INDEX_DATA_DIR` 的 journal 路径 |
 | `data.journal_route_path` | string | 去掉 `Journals/` 前缀后的路由友好路径 |
 | `data.metadata` | object | frontmatter 解析结果 |
@@ -1512,6 +1540,7 @@ python -m tools journal list --recent
 | `data.notes_malformed` | boolean | 仅在 note 区损坏时出现（additive，为 true）：`content` 仍是原文，`notes` 只含损坏点之前成功解析的 note |
 | `data.attachments` | array | 从 frontmatter `attachments` 规范化后的附件元数据 |
 | `data.word_count` | int | 基于**原文**的轻量计数：CJK 字符按字符计，非 CJK 字母数字连续片段按词计；纯非 CJK 文本保持空白分词口径 |
+| `data.lookup` | object | 仅按 id 读取且扫描不完整时出现（additive）：`{"unread_paths": <n>}`，条目已找到，但档案里有 n 个路径没读出来 |
 
 附件项字段与 `attachment` 读取侧一致，当前包含
 `raw_path`、`path`、`name`、`description`、`source_url`、`content_type`、`size`。
@@ -1525,14 +1554,14 @@ python -m tools journal list --recent
 ```json
 {
   "success": true,
-  "schema_version": "m16.journal.v0",
+  "schema_version": "m16.journal.v1",
   "data": {
     "items": [
       {
-        "id": "Journals/2026/05/life-index_2026-05-28_001.md",
+        "id": "5f0d3b6a9c214e7f8d2ab3c4d5e6f701",
         "rel_path": "Journals/2026/05/life-index_2026-05-28_001.md",
         "journal_route_path": "2026/05/life-index_2026-05-28_001.md",
-        "metadata": {"title": "示例日志", "date": "2026-05-28"},
+        "metadata": {"title": "示例日志", "date": "2026-05-28", "id": "5f0d3b6a9c214e7f8d2ab3c4d5e6f701"},
         "content": "# 示例日志\n\n正文内容",
         "attachments": [],
         "word_count": 3
@@ -1551,18 +1580,18 @@ python -m tools journal list --recent
 ```json
 {
   "success": true,
-  "schema_version": "m16.journal.v0",
+  "schema_version": "m16.journal.v1",
   "data": {
     "items": [
       {
-        "id": "Journals/2026/05/life-index_2026-05-28_001.md",
+        "id": "5f0d3b6a9c214e7f8d2ab3c4d5e6f701",
         "rel_path": "Journals/2026/05/life-index_2026-05-28_001.md",
         "journal_route_path": "2026/05/life-index_2026-05-28_001.md",
         "title": "示例日志",
         "kind": "fragment",
         "display_label": "示例日志",
         "date": "2026-05-28",
-        "metadata": {},
+        "metadata": {"id": "5f0d3b6a9c214e7f8d2ab3c4d5e6f701"},
         "attachments": [],
         "word_count": 3
       }
@@ -1579,7 +1608,8 @@ python -m tools journal list --recent
 ```
 
 列表项不返回 `content`，用于目录、最近日志列表和后续 `journal get` 导航。
-`total_matches` 是分页前匹配总数，`total_found` 是本次返回条数。
+`total_matches` 是分页前匹配总数，`total_found` 是本次返回条数。每项的 `id`
+取自该文件自己读到的 frontmatter（无合法 id 时为 `null`）。
 
 `title` 是文件所写的标题，无标题 fragment 为空字符串（不是占位符）；展示时
 用 `display_label`（规则见 `docs/ARCHITECTURE.md` 的*条目标签规则*一节），`kind` 是文件名
@@ -1592,33 +1622,48 @@ python -m tools journal list --recent
 ```json
 {
   "success": false,
-  "schema_version": "m16.journal.v0",
+  "schema_version": "m16.journal.v1",
   "data": null,
   "error": {
     "code": "JOURNAL_NOT_FOUND",
-    "message": "Journal file was not found."
+    "message": "No entry file carries this id.",
+    "details": {"id": "0123456789abcdef0123456789abcdef"}
   }
 }
 ```
+
+部分错误（`JOURNAL_ID_AMBIGUOUS`、`JOURNAL_LOOKUP_INCOMPLETE`、按 id 未找到）
+在 `error.details` 里携带机器可读细节（additive）；其余错误保持
+`code` + `message` 两键。
 
 当前错误码：
 
 | code | 说明 |
 |------|------|
 | `JOURNAL_PATH_INVALID` | journal 引用为空、绝对路径、包含 NUL、路径遍历，或不匹配 journal 路径格式 |
-| `JOURNAL_NOT_FOUND` | journal 文件不存在 |
-| `JOURNAL_ARGUMENT_INVALID` | `list` 参数无效，例如负数 `--limit` / `--offset` |
+| `JOURNAL_NOT_FOUND` | journal 文件不存在（按 id 查找时：扫描完整但无文件携带该 id） |
+| `JOURNAL_ID_AMBIGUOUS` | 两个及以上文件携带同一 id；`details.rel_paths` 点名每个文件 |
+| `JOURNAL_LOOKUP_INCOMPLETE` | 无文件携带该 id 且扫描不完整；`details.unread_paths` 给出未能读取的路径数 |
+| `JOURNAL_ARGUMENT_INVALID` | 参数无效：负数 `--limit` / `--offset`、既不是合法 id 也不以 `Journals/` 开头的 `--id` 值等 |
 | `JOURNAL_BATCH_TOO_LARGE` | `batch-get` 请求超过单次批量读取上限 |
 | `JOURNAL_READ_FAILED` | 读取 journal 时发生 OS 错误 |
 
 ### schema_version Policy
 
-`journal` emits top-level `schema_version = "m16.journal.v0"`.
+`journal` emits top-level `schema_version = "m16.journal.v1"`.
 Top-level fields and `data` field names are stable; additive metadata fields may
 be added without a version bump. A version bump will accompany any
 backward-incompatible payload change. `notes` / `notes_malformed` are such
 additive fields: files carrying notes did not exist before the notes feature,
 so no contract version bump accompanies them.
+
+`m16.journal.v1` is a **breaking change** of the payload: in `get`, every
+`batch-get` item and every `list` item, `id` was the entry's `rel_path` and is
+now the durable entry id stored in the file's frontmatter (`null` when the file
+has none); `rel_path` is unchanged. The bump also introduces the `--id <durable
+id>` selector, the `JOURNAL_ID_AMBIGUOUS` / `JOURNAL_LOOKUP_INCOMPLETE` errors
+and the additive `data.lookup.unread_paths` field. Consumers that used `id` as
+a path must read `rel_path` instead.
 
 ---
 

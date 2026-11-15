@@ -1451,3 +1451,59 @@ class TestFragmentNotesGrammar:
         original, region = split_suffix_region(suffix, boundary)
         assert original == b"original\n\n"
         assert region.startswith(prefix)
+
+
+class TestJournalGetIdFlow:
+    """The v1 read contract: `journal get`'s `id` is the id `fragment note` takes."""
+
+    def test_copying_id_from_journal_get_as_expect_id_succeeds(self, data_dir):
+        target = _fragment()
+        basis = _basis(data_dir)
+
+        got = run_journal_get(path=target["rel_path"])["data"]
+        assert got["id"] == target["id"], "journal get id must equal fragment add id"
+        assert got["metadata"]["id"] == target["id"]
+
+        result = add_note_to_fragment(
+            {
+                "path": target["rel_path"],
+                "expect_id": got["id"],
+                "text": "it was Tuesday",
+                "by": "host-agent",
+                "based_on": [
+                    {
+                        "path": basis["rel_path"],
+                        "id": run_journal_get(path=basis["rel_path"])["data"]["id"],
+                        "quote": "he said Monday",
+                    }
+                ],
+            }
+        )
+        assert result["success"], result
+
+        # The same id selects the entry through the durable-id selector too.
+        by_id = run_journal_get(id=target["id"])
+        assert by_id["success"] is True
+        assert by_id["data"]["id"] == target["id"]
+        assert by_id["data"]["notes"][0]["text"] == "it was Tuesday"
+
+    def test_e0208_recovery_text_matches_the_playbook(self, data_dir):
+        target = _fragment()
+        _basis(data_dir)
+        result = add_note_to_fragment(
+            {
+                "path": target["rel_path"],
+                # deliberately wrong: the rel_path where the id belongs
+                "expect_id": target["rel_path"],
+                "text": "correction",
+                "by": "host-agent",
+                "based_on": [{"path": _basis(data_dir)["rel_path"], "quote": "he said Monday"}],
+            }
+        )
+        assert result["error"]["code"] == "E0208"
+        suggestion = result["error"]["suggestion"]
+        assert "`id` in `journal get` output" in suggestion
+
+        playbook = (REPO_ROOT / "references" / "FRAGMENT_PLAYBOOK.md").read_text(encoding="utf-8")
+        assert "`journal get` 输出顶层的 `id`" in playbook
+        assert "metadata.id" not in playbook
