@@ -14,6 +14,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
 from tools.generate_index.navigation import IndexNode, build_month_node_ref, enumerate_index_nodes
+from tools.lib.fragment_notes import split_fragment_notes
 from tools.lib.frontmatter import (
     empty_indexable_metadata,
     indexable_date,
@@ -51,9 +52,9 @@ def _parse_file_frontmatter(path: Path) -> tuple[dict[str, Any], str]:
         metadata, body = parse_frontmatter(text)
     except (TypeError, ValueError):
         return {}, ""
-    # parse_frontmatter is typed to always return a mapping; the isinstance
-    # arm keeps the same defensive shape the old single-dict version had.
-    return (metadata, body) if isinstance(metadata, dict) else ({}, "")
+    # The body every consumer gets is the user's original text: a fragment's
+    # notes region is removed by the one shared splitter.
+    return metadata, split_fragment_notes(metadata, body).original_text
 
 
 def _iter_field_values(value: Any) -> Iterable[str]:

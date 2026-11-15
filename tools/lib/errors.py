@@ -71,6 +71,11 @@ class ErrorCode:
     ATTACHMENT_COPY_FAILED = "E0205"
     FRAGMENT_KEY_CONFLICT = "E0206"
     PUBLISH_COLLISION = "E0207"
+    # `fragment note`: the target or a basis is not what the caller said
+    # (expect_id / basis id / quote mismatch; details says which).
+    FRAGMENT_NOTE_MISMATCH = "E0208"
+    # `fragment note` / `verify`: the file's notes region is malformed.
+    FRAGMENT_NOTES_MALFORMED = "E0209"
 
     # ========== Search Module (03xx) ==========
     INDEX_NOT_FOUND = "E0300"
@@ -250,6 +255,13 @@ ERROR_DESCRIPTIONS = {
     ),
     ErrorCode.PUBLISH_COLLISION: (
         "Journal or fragment publish collided with existing files; nothing was overwritten"
+    ),
+    ErrorCode.FRAGMENT_NOTE_MISMATCH: (
+        "The fragment or a note basis is not what the caller said (expect_id, basis id,"
+        " or quote mismatch)"
+    ),
+    ErrorCode.FRAGMENT_NOTES_MALFORMED: (
+        "The fragment's notes region is malformed; a note is never appended after it"
     ),
     # Search
     ErrorCode.INDEX_NOT_FOUND: "Search index not found",

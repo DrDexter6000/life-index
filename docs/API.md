@@ -535,6 +535,8 @@ relationships:
 | E0205 | 附件复制失败 | continue |
 | E0206 | 碎片去重键冲突（同 channel/message_id 已存不同正文） | ask_user |
 | E0207 | `write` / `fragment add` create-only 发布冲突（未覆盖任何既有文件） | retry |
+| E0208 | `fragment note`：目标或依据与调用方所说的不符（`expect_id`、依据 `id` 或 `quote` 不匹配；`details` 指明哪一项） | ask_user |
+| E0209 | `fragment note` / `verify`：碎片更正 note 区损坏（`fragment note` 绝不在损坏区域后追加） | fail |
 
 ### 搜索模块 (E03xx)
 
@@ -999,6 +1001,9 @@ python -m tools.write_journal confirm --journal "Journals/2026/03/life-index_202
 life-index fragment add --data '<json>'
 life-index fragment add --data-file <path>
 life-index fragment add --data -            # JSON on stdin
+life-index fragment note --data '<json>'
+life-index fragment note --data-file <path>
+life-index fragment note --data -
 python -m tools fragment add --data '<json>'
 ```
 
@@ -1137,6 +1142,93 @@ effect，reason 说明碎片写入不重建它们，恢复命令为
 | E0207 | PUBLISH_COLLISION：create-only 发布有界重试后仍冲突；未覆盖任何既有文件。附件补偿失败时 message 明确指出，`details.leftover_attachments` 列出残留路径 | retry |
 | E0200 | 其他写入失败。日志发布的硬链接被数据目录文件系统拒绝时记 `journal_commit: failed`，message 明确说明 `fragment add` 需要硬链接以无覆盖发布且未提交 fragment，`details.os_error` 保留原始 OS 错误；附件补偿失败时 message 明确指出，`details.leftover_attachments` 列出残留路径；附件发布失败仍记 `attachments` | fail |
 | E0005 | journals 锁超时（与 `write` 同一 envelope） | retry |
+| E0500 | `path` 或 `based_on[].path` 指向的碎片文件不存在 | ask_user |
+| E0208 | 目标或依据与调用方所说的不符：`expect_id` 缺失/多余/不匹配、依据 `id` 不匹配、`quote` 不在该依据的原文中（`details.reason` 指明哪一项） | ask_user |
+| E0209 | 目标碎片的 note 区已损坏；绝不在损坏区域后追加 | fail |
+| E0202 | 目标 frontmatter 无法无损重写（与 `edit` 同一 envelope、同一组 `details.reason`，含 `no_frontmatter_block`）；提交前读回核验不过也是这个码 | fail |
+
+### fragment note（补记更正）
+
+```bash
+life-index fragment note --data '{"path":"Journals/2026/11/life-index_2026-11-12_001.md","expect_id":"<碎片id>","text":"是周二，不是周一","based_on":[{"path":"Journals/2026/11/life-index_2026-11-12_002.md","id":"<依据碎片id或省略>","quote":"他说周一"}],"by":"host-agent"}'
+```
+
+用户确认某条碎片里的话说错了（"是周二，不是周一"）时，宿主 agent 用 `fragment
+note` 把更正**记在原话旁边**：原话一字节不动，更正以 note 形式追加在文件末尾的
+note 区，读者拿到的原文与 note 是两样东西，搜更正后的词也能命中这条碎片。存储形
+态（`notes_boundary` frontmatter 键与 note 区语法）只在 `docs/ARCHITECTURE.md`
+的*碎片更正 note 存储形态*一节描述；何时该记 note 的操作规则见
+`references/FRAGMENT_PLAYBOOK.md`。
+
+| 名称 | 类型 | 必填 | 规则 |
+|------|------|------|------|
+| path | string | 是 | 被更正碎片的 `rel_path`；必须是数据目录内的 live fragment 文件（现有准入判定），不能是符号链接；不接受 revisions/digest/树外路径 |
+| expect_id | string | 目标带 `id` 时必填 | 必须等于目标 frontmatter 的 `id`；目标无 `id` 时必须省略 |
+| text | string | 是 | 用户确认过的更正；与碎片正文同样规范化（LF、去首尾空白），非空；不得包含目标的 `notes_boundary` 值；任何一行不得以 note 开/闭标记前缀（`<!-- life-index:note ` / `<!-- /life-index:note `）开头——同样的字符在行中间是普通文字 |
+| based_on | array | 是，非空 | 每项 `{path, id?, quote}`：用户在哪条碎片里确认了更正。`path` 同样必须是 live fragment 且非符号链接；`id` 给出时必须等于该文件 frontmatter 的 `id`；`quote` 必填非空，必须逐字出现在该文件**原文**（LF 归一化）中——note 里的文字不算 |
+| by | string | 是 | 非空一行：谁写入了这条 note |
+| noted_at | string | 否 | 带 offset 的 ISO 8601 date-time；默认现在（本机时区、秒精度） |
+
+嵌套未知键一律拒绝并点名。每条依据实际存下的是：规范化 `path`、该文件实读的
+`id`（或 null）、`quote`、以及该文件原文（`journal get` 返回的 `content`）UTF-8
+字节的 sha256。所有规则都在 journals 锁内对每个文件的一次快照执行；写入经
+`replace_journal_bytes`，替换前用公共 reader 读回新文件核验（老后缀是新后缀的字节
+前缀、frontmatter 区块至多多一行、元数据恰好多出 `notes_boundary`、原文不变、
+note 恰好多一条）。不保存 revision：没有任何内容被移除。
+
+**重放**：同样的规范化 `text` + `by` + 同样的依据记录列表（按 path、id、quote 比
+较）再次提交时，什么都不写，返回已存 note 的真实字段与 `deduplicated: true`，并
+再次刷新派生行（重试可修复此前失败的索引更新）。任何一项不同即另一条 note。
+
+**提交后**：与 `fragment add` 相同，仅尽力写穿该碎片的 FTS 行与 metadata cache 行
+（非阻塞 side effect 同款），生成索引不重建（`generated_indexes: skipped`）。
+
+### 返回值
+
+```json
+{
+  "success": true,
+  "note": {
+    "id": "e713d900a53e4c52834ca1526e166297",
+    "noted_at": "2026-11-14T22:36:59+01:00",
+    "by": "host-agent",
+    "text": "It was Tuesday, not Monday",
+    "based_on": [
+      {
+        "path": "Journals/2026/11/life-index_2026-11-12_002.md",
+        "id": "d561da92d9984b38a8fe534b95d70b96",
+        "quote": "he said Monday",
+        "sha256": "14463fefa253175517939b00b834cc83ceec9e097454d89370e4f88f605640a4"
+      }
+    ]
+  },
+  "journal_path": "C:/.../Journals/2026/11/life-index_2026-11-12_001.md",
+  "rel_path": "Journals/2026/11/life-index_2026-11-12_001.md",
+  "deduplicated": false,
+  "notes_count": 1,
+  "side_effects": [
+    {"name": "journal_commit", "phase": "commit", "status": "complete", "blocking": true},
+    {"name": "metadata_cache_row", "phase": "post_commit", "status": "complete", "blocking": false},
+    {"name": "fts_row", "phase": "post_commit", "status": "complete", "blocking": false},
+    {"name": "mark_pending", "phase": "post_commit", "status": "skipped", "blocking": false},
+    {"name": "generated_indexes", "phase": "post_commit", "status": "skipped", "blocking": false}
+  ],
+  "write_outcome": "success",
+  "index_status": "complete",
+  "side_effects_status": "complete",
+  "error": null,
+  "metrics": {"total_ms": 18.2}
+}
+```
+
+**note 如何被读到**：`journal get` / `batch-get` 的 `content` 始终是原文，note 在
+独立的 `notes` 数组（`id` / `noted_at` / `by` / `text` / `based_on`）；note 区损坏
+时额外给出 `notes_malformed: true` 且 `content` 仍是原文。FTS / L3 / index-tree
+content terms / `aggregate` 词条谓词索引原文 + 各 note 的 `text`（note 头、标记、
+`by`、id、quote 一律不入）；标签与字数（`journal list`、timeline、生成索引、
+metadata cache、on-this-day）只取原文；`fragment add` 去重只比较原文；entity 候
+选、`verify` 附件扫描、maintenance 链接审计只扫原文；`search --read-top` 的
+`full_content` 是原文、`notes` 与 `journal get` 相同；`backup` 保持字节复制不变。
 
 ---
 
@@ -1403,9 +1495,11 @@ python -m tools journal list --recent
 | `data.rel_path` | string | 相对 `LIFE_INDEX_DATA_DIR` 的 journal 路径 |
 | `data.journal_route_path` | string | 去掉 `Journals/` 前缀后的路由友好路径 |
 | `data.metadata` | object | frontmatter 解析结果 |
-| `data.content` | string | journal 正文，不含 frontmatter |
+| `data.content` | string | journal 正文，不含 frontmatter；带碎片更正 note 的文件这里始终是**原文**（note 区被剥离） |
+| `data.notes` | array | 碎片更正 note 列表（additive），每项 `id` / `noted_at` / `by` / `text` / `based_on`；无 note 的文件为空数组。语法见 `docs/ARCHITECTURE.md` 的*碎片更正 note 存储形态*；其 `notes_boundary` 是 note 机制的内部 frontmatter 键，只有 `fragment note` 写它，任何命令都不接受它作为输入（`write` 以 `E0001` 拒绝并点名该字段） |
+| `data.notes_malformed` | boolean | 仅在 note 区损坏时出现（additive，为 true）：`content` 仍是原文，`notes` 只含损坏点之前成功解析的 note |
 | `data.attachments` | array | 从 frontmatter `attachments` 规范化后的附件元数据 |
-| `data.word_count` | int | 基于正文的轻量计数：CJK 字符按字符计，非 CJK 字母数字连续片段按词计；纯非 CJK 文本保持空白分词口径 |
+| `data.word_count` | int | 基于**原文**的轻量计数：CJK 字符按字符计，非 CJK 字母数字连续片段按词计；纯非 CJK 文本保持空白分词口径 |
 
 附件项字段与 `attachment` 读取侧一致，当前包含
 `raw_path`、`path`、`name`、`description`、`source_url`、`content_type`、`size`。
@@ -1413,7 +1507,8 @@ python -m tools journal list --recent
 ### `journal batch-get` 返回值
 
 `batch-get` 是 `journal get` 的有界批量形态，用于 agent 在确定性窄化后减少
-多次 CLI 往返。它复用同一套路径校验与读取语义，不做排序、筛选或事实判断。
+多次 CLI 往返。它复用同一套路径校验与读取语义（含 `content` 为原文、`notes` /
+`notes_malformed` 的 note 语义），不做排序、筛选或事实判断。
 
 ```json
 {
@@ -1509,7 +1604,9 @@ python -m tools journal list --recent
 `journal` emits top-level `schema_version = "m16.journal.v0"`.
 Top-level fields and `data` field names are stable; additive metadata fields may
 be added without a version bump. A version bump will accompany any
-backward-incompatible payload change.
+backward-incompatible payload change. `notes` / `notes_malformed` are such
+additive fields: files carrying notes did not exist before the notes feature,
+so no contract version bump accompanies them.
 
 ---
 
@@ -2989,7 +3086,7 @@ python -m tools.search_journals [options]
 | --fts-weight | float | ❌ | 1.0 | Deprecated compatibility no-op；不影响排序 |
 | --limit | int | ❌ | 20 | 返回结果数量限制（默认 20）；传入 0 时返回全量结果（跳过呈现层截断） |
 | --offset | int | ❌ | 0 | 结果偏移量（分页起始位置） |
-| --read-top | int | ❌ | 0 | 读取前 N 条结果的完整正文（默认 0 不读取） |
+| --read-top | int | ❌ | 0 | 读取前 N 条结果的完整正文（默认 0 不读取）；`full_content` 是**原文**，`notes` / `notes_malformed` 与 `journal get` 相同 |
 | --explain | flag | ❌ | false | 输出搜索评分详情与 `diagnostics` 诊断块 |
 | --diagnose | flag | ❌ | false | 输出最近搜索行为诊断摘要并退出 |
 | --diagnose-days | int | ❌ | 7 | 诊断回看天数 |
@@ -5124,7 +5221,10 @@ python -m tools.edit_journal --journal "<path>" [options]
   原样保留；`content_modified` 为 `false`
 - **改正文**（legacy journal 的 `--replace-content` / `--append-content`）：写出的正文
   区域不含任何 CR —— 携带的旧正文与调用方提供的文本里的 CRLF、孤立 CR 都归一为 LF；
-  `content_modified` 恰好在正文字节实际变化时为 `true`
+  `content_modified` 恰好在正文字节实际变化时为 `true`。带碎片更正 note 的 legacy
+  文件：正文修改只作用于**原文**，note 区字节原样接回其后（提交前读回核验同样要求
+  note 区前后逐字节一致）；调用方提供的正文包含该文件的 `notes_boundary` 值时以
+  `E0001` 拒绝（note 区不可伪造）
 - 失败时机不同，结果不同：**替换之前**的任何失败（含当前用户无权写入该文件、或该路径
   是符号链接，返回 `E0200`）原文件字节不变、目录里没有残留的临时文件、也没有新 revision；
   **替换之后**文件已是新字节，其后的派生存储（FTS / 元数据缓存 / 索引）失败按既有契约
@@ -5146,8 +5246,9 @@ python -m tools.edit_journal --journal "<path>" [options]
 - `--replace-content` / `--append-content` 被拒绝，`error.code` 为 `E0505`
   （`FRAGMENT_WORDS_IMMUTABLE`），message 说明碎片原话不编辑、更正以 `fragment note`
   补记
-- `id`、`kind`、`ingested_at`、`schema_version`、`content` 字段的更新被拒绝（`E0505`，
-  `details.field` 指明字段）
+- `id`、`kind`、`ingested_at`、`schema_version`、`content`、`notes_boundary` 字段的更新
+  被拒绝（`E0505`，`details.field` 指明字段）；`notes_boundary` 属于 note 机制
+  （`fragment note`），永远不接受调用方设置
 - 其余元数据（`location`、`weather`、`place`、`expressed_at`、`date`、`occurred`、
   `source`、`reply_to`、附件等）照常可编辑；`location` 修改不要求同步 `weather`
 - legacy journal（不满足上述身份判定）保持既有规则：`location` 必须同步 `weather`，
@@ -5175,7 +5276,8 @@ envelope：
 
 - `frontmatter_updates` 试图更新 `content` 键：普通 journal 以 `E0001`（`INVALID_INPUT`）
   拒绝——正文只能经 `--replace-content` / `--append-content` 修改，不能从 frontmatter
-  更新里夹带（新形态 fragment 对该键的拒绝码为 `E0505`）
+  更新里夹带（新形态 fragment 对该键的拒绝码为 `E0505`）；`notes_boundary` 键在任何
+  非新形态 fragment 的文件上得到同一 `E0001` 拒绝（`details.field` 指明键名）
 - `frontmatter_updates` 的键本身不可写入（非字符串、空串、带首尾空白、含换行或 `:`）：
   以 `E0001` 拒绝——键会被原样写进 frontmatter，这样的键可以伪造文件内容
 
@@ -5242,7 +5344,7 @@ queue，由下次搜索 preflight 或 `life-index index` 修复；`skipped` 不�
 | E0502 | 字段不识别 | ask_user |
 | E0503 | 无变更 | ask_user |
 | E0504 | 修改地点时缺少天气（legacy journal；新形态 fragment 不适用） | ask_user |
-| E0505 | 碎片原话不可编辑：新形态 fragment 的 `--replace-content` / `--append-content` 与 `id` / `kind` / `ingested_at` / `schema_version` / `content` 更新被拒绝，更正以 `fragment note` 补记 | ask_user |
+| E0505 | 碎片原话不可编辑：新形态 fragment 的 `--replace-content` / `--append-content` 与 `id` / `kind` / `ingested_at` / `schema_version` / `content` / `notes_boundary` 更新被拒绝，更正以 `fragment note` 补记 | ask_user |
 | E0202 | frontmatter 无法在不丢失内容的前提下重写（`details.reason` 为 `unreadable` / `content_key_in_frontmatter` / `not_round_trippable` / `no_frontmatter_block`） | fail |
 | E0001 | `frontmatter_updates` 尝试更新 `content` 键（普通 journal） | ask_user |
 

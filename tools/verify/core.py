@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from ..lib.paths import get_attachments_dir, get_by_topic_dir, get_journals_dir, get_user_data_dir
-from ..lib.frontmatter import get_required_fields, parse_journal_file
+from ..lib.fragment_notes import split_fragment_notes
+from ..lib.frontmatter import get_required_fields, parse_frontmatter, parse_journal_file
 from ..lib.journal_files import JournalFileKind, classify_journal_path
 from ..lib.path_contract import build_journal_path_fields
 
@@ -94,6 +95,24 @@ def _frontmatter_kind_issue(metadata: Dict[str, Any], file_path: Path) -> str | 
     return None
 
 
+def _notes_region_issue(file_path: Path) -> str | None:
+    """Warning text when the file's notes region breaks the stored-form grammar.
+
+    Decided by the one shared notes grammar
+    (``tools.lib.fragment_notes.split_fragment_notes``): a malformed region is
+    reported (``fragment note`` also refuses to append after it); a well-formed
+    one — and a file without notes — is not an issue.
+    """
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    metadata, body = parse_frontmatter(content)
+    if split_fragment_notes(metadata, body).malformed:
+        return f"{file_path.name}: malformed notes region"
+    return None
+
+
 def _load_fts_paths() -> set[str]:
     db_path = get_user_data_dir() / ".index" / "journals_fts.db"
     if not db_path.exists():
@@ -173,6 +192,11 @@ def run_verify() -> Dict[str, Any]:
                     if req_field not in metadata or not metadata[req_field]:
                         frontmatter_check.status = "warning"
                         frontmatter_check.issues.append(f"{journal_file.name}: missing {req_field}")
+                # A malformed notes region is an issue; a well-formed one is not
+                notes_issue = _notes_region_issue(journal_file)
+                if notes_issue:
+                    frontmatter_check.status = "warning"
+                    frontmatter_check.issues.append(notes_issue)
         except Exception as e:
             frontmatter_check.status = "error"
             frontmatter_check.issues.append(f"{journal_file.name}: {e}")

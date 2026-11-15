@@ -631,10 +631,16 @@ def parse_journal_file(file_path: Path) -> Dict[str, Any]:
 
     Returns:
         包含 frontmatter、正文、文件路径的字典
+
+    ``_body``（以及从它派生的 ``_title`` / ``_abstract``）是**原文**：
+    文件带碎片更正 note 时，note 区（`tools/lib/fragment_notes.py` 的唯一
+    语法）被剥离，标题、摘要与正文字数只见用户本人的原话。要读 note 的
+    调用方用原始文件文本调用那个共享 splitter。
     """
     try:
         content = file_path.read_text(encoding="utf-8")
         metadata, body = parse_frontmatter(content)
+        body = _original_text(metadata, body)
 
         # 提取标题（第一个 # 标题）
         title_match = re.search(r"^# (.+)$", body, re.MULTILINE)
@@ -654,6 +660,13 @@ def parse_journal_file(file_path: Path) -> Dict[str, Any]:
         return metadata
     except (IOError, OSError, UnicodeDecodeError) as e:
         return {"_error": str(e), "_file": str(file_path)}
+
+
+def _original_text(metadata: Dict[str, Any], body: str) -> str:
+    """The body with any notes region removed (the shared splitter decides)."""
+    from .fragment_notes import split_fragment_notes
+
+    return split_fragment_notes(metadata, body).original_text
 
 
 def format_frontmatter(data: Dict[str, Any]) -> str:

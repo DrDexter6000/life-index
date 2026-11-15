@@ -14,6 +14,7 @@ from typing import Any, Iterable
 
 from tools.generate_index.builder import safe_relative_path
 from tools.lib.facet_canonicalization import FacetCanonicalizer, load_facet_canonicalizer
+from tools.lib.fragment_notes import split_fragment_notes
 from tools.lib.frontmatter import (
     empty_indexable_metadata,
     indexable_date,
@@ -177,13 +178,15 @@ def _collect_entries_with_scan(
         year, month = parts[0], parts[1]
         metadata, body = _parse_frontmatter(path)
         indexable = normalize_indexable_metadata(metadata) or empty_indexable_metadata()
+        # The label comes from the original text, never from notes.
+        original = split_fragment_notes(metadata, body).original_text
         entry = IndexBEntry(
             rel_path=rel,
             year=year,
             month=month,
             date=indexable_date(indexable, path),
             title=indexable["title"],
-            display_label=display_label(indexable["title"], body, path),
+            display_label=display_label(indexable["title"], original, path),
             metadata=metadata,
         )
         if _entry_in_range(entry, date_from, date_to):

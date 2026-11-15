@@ -14,6 +14,7 @@ from tools.lib.entity_graph import load_entity_graph
 from tools.lib.entity_schema import EntityGraphValidationError
 from tools.lib.facet_canonicalization import FacetCanonicalizer, load_facet_canonicalizer
 from tools.lib.chinese_tokenizer import segment_for_fts
+from tools.lib.fragment_notes import original_and_note_texts
 from tools.lib.frontmatter import parse_frontmatter
 from tools.lib.paths import get_user_data_dir
 from tools.index_tree.materialize import (
@@ -348,8 +349,10 @@ def _content_text(entry: Any) -> str:
     body = text
     if text.startswith("---"):
         try:
-            _metadata, parsed_body = parse_frontmatter(text)
-            body = parsed_body
+            metadata, parsed_body = parse_frontmatter(text)
+            # Content terms come from the original text plus the note texts;
+            # note headers, markers, ``by``, ids and quotes never enter them.
+            body = original_and_note_texts(metadata, parsed_body)
         except (TypeError, ValueError):
             body = text
     return f"{label}\n{body}"

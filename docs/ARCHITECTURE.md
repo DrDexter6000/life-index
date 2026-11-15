@@ -582,6 +582,63 @@ kind)` 按文件种类给出必需字段；文件名决定种类（§4.2），fr
 不再为标签打开文件；`CACHE_VERSION_SCHEMA_VERSION` 升至 v2.2.0，存量安装重建
 一次）；FTS 表不加列，来自 FTS 的结果按路径查 cache 取标签，无行时用文件名。
 
+### 4.6 碎片更正 note 存储形态（fragment notes stored form）
+
+碎片存的是用户本人的原话，永远不被编辑（`edit` 拒绝）。用户确认碎片里某句话说错
+时，宿主 agent 用 `fragment note` 把更正作为 **note** 记在原话旁边。带 note 的文件
+比不带 note 的文件多两样东西；语法只在本节描述（实现是 `tools/lib/fragment_notes.py`
+的唯一语法模块，其他文档指向这里）：
+
+- 一个 frontmatter 键 `notes_boundary`：32 位小写十六进制，随机生成（首条 note 时），
+  生成时校验不出现在文件任何字节中。它作为一行文本插入在区块关闭分隔线之前，行尾
+  与该分隔线一致；区块其余部分一个字节都不动（不重新序列化）。
+- 文件末尾的 note 区：从第一行以 `<!-- life-index:note <boundary> ` 开头的行起，到
+  文件结束。每条 note 是：
+
+```
+<!-- life-index:note <boundary> {"id":"<32 hex>","noted_at":"<ISO 8601 with offset>","by":"...","based_on":[{"path":"...","id":"..."|null,"quote":"...","sha256":"<64 hex>"}]} -->
+<note text, LF, one or more lines>
+<!-- /life-index:note <boundary> -->
+```
+
+  头部是单行 JSON（`ensure_ascii=False`、紧凑分隔符、键序如上），JSON 内所有 `<`
+  与 `>` 写成 JSON unicode 转义（`<` / `>`），因此头部永远不可能包含
+  `-->`。块与块之间恰好一个空行；note 区只含 LF，以单个 LF 结尾。
+- 区之前的全部内容是用户原文。boundary 在生成时已校验不出现于原文，因此原文可以
+  包含任何文字——包括长得和 note 块一模一样的文字——也永远不会因此被拒绝或误读。
+  反过来，文件带合法 `notes_boundary` 而 boundary 值出现在本应是原文的行里（首条
+  marker 行被改坏、或 boundary 被粘进原文）即 note 区损坏：`malformed` 为真、
+  `verify` 记 issue、`fragment note` 拒绝追加（E0209）；此时的原文取**第一个包含
+  boundary 值的行之前**的全部内容（其后的一切不再可信）。带 boundary 而完全没有
+  note 区（boundary 既无 marker 行也未泄漏）不算损坏：整篇正文都是原文。note 区在
+  解析前把行尾归一为 LF（CRLF / 孤立 CR → LF），文本读者（`read_text` 的通用换行）
+  与字节读者因此读到同一份 note；追加的新 note 仍以 LF 写入。
+- 存储区块若无法在不改变语义的前提下多收一行，首条 note 即被拒绝（`E0202`
+  `not_round_trippable`，字节不变）：末字段为块标量（`key: |`）、根为流映射
+  （`{...}`）、区块内带 `...` 文档结束标记等序列化器自己永远不会写出的形态。
+  关闭分隔线就是文件最后几个字节、其后连行尾都没有的文件同样被拒绝。
+- 新文件字节 = 旧文件字节，仅追加 (a) 首条 note 时插入的那一行 frontmatter 与
+  (b) 分隔符与 note 块。分隔符：旧字节以 LF 结尾则一个 LF，否则两个 LF。替换前在
+  `journal_rewrite.py`、`verify_outgoing_journal` 旁边用同一拒绝
+  （`OutgoingJournalRefused`，零写入）核验：老后缀是新后缀的字节前缀；新区块至多
+  比老区块多插入的那一行；reader 读回的元数据恰好多出 `notes_boundary`（类型敏感，
+  `_same_value`）；reader 读回的原文与旧文件一致；读回的 note 恰好是旧 note 加上
+  新的那条。note 不保存 revision：没有任何内容被移除。
+- frontmatter 没有合法 `notes_boundary` 的文件没有 note：整个正文都是原文，无论其
+  内容是什么。`notes_boundary` 不能经 `edit` 设置、修改或删除（新形态 fragment 上
+  是身份字段 E0505；其他文件与 `content` 键同款 E0001 拒绝）。
+
+**读者**：共享解析路径默认给每个读者**原文**——`parse_journal_file` 的 `_body`
+（及其派生 `_title` / `_abstract`）与直接使用 `parse_frontmatter` 正文的读者都经
+`split_fragment_notes` 分离；要读 note 的读者向同一函数索取。标签与字数
+（`journal list`、timeline、on-this-day、生成索引、metadata cache）只取原文；FTS、
+L3 内容搜索、index-tree content terms、`aggregate` 词条谓词索引原文 + 各 note 的
+`text`（头、标记、`by`、id、quote 一律不入）；`fragment add` 去重只比较原文；
+entity 候选提取、`verify` 附件扫描、maintenance 链接审计只扫原文；`journal get` /
+`batch-get` / `search --read-top` 的正文是原文、note 单独返回（note 区损坏时
+`notes_malformed: true`，`verify` 记为一条 issue）；`backup` 保持字节复制不变。
+note 区损坏的文件：`fragment note` 拒绝在其后追加（E0209），原文照常可读。
+
 ---
 
 ## 5. 基础设施增强
@@ -871,9 +928,14 @@ the rewrite is refused (`E0202` `not_round_trippable`) with nothing written.
 Body edits on legacy journals (`--replace-content` / `--append-content`)
 rewrite the body region through the one shared LF normalizer
 (`journal_rewrite.normalize_lf`): the written region contains no CR at all —
-neither in the text carried forward nor in the text the caller supplied. A
-metadata edit that changes no field value (type-sensitive comparison, the same
-rule as the outgoing check) rewrites nothing and keeps no revision. A new-form
+neither in the text carried forward nor in the text the caller supplied. On a
+legacy file carrying fragment notes the edit applies to the original text only
+and the notes region bytes ride along verbatim after it (the outgoing check's
+content-edit case then also requires the region bytes to be identical before
+and after), and supplied content containing the file's `notes_boundary` value
+is refused. A metadata edit that changes no field value (type-sensitive
+comparison, the same rule as the outgoing check) rewrites nothing and keeps no
+revision. A new-form
 fragment's words are never rewritten (`edit` refuses with `E0505`). The
 revision copy `edit` keeps is byte-exact, and `migrate --apply` holds the same
 journals lock for its whole batch, so a concurrent journals writer serializes
@@ -902,6 +964,19 @@ are written through (same side-effect records and recovery commands as
 `write`); the monthly/yearly generated indexes are deliberately not
 regenerated (`generated_indexes: skipped` with the
 `life-index generate-index --rebuild` recovery command).
+
+`fragment note` records a user-confirmed correction as a note beside a
+fragment's words (stored form: §4.6). Its whole transaction runs inside the
+journals lock against one snapshot of the target and every `based_on` basis:
+path admission (live fragment, no symlink), the `edit` rewrite blocker on the
+target, `expect_id` / basis-id / verbatim-quote checks against the basis
+**original** texts, replay detection (same text + `by` + basis list returns
+the stored note and refreshes the derived rows again), then one append-only
+rewrite through `replace_journal_bytes` guarded by
+`journal_rewrite.verify_outgoing_note_append` (the note-append sibling of
+`verify_outgoing_journal`). No revision is saved — nothing is removed. After
+the replace the fragment's FTS row and metadata-cache row are refreshed
+exactly as `fragment add` does.
 
 #### Disaster-recovery boundary
 

@@ -12,6 +12,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from tools.lib.fragment_notes import original_and_note_texts
 from tools.lib.frontmatter import parse_frontmatter
 from tools.lib.paths import get_journals_dir, get_user_data_dir
 from tools.generate_index.navigation import (
@@ -224,6 +225,10 @@ def _parse_journal_file(
         return None, "unparseable"
 
     metadata, body = parse_frontmatter(content)
+    # Term predicates search the original text plus the note texts (a search
+    # for the corrected word finds the fragment); note headers, markers,
+    # ``by``, ids and quotes never enter the searchable text.
+    body = original_and_note_texts(metadata, body)
 
     date_val = metadata.get("date", "")
     entry_date: Optional[date] = None

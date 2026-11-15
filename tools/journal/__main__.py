@@ -13,6 +13,7 @@ from typing import Any
 
 from tools.lib.attachment import normalize_attachment_entries
 from tools.lib.chinese_tokenizer import count_cjk_words
+from tools.lib.fragment_notes import split_fragment_notes
 from tools.lib.frontmatter import (
     empty_indexable_metadata,
     normalize_indexable_metadata,
@@ -156,24 +157,31 @@ def _resolve_journal_ref(raw_ref: str) -> Path:
 def _read_journal(path: Path) -> dict[str, Any]:
     content = path.read_text(encoding="utf-8")
     metadata, body = parse_frontmatter(content)
+    # `content` is the user's original text; notes (fragment corrections) are
+    # returned separately through the one notes grammar.
+    notes_split = split_fragment_notes(metadata, body)
     path_fields = build_journal_path_fields(
         path,
         journals_dir=get_journals_dir(),
         user_data_dir=get_user_data_dir(),
     )
     rel_path = path_fields["rel_path"]
-    return {
+    item: dict[str, Any] = {
         "id": rel_path,
         "rel_path": rel_path,
         "journal_route_path": path_fields["journal_route_path"],
         "metadata": metadata,
-        "content": body,
+        "content": notes_split.original_text,
+        "notes": [note.to_dict() for note in notes_split.notes],
         "attachments": normalize_attachment_entries(
             metadata.get("attachments"),
             mode="stored_metadata",
         ),
-        "word_count": count_cjk_words(body),
+        "word_count": count_cjk_words(notes_split.original_text),
     }
+    if notes_split.malformed:
+        item["notes_malformed"] = True
+    return item
 
 
 def run_journal_get(*, path: str | None = None, id: str | None = None) -> dict[str, Any]:
@@ -227,6 +235,8 @@ def _journal_paths_recent() -> list[Path]:
 def _journal_summary(path: Path) -> dict[str, Any]:
     content = path.read_text(encoding="utf-8")
     metadata, body = parse_frontmatter(content)
+    # Label and word count come from the original text, never from notes.
+    original = split_fragment_notes(metadata, body).original_text
     path_fields = build_journal_path_fields(
         path,
         journals_dir=get_journals_dir(),
@@ -243,14 +253,14 @@ def _journal_summary(path: Path) -> dict[str, Any]:
         "journal_route_path": path_fields["journal_route_path"],
         "title": title,
         "kind": classify_journal_path(path).value,
-        "display_label": display_label(title, body, path),
+        "display_label": display_label(title, original, path),
         "date": str(metadata.get("date") or filename_date),
         "metadata": metadata,
         "attachments": normalize_attachment_entries(
             metadata.get("attachments"),
             mode="stored_metadata",
         ),
-        "word_count": count_cjk_words(body),
+        "word_count": count_cjk_words(original),
     }
 
 

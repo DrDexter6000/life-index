@@ -8,6 +8,29 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ### What users get
 
+- When the user confirms that something in a fragment was wrong ("it was
+  Tuesday, not Monday"), the host agent can now record the correction with
+  `life-index fragment note` — the correction lands **beside** the fragment's
+  words, never inside them. The original words stay byte-for-byte; readers get
+  the original text and the notes as separate things (`journal get` returns
+  `content` = original text plus a `notes` array); and searching for the
+  corrected word now finds the fragment.
+- Corrections are evidence-carrying: each note records who wrote it, when, and
+  the exact quoted words in the fragment where the user confirmed the
+  correction (with the fragment's content hash), so a later reader can see
+  what was corrected and on what basis.
+- Retrying the same correction is safe: an identical text + author + basis
+  list returns `deduplicated: true` and writes nothing (and refreshes the
+  search rows again, healing a previously failed index update).
+- Notes never leak where they must not: titles, display labels and word counts
+  come from the original words only; full-text search indexes the original
+  plus the note texts but never note headers, markers, authors, ids or quotes;
+  `edit` cannot set, change or remove `notes_boundary`, and metadata edits and
+  migrations keep the notes region byte-for-byte.
+- A damaged notes region is visible, not silent: readers still return the
+  original text but flag `notes_malformed`, `verify` reports it as an issue,
+  and `fragment note` refuses to append after it.
+
 - A host agent can now store what the user just said as a **fragment** with
   `life-index fragment add` (`--data '<json>'`, `--data-file <path>`, or
   `--data -` for stdin): the user's own words, verbatim — no title, no

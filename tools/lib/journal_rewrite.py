@@ -21,6 +21,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
+from .fragment_notes import (
+    FragmentNote,
+    boundary_of,
+    split_fragment_notes,
+    split_suffix_region,
+)
 from .frontmatter import (
     _rewrite_form,
     _same_value,
@@ -173,6 +179,110 @@ def verify_outgoing_journal(
             )
     elif computed_body is None or new_body != computed_body.strip():
         raise OutgoingJournalRefused("the outgoing body is not the computed body")
+    _require_region_held(old_bytes, new_bytes)
+
+
+def verify_outgoing_note_append(
+    old_bytes: bytes,
+    new_bytes: bytes,
+    appended_note: FragmentNote,
+) -> None:
+    """Read the outgoing file back before a note append; refuse anything else.
+
+    The note-append sibling of :func:`verify_outgoing_journal`, with the same
+    refusal (:class:`OutgoingJournalRefused`, nothing written). All must hold:
+
+    1. both files split, and the old suffix is a byte prefix of the new
+       suffix — the append touches nothing before it;
+    2. the new frontmatter block is the old block with at most the one
+       inserted ``notes_boundary`` line (a first note inserts it; later notes
+       change no block byte);
+    3. the reader's metadata for the new file is the old metadata plus
+       ``notes_boundary`` and nothing else (type-sensitive, ``_same_value``);
+    4. the reader's original text for the new file equals the old one;
+    5. the notes read back are the old notes plus exactly ``appended_note``,
+       and the region is well-formed.
+    """
+    old_split = split_journal_bytes(old_bytes)
+    new_split = split_journal_bytes(new_bytes)
+    if old_split is None or new_split is None:
+        raise OutgoingJournalRefused("the outgoing file lost its frontmatter block")
+    if not new_split.suffix.startswith(old_split.suffix):
+        raise OutgoingJournalRefused("the append would change bytes before the region")
+    _require_block_one_inserted_line(old_split.frontmatter_block, new_split.frontmatter_block)
+
+    old_metadata, old_body = parse_frontmatter(old_bytes.decode("utf-8"))
+    new_metadata, new_body = parse_frontmatter(new_bytes.decode("utf-8"))
+    boundary = boundary_of(new_metadata)
+    expected_metadata = dict(old_metadata)
+    expected_metadata["notes_boundary"] = boundary
+    # Direct comparison, not through ``_rewrite_form``: the note append
+    # inserts one line into the stored block, it never re-renders it, so the
+    # serializer's own normalizations (an added ``schema_version`` and so on)
+    # are not part of this promise.
+    if not _same_value(new_metadata, expected_metadata):
+        raise OutgoingJournalRefused(
+            "the outgoing file does not read back as the old frontmatter" " plus notes_boundary"
+        )
+
+    old_notes_split = split_fragment_notes(old_metadata, old_body)
+    new_notes_split = split_fragment_notes(new_metadata, new_body)
+    if new_notes_split.malformed:
+        raise OutgoingJournalRefused("the outgoing notes region is malformed")
+    if new_notes_split.original_text != old_notes_split.original_text:
+        raise OutgoingJournalRefused("the append would change the original text")
+    expected_notes = (*old_notes_split.notes, appended_note)
+    if new_notes_split.notes != expected_notes:
+        raise OutgoingJournalRefused("the notes read back are not the old notes plus the new one")
+
+
+def _require_block_one_inserted_line(old_block: bytes, new_block: bytes) -> None:
+    """The new block is the old block with at most one whole line inserted."""
+    if new_block == old_block:
+        return
+    old_head, old_close = _split_final_block_line(old_block)
+    new_head, new_close = _split_final_block_line(new_block)
+    if new_close != old_close:
+        raise OutgoingJournalRefused("the append would rewrite the closing delimiter line")
+    if not new_head.startswith(old_head):
+        raise OutgoingJournalRefused("the append would rewrite the frontmatter block")
+    inserted = new_head[len(old_head) :]
+    if not inserted.endswith(b"\n") or inserted.count(b"\n") != 1:
+        raise OutgoingJournalRefused("the append would insert more than one frontmatter line")
+
+
+def _split_final_block_line(block: bytes) -> tuple[bytes, bytes]:
+    """(everything before the final line, the final line with its ending)."""
+    stripped = block[:-1] if block.endswith(b"\n") else block
+    index = stripped.rfind(b"\n")
+    if index == -1:
+        return b"", block
+    return block[: index + 1], block[index + 1 :]
+
+
+def _require_region_held(old_bytes: bytes, new_bytes: bytes) -> None:
+    """A content edit keeps the notes region bytes identical before and after.
+
+    The check runs inside :func:`verify_outgoing_journal`'s content-edit case:
+    when the old file carries a valid ``notes_boundary``, the region bytes of
+    the old and new suffixes must be equal, or the edit would have rewritten
+    stored notes. Files without notes pass trivially.
+    """
+    old_metadata, _old_body = parse_frontmatter(old_bytes.decode("utf-8"))
+    boundary = boundary_of(old_metadata)
+    if boundary is None:
+        return
+    new_metadata, _new_body = parse_frontmatter(new_bytes.decode("utf-8"))
+    if boundary_of(new_metadata) != boundary:
+        raise OutgoingJournalRefused("the edit would change notes_boundary")
+    old_split = split_journal_bytes(old_bytes)
+    new_split = split_journal_bytes(new_bytes)
+    if old_split is None or new_split is None:
+        raise OutgoingJournalRefused("the outgoing file lost its frontmatter block")
+    _old_original, old_region = split_suffix_region(old_split.suffix, boundary)
+    _new_original, new_region = split_suffix_region(new_split.suffix, boundary)
+    if old_region != new_region:
+        raise OutgoingJournalRefused("the edit would rewrite the notes region")
 
 
 def ensure_replaceable_journal(journal_path: Path) -> None:

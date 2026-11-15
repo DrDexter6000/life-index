@@ -49,6 +49,7 @@ from .utils import (
     get_next_sequence,
     get_year_month,
 )
+from ..lib.frontmatter import format_frontmatter, parse_frontmatter
 from ..lib.frontmatter import format_journal_content as format_content
 from ..lib.journal_rewrite import normalize_lf
 from .attachments import (
@@ -508,6 +509,23 @@ def _build_frontmatter_updates(
 # ---------------------------------------------------------------------------
 # Module-level private helpers (extracted from write_journal)
 # ---------------------------------------------------------------------------
+
+
+def _payload_spells_notes_boundary(data: Dict[str, Any]) -> bool:
+    """Whether the frontmatter this payload renders carries ``notes_boundary``.
+
+    Keys are written into the frontmatter verbatim, so a padded, multi-line or
+    quoted key can spell the reserved key without being equal to it. The check
+    therefore renders the payload's frontmatter and reads it back with the
+    public reader, instead of comparing key strings.
+    """
+    if "notes_boundary" in data:
+        return True
+    try:
+        metadata, _body = parse_frontmatter(format_frontmatter(data) + "\n")
+    except Exception:  # noqa: BLE001 - the real render below reports its own failure
+        return False
+    return "notes_boundary" in metadata
 
 
 def _init_write_result() -> Dict[str, Any]:
@@ -1707,6 +1725,18 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
     result = _init_write_result()
 
     try:
+        if _payload_spells_notes_boundary(data):
+            # A note is only worth something because `fragment note` checked
+            # its basis; a caller-planted boundary would forge that guarantee.
+            logger.warning("write 拒绝保留键 notes_boundary")
+            return create_error_response(
+                ErrorCode.INVALID_INPUT,
+                "notes_boundary is an internal key of the fragment notes"
+                " mechanism; only `fragment note` writes it",
+                {"field": "notes_boundary"},
+                "Remove notes_boundary from the payload and retry;" " nothing was written",
+            )
+
         date_str = str(data.get("date") or "").strip()
         if not date_str:
             date_str = current_local_date_iso()

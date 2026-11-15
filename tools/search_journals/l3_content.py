@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 # 导入配置 (relative imports from tools/lib)
 from ..lib.paths import get_user_data_dir, get_journals_dir
+from ..lib.fragment_notes import original_and_note_texts, split_fragment_notes
 from ..lib.frontmatter import (
     empty_indexable_metadata,
     indexable_date,
@@ -69,11 +70,13 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
             # text is the searchable body, nothing is parsed from it.
             metadata: Dict[str, Any]
             body: str
+            original: str
             try:
                 content = journal_file.read_text(encoding="utf-8")
             except UnicodeDecodeError:
                 metadata = {}
                 body = journal_file.read_text(encoding="utf-8", errors="replace")
+                original = body
                 indexable = empty_indexable_metadata()
             else:
                 metadata, body = parse_frontmatter(content)
@@ -84,6 +87,13 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
                     metadata, body = {}, content
                     parsed_indexable = empty_indexable_metadata()
                 indexable = parsed_indexable
+                # L3 content search matches the original text plus the note
+                # texts (a search for the corrected word finds the fragment);
+                # headers, markers, ``by``, ids and quotes are never searched
+                # and never shown as context. The display label keeps coming
+                # from the original text alone.
+                original = split_fragment_notes(metadata, body).original_text
+                body = original_and_note_texts(metadata, body)
 
             date = indexable_date(indexable, journal_file)
 
@@ -118,7 +128,7 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
                         "date": date,
                         "title": title,
                         "kind": classify_journal_path(journal_file).value,
-                        "display_label": display_label(title, body, journal_file),
+                        "display_label": display_label(title, original, journal_file),
                         **path_fields,
                         "title_match": title_match,
                         "body_matches": body_matches,

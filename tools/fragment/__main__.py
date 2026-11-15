@@ -80,6 +80,37 @@ def _cmd_add(args: argparse.Namespace) -> int:
     return 0 if result.get("success") else 1
 
 
+def _cmd_note(args: argparse.Namespace) -> int:
+    """Execute fragment note."""
+    ensure_dirs()
+    try:
+        data = _load_payload(args)
+    except json.JSONDecodeError as exc:
+        _emit_json(
+            create_error_response(
+                ErrorCode.INVALID_INPUT,
+                f"JSON解析错误: {exc}",
+                details={"raw_input": (args.data or "")[:200]},
+            )
+        )
+        return 1
+    except FileNotFoundError:
+        _emit_json(
+            create_error_response(
+                ErrorCode.FILE_NOT_FOUND,
+                f"文件未找到: {args.data_file or args.data[1:]}",
+                details={"path": args.data_file or args.data[1:]},
+            )
+        )
+        return 1
+
+    from .note import add_note_to_fragment
+
+    result = add_note_to_fragment(data)
+    _emit_json(result)
+    return 0 if result.get("success") else 1
+
+
 def main() -> None:
     """CLI entry point"""
     parser = argparse.ArgumentParser(
@@ -90,6 +121,7 @@ Examples:
     life-index fragment add --data '{"text":"用户刚说的话","expressed_at":"2026-11-12T15:02:10+01:00"}'
     life-index fragment add --data-file fragment.json
     life-index fragment add --data - < fragment.json
+    life-index fragment note --data @note.json
         """,
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -103,6 +135,17 @@ Examples:
     )
     input_group.add_argument("--data-file", help="Read the JSON payload from a file")
     add_parser.set_defaults(func=_cmd_add)
+
+    note_parser = subparsers.add_parser(
+        "note",
+        help="Record a user-confirmed correction as a note beside a fragment's words",
+    )
+    note_group = note_parser.add_mutually_exclusive_group(required=True)
+    note_group.add_argument(
+        "--data", help="JSON payload; '-' reads the payload from stdin, '@file' from a file"
+    )
+    note_group.add_argument("--data-file", help="Read the JSON payload from a file")
+    note_parser.set_defaults(func=_cmd_note)
 
     args = parser.parse_args()
     sys.exit(args.func(args))

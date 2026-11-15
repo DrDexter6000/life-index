@@ -398,6 +398,8 @@ Examples:
     # Task 1.2.3: Read full content for top N results
     if args.read_top > 0 and result.get("success") and result.get("merged_results"):
         from pathlib import Path
+        from ..lib.fragment_notes import split_fragment_notes
+        from ..lib.frontmatter import parse_frontmatter
         from ..lib.paths import get_journals_dir
 
         _journals_dir = get_journals_dir()
@@ -418,15 +420,15 @@ Examples:
                 try:
                     if full_path.exists():
                         content = full_path.read_text(encoding="utf-8")
-                        # Extract body (after frontmatter)
-                        if content.startswith("---"):
-                            parts = content.split("---", 2)
-                            if len(parts) >= 3:
-                                item["full_content"] = parts[2].strip()
-                            else:
-                                item["full_content"] = content
-                        else:
-                            item["full_content"] = content
+                        # Extract body (after frontmatter) through the public
+                        # reader; `full_content` is the original text and notes
+                        # are returned separately, as in `journal get`.
+                        metadata, body = parse_frontmatter(content)
+                        notes_split = split_fragment_notes(metadata, body)
+                        item["full_content"] = notes_split.original_text
+                        item["notes"] = [note.to_dict() for note in notes_split.notes]
+                        if notes_split.malformed:
+                            item["notes_malformed"] = True
                     else:
                         item["full_content"] = None
                 except Exception as e:

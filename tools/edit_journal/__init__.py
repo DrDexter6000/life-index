@@ -19,6 +19,12 @@ from typing import Dict, List, Optional, Any, Tuple
 
 # 导入配置 (relative imports from parent tools package)
 from ..lib.paths import get_journals_dir, get_by_topic_dir, get_user_data_dir, resolve_user_data_dir
+from ..lib.fragment_notes import (
+    boundary_of,
+    region_append_separator,
+    split_fragment_notes,
+    split_suffix_region,
+)
 from ..lib.frontmatter import (
     _same_value,
     empty_indexable_metadata,
@@ -278,7 +284,15 @@ def _not_round_trippable_refusal(journal_path: Path) -> Dict[str, Any]:
 
 # A new-form fragment's stored identity: a correction is added as a note
 # (`fragment note`), these fields and the body are never edited in place.
-_FRAGMENT_IDENTITY_FIELDS = ("id", "kind", "ingested_at", "schema_version", "content")
+# `notes_boundary` belongs to the notes machinery, never to a caller's edit.
+_FRAGMENT_IDENTITY_FIELDS = (
+    "id",
+    "kind",
+    "ingested_at",
+    "schema_version",
+    "content",
+    "notes_boundary",
+)
 
 _FRAGMENT_NOTE_HINT = "a fragment's words are not edited; add a correction with `fragment note`"
 
@@ -327,7 +341,9 @@ def _locked_request_refusal(  # noqa: C901 - flat refusal ladder, one branch per
         return None
 
     if "content" in frontmatter_updates:
-        return _content_update_refusal(journal_path)
+        return _content_update_refusal(journal_path, "content")
+    if "notes_boundary" in frontmatter_updates:
+        return _content_update_refusal(journal_path, "notes_boundary")
     if "location" in frontmatter_updates:
         weather_value = frontmatter_updates.get("weather")
         if not isinstance(weather_value, str) or not weather_value.strip():
@@ -357,14 +373,30 @@ def _fragment_words_refusal(
     )
 
 
-def _content_update_refusal(journal_path: Path) -> Dict[str, Any]:
-    """The envelope when ``frontmatter_updates`` tries to smuggle a body change."""
+def _content_update_refusal(journal_path: Path, key: str = "content") -> Dict[str, Any]:
+    """The envelope when ``frontmatter_updates`` tries to smuggle a body change.
+
+    ``notes_boundary`` gets the same refusal: it belongs to the notes
+    machinery (`fragment note`), not to a caller's edit.
+    """
     return create_error_response(
         ErrorCode.INVALID_INPUT,
-        "The 'content' key cannot be updated through frontmatter_updates;"
+        f"The '{key}' key cannot be updated through frontmatter_updates;"
         " body text is changed with --replace-content / --append-content",
-        {"path": str(journal_path), "field": "content"},
+        {"path": str(journal_path), "field": key},
         "Use --replace-content or --append-content to change body text",
+    )
+
+
+def _boundary_in_content_refusal(journal_path: Path) -> Dict[str, Any]:
+    """The E0001 envelope when supplied content carries the file's boundary."""
+    return create_error_response(
+        ErrorCode.INVALID_INPUT,
+        "supplied content contains the file's notes_boundary value;"
+        " the notes region must stay unforgeable",
+        {"path": str(journal_path), "field": "content"},
+        "Remove the boundary value from the supplied content and retry;"
+        " the journal was not changed",
     )
 
 
@@ -721,6 +753,24 @@ def edit_journal(
                 if refusal is not None:
                     return refusal
 
+                # A file with notes: a content edit applies to the original
+                # text and keeps the notes region bytes verbatim after it;
+                # supplied content containing the boundary is refused (the
+                # region must stay unforgeable). Metadata-only edits below
+                # never touch the suffix, so the region rides along untouched.
+                content_edit_requested = replace_content is not None or append_content is not None
+                notes_boundary = boundary_of(locked_frontmatter)
+                region_bytes = b""
+                if notes_boundary is not None and content_edit_requested:
+                    if notes_boundary in (replace_content or "") or notes_boundary in (
+                        append_content or ""
+                    ):
+                        return _boundary_in_content_refusal(journal_path)
+                    _original, region_bytes = split_suffix_region(split.suffix, notes_boundary)
+                    locked_body = split_fragment_notes(
+                        locked_frontmatter, locked_body
+                    ).original_text
+
                 old_frontmatter, new_frontmatter, new_body, computed_result = _apply_edit_updates(
                     journal_path=journal_path,
                     current_frontmatter=locked_frontmatter,
@@ -734,8 +784,15 @@ def edit_journal(
 
                 # 正文编辑（legacy journal）写出的正文不含任何 CR：携带
                 # 旧正文的文本与调用方提供的文本都经同一个 LF 归一器。
-                if replace_content is not None or append_content is not None:
+                # 带更正 note 的文件在正文之后按追加规则接回原样的 note
+                # 区字节（`fragment note` 的同一条 separator 规则）。
+                if content_edit_requested:
                     new_body = normalize_lf(new_body)
+                    if region_bytes:
+                        separator = region_append_separator(new_body.encode("utf-8"))
+                        new_body = (
+                            new_body + separator.decode("ascii") + region_bytes.decode("utf-8")
+                        )
 
                 # content_modified 恰好在正文字节变化时为真：仅改元数据时
                 # 后缀逐字节不变；改正文时与原后缀比较。
@@ -819,8 +876,10 @@ def edit_journal(
                 # 更新索引（如果相关字段变更）
                 if any(k in result["changes"] for k in ["topic", "project", "tags"]):
                     logger.info("检测到索引相关字段变更，更新索引...")
+                    # 条目方括号标签取原文（带 note 的文件不把 note 区当正文）。
+                    label_body = split_fragment_notes(new_frontmatter, new_body).original_text
                     updated = update_indices_for_change(
-                        journal_path, old_frontmatter, new_frontmatter, new_body
+                        journal_path, old_frontmatter, new_frontmatter, label_body
                     )
                     result["indices_updated"] = updated
                     logger.info(f"已更新 {len(updated)} 个索引文件")

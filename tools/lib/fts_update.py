@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 _REBUILD_MARKER_NAME = ".rebuilding"
 
 from .chinese_tokenizer import segment_for_fts
+from .fragment_notes import original_and_note_texts
 from .frontmatter import (
     empty_indexable_metadata,
     indexable_date,
@@ -106,6 +107,10 @@ def _parse_content(
 
         # 使用 SSOT frontmatter 解析
         metadata, body = parse_frontmatter(content)
+        # FTS indexes the original text plus the note texts (a search for the
+        # corrected word finds the fragment); headers, markers, ``by``, ids
+        # and quotes never enter the index.
+        index_text = original_and_note_texts(metadata, body)
         # D1: one shared rule for "what is indexable metadata". ``None`` means
         # the frontmatter has no readable mapping root and the caller falls back
         # to the raw-text row; a malformed field never makes the row raw.
@@ -124,7 +129,7 @@ def _parse_content(
         # 'title_segmented' stores jieba tokens (for FTS matching).
         raw_title = indexable["title"]
         segmented_title = segment_for_fts(raw_title, mode="index")
-        segmented_content = segment_for_fts(body, mode="index")
+        segmented_content = segment_for_fts(index_text, mode="index")
 
         return {
             "path": path_fields["rel_path"],

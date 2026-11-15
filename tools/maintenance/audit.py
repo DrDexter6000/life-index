@@ -16,6 +16,7 @@ from typing import Any, Callable
 
 import yaml
 
+from tools.lib.fragment_notes import boundary_of, find_notes_region
 from tools.lib.journal_files import classify_journal_path, has_journal_files, iter_journal_files
 from tools.lib.schema import get_required_fields
 
@@ -165,6 +166,30 @@ def _parse_frontmatter(text: str) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
+def _text_without_notes(text: str) -> str:
+    """The text with a journal's notes region removed, if it has one.
+
+    Link and attachment scans see the original text only: note headers and
+    note texts never produce link findings. The metadata comes from the
+    shared reader (``frontmatter.parse_frontmatter``): this module's own
+    substring ``---`` split cuts a legal field value containing ``---`` short
+    and would then miss the boundary. The region is found by the one shared
+    grammar rule (first line beginning with the marker prefix); the boundary
+    value cannot occur in the original text, so the first occurrence is
+    always the region.
+    """
+    from tools.lib.frontmatter import parse_frontmatter as _shared_parse
+
+    metadata, _body = _shared_parse(text)
+    boundary = boundary_of(metadata)
+    if boundary is None:
+        return text
+    start = find_notes_region(text, boundary)
+    if start is None:
+        return text
+    return text[:start]
+
+
 def _detect_search_index(data_dir: Path) -> list[Issue]:
     index_dir = data_dir / ".index"
     if index_dir.exists():
@@ -310,6 +335,7 @@ def _detect_links(data_dir: Path) -> list[Issue]:
         text = _read_utf8(path)
         if text is None:
             continue
+        text = _text_without_notes(text)
         rel = _rel_path(data_dir, path)
         for match in _MARKDOWN_LINK_RE.finditer(text):
             raw_target = _clean_link_target(match.group(1))
@@ -346,6 +372,7 @@ def _attachment_refs(data_dir: Path) -> set[str]:
         text = _read_utf8(path)
         if text is None:
             continue
+        text = _text_without_notes(text)
         for match in _MARKDOWN_LINK_RE.finditer(text):
             full = match.group(0)
             target = _clean_link_target(match.group(1))

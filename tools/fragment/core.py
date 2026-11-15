@@ -27,6 +27,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from ..lib.config import FILE_LOCK_TIMEOUT_DEFAULT, resolve_user_data_dir
 from ..lib.errors import ErrorCode, create_error_response
 from ..lib.file_lock import FileLock, LockTimeoutError, get_journals_lock_path
+from ..lib.fragment_notes import split_fragment_notes
 from ..lib.frontmatter import format_frontmatter, frontmatter_is_unreadable, parse_frontmatter
 from ..lib.journal_files import iter_month_journal_files
 from ..lib.logger import get_logger
@@ -571,6 +572,9 @@ def _candidate_matches(
                 continue
             if source.get("channel") != channel or source.get("message_id") != message_id:
                 continue
+            # Dedupe compares the stored fragment's own words only; notes
+            # recorded next to them never take part in the comparison.
+            body = split_fragment_notes(metadata, body).original_text
             stored_attachments = metadata.get("attachments")
             attachment_paths = (
                 [
