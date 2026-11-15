@@ -182,6 +182,48 @@ class TestWriteReservedKey:
         assert _journals(data_dir) == []
 
 
+class TestWriteReservedIdKey:
+    """`id` is reserved exactly like `notes_boundary`: write assigns it."""
+
+    @staticmethod
+    def _payload(**extra):
+        return {
+            "title": "t",
+            "content": "plain words",
+            "date": "2026-03-25",
+            "topic": "work",
+            **extra,
+        }
+
+    def test_write_refuses_id(self, data_dir):
+        from tools.write_journal import write_journal
+
+        result = write_journal(self._payload(id="a" * 32))
+        assert result["success"] is False, result
+        assert result["error"]["code"] == "E0001"
+        assert result["error"]["details"]["field"] == "id"
+        assert _journals(data_dir) == [], "no file may be created by the refused write"
+
+    @pytest.mark.parametrize(
+        "disguise",
+        [
+            lambda key: key + " ",
+            lambda key: "x: 1" + chr(10) + key,
+            lambda key: chr(34) + key.replace("_", chr(92) + "u005f") + chr(34),
+        ],
+        ids=["padded", "after-a-line-break", "quoted-with-escape"],
+    )
+    def test_write_refuses_a_disguised_id_key(self, data_dir, disguise):
+        from tools.write_journal import write_journal
+
+        payload = self._payload(id="a" * 32)
+        payload[disguise("id")] = payload.pop("id")
+        result = write_journal(payload)
+        assert result["success"] is False, result
+        assert result["error"]["code"] == "E0001"
+        assert _journals(data_dir) == [], "no file may be created by the refused write"
+
+
 def _rel_to(path: Path) -> str:
     parts = path.parts
     return "/".join(parts[-4:])

@@ -19,13 +19,13 @@ staging/publish/compensate、序列号分配、FTS 行与 metadata-cache 行写�
 import json
 import os
 import re
-import uuid
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..lib.config import FILE_LOCK_TIMEOUT_DEFAULT, resolve_user_data_dir
 from ..lib.errors import ErrorCode, create_error_response
+from ..lib.entry_id import new_entry_id
 from ..lib.file_lock import FileLock, LockTimeoutError, get_journals_lock_path
 from ..lib.fragment_notes import split_fragment_notes
 from ..lib.frontmatter import format_frontmatter, frontmatter_is_unreadable, parse_frontmatter
@@ -1009,7 +1009,8 @@ def add_fragment(data: Dict[str, Any]) -> Dict[str, Any]:
             staging = _stage_fragment_attachments(result, attachments, date_str, timer)
             try:
                 stored_attachments = list(staging.processed) if staging is not None else []
-                fragment_id = uuid.uuid4().hex
+                # The one id rule for every newly created entry.
+                fragment_id = new_entry_id()
                 payload = _frontmatter_payload(
                     fragment_id, expressed, ingested, normalized, stored_attachments
                 )

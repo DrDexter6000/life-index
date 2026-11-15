@@ -710,6 +710,7 @@ python -m tools.write_journal --data '<json>'
 {
   "success": true,
   "write_outcome": "success_pending_confirmation",
+  "id": "8f14e45fceea167a5a36dedd4bea2543",
   "journal_path": "C:/Users/.../Documents/Life-Index/Journals/2026/03/life-index_2026-03-10_001.md",
   "updated_indices": ["C:/Users/.../Documents/Life-Index/by-topic/主题_work.md"],
   "index_status": "complete",
@@ -770,6 +771,16 @@ python -m tools.write_journal --data '<json>'
 
 返回的 `journal_path` 是实际创建文件的权威路径。若分配的文件名被并发写入者占用，
 日志顺延到下一个可用序号，绝不替换既有文件；确认载荷与派生索引也使用该实际路径。
+
+**条目 id**：`id` 是本次写入为日志生成的持久条目身份（32 位小写十六进制），存进
+该文件自己的 frontmatter；只要 journal 已提交就返回它（含降级的 post-commit 结果，
+且就是发布文件里存的那个 id），dry run 返回 `id: null`；调用方的字典永远不会被加上
+`id`。`id` 与 `notes_boundary` 同为保留键：调用方传入 `id`（含伪装拼写）以 `E0001`
+拒绝、点名该字段。会成为 frontmatter 键的 payload 键（除 `content` 与 `_` 前缀键外
+的全部）遵守与 `edit` 更新键相同的唯一键规则（非空字符串、等于自身 strip、不含换行
+或 `:`），违者以 `E0001` 点名拒绝、零写入；发布前还会把最终渲染的日志读回核验存储
+`id` 就是生成的 id。规则（生成、有效性、旧条目由 `migrate` 补 id）见
+`docs/ARCHITECTURE.md` 的 *Entry identity* 一节。
 
 ### Round 7 新增返回字段
 
@@ -1034,7 +1045,8 @@ python -m tools fragment add --data '<json>'
 ### 存储形态（stored form）
 
 frontmatter 固定六字段：`schema_version: 3`、`kind: fragment`、`id`（32 位
-小写十六进制，`uuid4().hex`）、`date`（`expressed_at` 自身墙钟时间去掉
+小写十六进制，规则见 `docs/ARCHITECTURE.md` 的 *Entry identity* 一节）、`date`
+（`expressed_at` 自身墙钟时间去掉
 offset，**不**换算到本机时区）、`expressed_at`、`ingested_at`；其后仅写调用
 方实际提供的可选字段（字段顺序由共享序列化器决定）。正文就是 `text`（LF、
 去首尾空白；共享解析器读取正文时会做同样的 strip，因此读回与写入幂等），
@@ -2320,7 +2332,9 @@ fail-closed 策略写入 plan 中的 journal 和 attachment path，并在写入�
 ledger 和 rollback manifest。写出的 journal frontmatter 由
 `tools/lib/frontmatter.py` 的共享 serializer 生成：始终包含 `schema_version`，plan
 的标量 `topic` 以单元素 canonical 数组写入，`title` / `date` / `tags` 按 YAML
-安全转义后写入，正文为 plan 的 `content` 原样。
+安全转义后写入，正文为 plan 的 `content` 原样。每篇发布的 journal 还携带发布时
+生成的持久条目 `id`（规则见 `docs/ARCHITECTURE.md` 的 *Entry identity* 一节；识别到
+"已发布"的幂等重跑保留该文件里已存的 id）。
 
 对 `media.photo_timeline`，`run` 还应带 `--source-root <photo-dir>`。CLI 只
 使用该 root 解析 plan 中的 `source_rel_path`，并在复制 attachment 前校验
@@ -2854,7 +2868,8 @@ parent-only 路径——覆盖 `next_batch_sequence`
 超出 9 位后缀的退化情形）。合法 parent 因 child 分支独立长度预算必然 mint 合法 child，
 故 (3) 正常流程不触发。三道闸门均在 reservation / child job write / publish 之前。
 
-child batch journal 必须符合 canonical journal schema（`schema_version`、合法
+child batch journal 必须符合 canonical journal schema（`schema_version`、发布时
+生成的持久条目 `id`（`docs/ARCHITECTURE.md` *Entry identity*）、合法
 `topic`——photo 默认 `life`，不扩展 canonical topic 集合、`field_sources`、
 provenance、frontmatter `attachments` 为 SSOT），只发布 selected attachments，尽
 量复用现有 canonical helpers / authority。失败可返回明确 `recovery_required`，但
@@ -5253,6 +5268,11 @@ python -m tools.edit_journal --journal "<path>" [options]
   `source`、`reply_to`、附件等）照常可编辑；`location` 修改不要求同步 `weather`
 - legacy journal（不满足上述身份判定）保持既有规则：`location` 必须同步 `weather`，
   正文可经 `--replace-content` / `--append-content` 修改
+- **`id` 在任何文件上都不能经 `edit` 修改**：设置、替换、清空或删除存储的条目 id
+  （含设为原值）在 legacy journal 等非新形态 fragment 文件上得到与 `content` 键同款
+  的 `E0001` 拒绝（`details.field` 为 `id`），在新形态 fragment 上是上面的 `E0505`。
+  CLI 没有 `--set-id`；confirm 路径也不会构造该字段。id 规则见
+  `docs/ARCHITECTURE.md` 的 *Entry identity* 一节。
 
 ### 不可重写 frontmatter 的拒绝
 
@@ -5276,8 +5296,9 @@ envelope：
 
 - `frontmatter_updates` 试图更新 `content` 键：普通 journal 以 `E0001`（`INVALID_INPUT`）
   拒绝——正文只能经 `--replace-content` / `--append-content` 修改，不能从 frontmatter
-  更新里夹带（新形态 fragment 对该键的拒绝码为 `E0505`）；`notes_boundary` 键在任何
-  非新形态 fragment 的文件上得到同一 `E0001` 拒绝（`details.field` 指明键名）
+  更新里夹带（新形态 fragment 对该键的拒绝码为 `E0505`）；`notes_boundary` 键与
+  `id` 键在任何非新形态 fragment 的文件上得到同一 `E0001` 拒绝（`details.field`
+  指明键名）
 - `frontmatter_updates` 的键本身不可写入（非字符串、空串、带首尾空白、含换行或 `:`）：
   以 `E0001` 拒绝——键会被原样写进 frontmatter，这样的键可以伪造文件内容
 
@@ -5346,7 +5367,7 @@ queue，由下次搜索 preflight 或 `life-index index` 修复；`skipped` 不�
 | E0504 | 修改地点时缺少天气（legacy journal；新形态 fragment 不适用） | ask_user |
 | E0505 | 碎片原话不可编辑：新形态 fragment 的 `--replace-content` / `--append-content` 与 `id` / `kind` / `ingested_at` / `schema_version` / `content` / `notes_boundary` 更新被拒绝，更正以 `fragment note` 补记 | ask_user |
 | E0202 | frontmatter 无法在不丢失内容的前提下重写（`details.reason` 为 `unreadable` / `content_key_in_frontmatter` / `not_round_trippable` / `no_frontmatter_block`） | fail |
-| E0001 | `frontmatter_updates` 尝试更新 `content` 键（普通 journal） | ask_user |
+| E0001 | `frontmatter_updates` 尝试更新 `content` 键（普通 journal）；`notes_boundary` / `id` 键在任何非新形态 fragment 的文件上同款拒绝 | ask_user |
 
 ---
 
@@ -5999,6 +6020,12 @@ python -m tools verify [--json]
       "status": "ok",
       "count": 15,
       "issues": []
+    },
+    {
+      "name": "entry_ids",
+      "status": "ok",
+      "count": 42,
+      "issues": []
     }
   ],
   "issues_count": 0,
@@ -6015,6 +6042,7 @@ python -m tools verify [--json]
 | `fts_consistency` | FTS 索引条目与实际日志文件的一致性（缺失 / 孤儿） |
 | `attachment_refs` | 正文中引用的附件文件是否存在 |
 | `topic_consistency` | `by-topic/` 索引中链接的日志路径是否有效 |
+| `entry_ids` | 条目身份（只看 live entry 文件；规则见 `docs/ARCHITECTURE.md` 的 *Entry identity* 一节）：没有 id 的条目共记一条带计数的 warning（修复命令为 `migrate`）；畸形 id 逐文件记 issue；跨文件重复的 id 每个记一条 issue、点名每个携带它的文件。本检查只报告，绝不修改 |
 
 `fts_consistency` 的 canonical journal 集合不包含 co-located `.revisions/` 编辑快照；FTS rebuild 同样不索引这些快照。真实 canonical journal 缺失和真实孤儿 FTS 行仍会报告。
 
@@ -7750,9 +7778,14 @@ life-index version
 ```json
 {
   "total_scanned": 42,
-  "version_distribution": {"1": 5, "2": 37},
+  "version_distribution": {"1": 5, "3": 37},
   "needs_migration": 5,
-  "outdated_files": [{"path": "...", "current_version": 2, "removed_fields": ["sentiment_score", "themes"]}]
+  "needs_id": 3,
+  "outdated_files": [
+    {"path": "...", "current_version": 2, "missing_fields": ["entities"],
+     "needs_schema_migration": true, "needs_id": true}
+  ],
+  "refused_files": [{"path": "...", "reason": "malformed_id", "error": "..."}]
 }
 ```
 
@@ -7765,10 +7798,39 @@ life-index version
   "failed_count": 0,
   "failed_files": [],
   "needs_agent": [{"path": "...", "items": ["abstract/summary missing — needs Agent extraction"]}],
-  "deterministic_changes": [{"path": "...", "changes": ["removed sentiment_score", "removed themes"]}]
+  "deterministic_changes": [{"path": "...", "changes": ["removed sentiment_score", "removed themes", "assigned entry id"]}],
+  "needs_id": 3,
+  "assigned_ids": [{"path": "...", "id": "8f14e45fceea167a5a36dedd4bea2543"}]
 }
 ```
 
+> **补条目 id**：一个文件被重写的理由有两个，彼此独立——schema 版本低于当前版本，
+> 或存储的条目 `id` 缺失（无、null 或空白字符串）。已是当前 schema 但没有 id 的文件
+> 会被补上；补 id 与 schema 链在同一次重写里完成（一个文件一次快照、一次渲染、一次
+> 原子替换，绝不重写两次）。畸形 id、跨文件重复的 id，以及一个将要被分配的 id 若已
+> 被某个文件存储、或已在本轮迁移中被分配，都绝不写入：文件以 `duplicate_id` 拒绝并
+> 点名，字节原样保留并被报告。一个只需要补 id 的文件，重写后的 metadata 除 `id` 外
+> 必须与旧文件读出的完全一致，否则以 `would_change_metadata` 拒绝并点名会变的字段
+> （需要 schema 步骤的文件保持既有归一化行为）。id 规则（生成、有效性、旧条目推导
+> 配方、两遍次序）见 `docs/ARCHITECTURE.md` 的 *Entry identity* 一节。
+>
+> **两遍次序**：`migrate` 先做一遍 census（每个可读文件的存储 id 状态，只保留 id
+> 字符串），然后逐个文件处理——`--apply` 下每个文件**先被替换，下一个文件才被读**：
+> 迁移中途被普通编辑器改动的文件不会被陈旧快照覆盖。dry-run 与 apply 共用同一个
+> 逐文件函数（dry-run 不做替换）。
+>
+> **dry-run 讲全部故事**：dry-run 与 apply 共用同一个规划器——逐文件算出将要发生的
+> 重写（含提交前读回核验与"该路径能否被替换"前置检查），但不发布任何字节、不预留
+> 任何状态；apply 重新读取并重新检查一切。每个不会被迁移的文件都在
+> `refused_files` 里带路径与 reason，reason 取值：`unreadable`、各 rewrite-blocker
+> reason（`content_key_in_frontmatter` / `not_round_trippable`）、
+> `no_frontmatter_block`、`not_replaceable`（符号链接或不可写）、
+> `outgoing_check_refused`（读回核验拒绝）、`malformed_id`、`duplicate_id`（含将要
+> 分配的 id 与已存储/已分配 id 碰撞）、`would_change_metadata`（仅补 id 的重写会
+> 改变其他存储值），以及
+> `invalid_schema_version`（`schema_version` 不是数字，无法比较）。`--apply` 对它
+> 实际执行的结果报告同一组类别（`failed_files[].error` 内含 reason）。
+>
 > **不可读 frontmatter**：一个带 `---` 区块但读不出 mapping root 的文件（list/scalar root，
 > 含 `false`/`0`/`[]` 这类假值；legacy 恢复也读不了的 YAML；递归结构）在 dry-run 中计入
 > `version_distribution.unparseable`，不进入 `outdated_files`；`--apply` 不重写它，而是按
@@ -7781,9 +7843,9 @@ life-index version
 > 需要迁移时照常列入 `outdated_files`，并多带一个 `rewrite_blocker`（值为
 > `not_round_trippable`）。区块里物理存在字符串 `content:` 键的文件同理，`rewrite_blocker`
 > 为 `content_key_in_frontmatter`——重写解析结果会丢掉该键存储的文本。`--apply` 不重写
-> 这样的文件，列入 `failed_files` 且 `error` 含该 reason，文件字节保持不变。已是当前版本的
-> 文件本来就不会被重写，计入 `already_current`。判定规则见 `docs/ARCHITECTURE.md` 的
-> *Frontmatter 重写边界*。
+> 这样的文件，列入 `failed_files` 且 `error` 含该 reason，文件字节保持不变。已是当前版本
+> 且已带合法 id 的文件本来就不会被重写，计入 `already_current`。判定规则见
+> `docs/ARCHITECTURE.md` 的 *Frontmatter 重写边界*。
 >
 > **没有 frontmatter 区块的文件**：一个连字节级 `---` 区块都没有的 journal 文件（无/残缺
 > 分隔线、BOM 开头）dry-run 照常按 v1 计入 `outdated_files` 并多带

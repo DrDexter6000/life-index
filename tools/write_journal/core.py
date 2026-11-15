@@ -30,6 +30,7 @@ from ..lib.workflow_signals import (
 from ..lib.entity_graph import load_entity_graph, resolve_entity
 from ..lib.entity_schema import EntityGraphValidationError
 from ..lib.entity_candidates import extract_entity_candidates
+from ..lib.entry_id import new_entry_id
 from ..lib.metadata_cache import (
     get_backlinked_by,
     get_all_cached_metadata,
@@ -49,7 +50,7 @@ from .utils import (
     get_next_sequence,
     get_year_month,
 )
-from ..lib.frontmatter import format_frontmatter, parse_frontmatter
+from ..lib.frontmatter import format_frontmatter, parse_frontmatter, unwritable_frontmatter_key
 from ..lib.frontmatter import format_journal_content as format_content
 from ..lib.journal_rewrite import normalize_lf
 from .attachments import (
@@ -510,22 +511,33 @@ def _build_frontmatter_updates(
 # Module-level private helpers (extracted from write_journal)
 # ---------------------------------------------------------------------------
 
+# The frontmatter keys a caller may never supply: ``notes_boundary`` belongs
+# to the fragment notes mechanism, and ``id`` is assigned by ``write`` itself
+# (one ``new_entry_id()`` per call, reused across that call's retries).
+_RESERVED_WRITE_KEYS = ("notes_boundary", "id")
 
-def _payload_spells_notes_boundary(data: Dict[str, Any]) -> bool:
-    """Whether the frontmatter this payload renders carries ``notes_boundary``.
+
+def _payload_spells_reserved_key(data: Dict[str, Any]) -> str | None:
+    """The reserved frontmatter key this payload spells, if any.
 
     Keys are written into the frontmatter verbatim, so a padded, multi-line or
-    quoted key can spell the reserved key without being equal to it. The check
+    quoted key can spell a reserved key without being equal to it. The check
     therefore renders the payload's frontmatter and reads it back with the
-    public reader, instead of comparing key strings.
+    public reader, instead of comparing key strings. ``notes_boundary`` is an
+    internal key of the fragment notes mechanism; ``id`` is assigned by
+    ``write`` itself when the entry is created.
     """
-    if "notes_boundary" in data:
-        return True
+    for key in _RESERVED_WRITE_KEYS:
+        if key in data:
+            return key
     try:
         metadata, _body = parse_frontmatter(format_frontmatter(data) + "\n")
     except Exception:  # noqa: BLE001 - the real render below reports its own failure
-        return False
-    return "notes_boundary" in metadata
+        return None
+    for key in _RESERVED_WRITE_KEYS:
+        if key in metadata:
+            return key
+    return None
 
 
 def _init_write_result() -> Dict[str, Any]:
@@ -533,6 +545,7 @@ def _init_write_result() -> Dict[str, Any]:
     return {
         "success": False,
         "write_outcome": WriteOutcome.FAILED,
+        "id": None,
         "journal_path": None,
         "updated_indices": [],
         "index_status": IndexStatus.NOT_STARTED,
@@ -935,6 +948,7 @@ def _commit_primary_journal_and_attachments(
     month_dir: Path,
     date_str: str,
     full_content: str,
+    entry_id: str,
     timer: Timer,
     attachment_staging: AttachmentStaging | None,
 ) -> Path:
@@ -1019,6 +1033,10 @@ def _commit_primary_journal_and_attachments(
                     "blocking": True,
                 }
             )
+            # The journal file is committed at this point: every outcome from
+            # here on — including degraded post-commit envelopes — returns the
+            # id stored in it.
+            result["id"] = entry_id
             result["journal_path"] = str(journal_path)
             published_path = journal_path
             break
@@ -1388,6 +1406,7 @@ def _commit_journal_to_disk(
     year: int,
     month: int,
     full_content: str,
+    entry_id: str,
     timer: Timer,
     attachment_staging: AttachmentStaging | None,
 ) -> Path:
@@ -1398,6 +1417,7 @@ def _commit_journal_to_disk(
         month_dir=month_dir,
         date_str=date_str,
         full_content=full_content,
+        entry_id=entry_id,
         timer=timer,
         attachment_staging=attachment_staging,
     )
@@ -1719,13 +1739,50 @@ def _handle_dry_run(
     return result
 
 
+def _unwritable_payload_key(data: Dict[str, Any]) -> Any | None:
+    """The first payload key that would be written as a frontmatter key but may not be.
+
+    Keys reach the serializer for every payload key except ``content`` (the
+    body) and ``_``-prefixed keys (the serializer skips those), so exactly
+    those keys follow the one shared key rule
+    (:func:`frontmatter.unwritable_frontmatter_key`) — the same rule
+    ``edit`` applies to its update keys.
+    """
+    for key in data:
+        if key == "content" or (isinstance(key, str) and key.startswith("_")):
+            continue
+        if unwritable_frontmatter_key(key):
+            return key
+    return None
+
+
 def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]:
     """Write a journal entry and return the agent-facing result envelope."""
     timer = Timer().start()
     result = _init_write_result()
 
     try:
-        if _payload_spells_notes_boundary(data):
+        bad_key = _unwritable_payload_key(data)
+        if bad_key is not None:
+            logger.warning("write 拒绝不可写入的 payload 键：%r", bad_key)
+            return create_error_response(
+                ErrorCode.INVALID_INPUT,
+                "payload keys that become frontmatter keys must be non-empty"
+                " stripped strings without line breaks or ':'",
+                {"field": bad_key if isinstance(bad_key, str) else repr(bad_key)},
+                "Fix the field name and retry; nothing was written",
+            )
+        reserved_key = _payload_spells_reserved_key(data)
+        if reserved_key is not None:
+            if reserved_key == "id":
+                logger.warning("write 拒绝保留键 id")
+                return create_error_response(
+                    ErrorCode.INVALID_INPUT,
+                    "id is assigned by write itself when the entry is created;"
+                    " a caller cannot supply it",
+                    {"field": "id"},
+                    "Remove id from the payload and retry; nothing was written",
+                )
             # A note is only worth something because `fragment note` checked
             # its basis; a caller-planted boundary would forge that guarantee.
             logger.warning("write 拒绝保留键 notes_boundary")
@@ -1736,6 +1793,13 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                 {"field": "notes_boundary"},
                 "Remove notes_boundary from the payload and retry;" " nothing was written",
             )
+
+        # The entry's durable id: generated once per call, stored in the
+        # committed journal, and returned as `id` from the moment the journal
+        # file is committed. The rendered content carries it, so a publish
+        # retry inside this call reuses the same id. The caller's dictionary
+        # never gains the key; only the render payload carries it.
+        entry_id = new_entry_id()
 
         date_str = str(data.get("date") or "").strip()
         if not date_str:
@@ -1764,8 +1828,9 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                 try:
                     # write 产物在所有平台上都是 LF：正文里携带的 CRLF 或
                     # 孤立 CR 统一归一为 LF，新日志不含任何 CR。既有文件
-                    # 不做迁移。
-                    full_content = normalize_lf(format_content(data))
+                    # 不做迁移。渲染载荷是调用方字典的浅拷贝加生成的 id：
+                    # 调用方字典本身不获得 id。
+                    full_content = normalize_lf(format_content({**data, "id": entry_id}))
                 except (ValueError, OSError, IOError, RuntimeError) as exc:
                     if attachment_staging is not None and attachment_staging.stage_root is not None:
                         cleanup_errors = discard_attachment_staging(attachment_staging)
@@ -1794,6 +1859,37 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                             )
                     raise
 
+                # Read the final rendered journal back with the public reader:
+                # the stored id must be the generated id, or the payload forged
+                # a file shape the key rules did not catch. Nothing is written.
+                stored_metadata, _stored_body = parse_frontmatter(full_content)
+                if stored_metadata.get("id") != entry_id:
+                    logger.warning("write 渲染读回的存储 id 与生成 id 不一致")
+                    if attachment_staging is not None and attachment_staging.stage_root is not None:
+                        staging_cleanup = discard_attachment_staging(attachment_staging)
+                        if staging_cleanup:
+                            _update_side_effect_record(
+                                result,
+                                name="attachments",
+                                status=SideEffectExecutionStatus.FAILED,
+                                error=(
+                                    "rendered journal does not read back with the generated id;"
+                                    " staging cleanup failed"
+                                ),
+                                recovery_strategy=(
+                                    "remove the transaction staging path: "
+                                    f"{'; '.join(staging_cleanup)}; then fix the journal payload"
+                                ),
+                            )
+                    return create_error_response(
+                        ErrorCode.INVALID_INPUT,
+                        "the rendered journal does not read back with the generated"
+                        " entry id; the payload must not forge the file shape",
+                        {"field": "id"},
+                        "Remove payload keys that break the frontmatter block and"
+                        " retry; nothing was written",
+                    )
+
                 if dry_run:
                     return _handle_dry_run(
                         result, journal_path, location, weather, full_content, timer
@@ -1808,6 +1904,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                     year=year,
                     month=month,
                     full_content=full_content,
+                    entry_id=entry_id,
                     timer=timer,
                     attachment_staging=attachment_staging,
                 )

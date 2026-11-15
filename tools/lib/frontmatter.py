@@ -448,6 +448,21 @@ def indexable_date(indexable: Dict[str, Any], file_path: Path) -> str:
     return fragment_date_from_filename(file_path) or ""
 
 
+def unwritable_frontmatter_key(key: Any) -> bool:
+    """Whether a frontmatter key may never reach the serializer.
+
+    Keys are written into the frontmatter verbatim, so a key that is not a
+    string, is empty, carries surrounding whitespace, or contains a line
+    break or ``:`` could forge the file (a padded ``kind `` bypassing a
+    fragment guard, a ``content `` changing the body, a key holding a
+    ``---`` line injecting body bytes). The one shared rule behind ``edit``'s
+    update-key refusal and ``write``'s payload-key refusal.
+    """
+    if not isinstance(key, str) or not key or key != key.strip():
+        return True
+    return "\n" in key or "\r" in key or ":" in key
+
+
 def is_frontmatter_delimiter_line(line: str) -> bool:
     """The one rule for a whole-line ``---`` frontmatter delimiter.
 

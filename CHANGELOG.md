@@ -8,6 +8,32 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ### What users get
 
+- Every entry file now carries a durable `id` in its own frontmatter: new
+  entries (from `write`, `fragment add`, and both import publish paths) get
+  one when they are created, and old entries get one from `life-index migrate`
+  — nothing can change it afterwards (`edit` refuses every form of `id`
+  update, and a caller-supplied `id` to `write` is rejected). A later package
+  will switch the read contract to this id; today the id is stored, returned
+  by `write`, and never rewritten.
+- `write` returns the new entry's `id` whenever a journal was committed
+  (including degraded post-commit outcomes); a dry run returns `id: null`.
+- `life-index migrate` assigns missing ids: a file at the current schema
+  version without an id is picked up too, the id is added in the same single
+  rewrite as any schema step (body bytes stay identical), and a second run
+  changes nothing. Two copies of an archive holding a byte-identical file at
+  the same path get the same id when migrated separately.
+- `migrate --dry-run` now tells the whole story: it computes the same
+  prospective rewrite as `--apply` (publishing nothing) and names every file
+  that will not be migrated with its reason — unreadable, rewrite blockers, a
+  missing frontmatter block, not replaceable (symlink or read-only), a refused
+  outgoing check, a malformed id, or a duplicated id. Malformed and
+  duplicated ids are never replaced: those files are left exactly as they are
+  and reported.
+- `life-index verify` gains an `entry_ids` check (live entry files only): one
+  warning with the count for entries without an id (fix: run `migrate`), an
+  issue per file with a malformed id, and one issue per duplicated id naming
+  every file that carries it.
+
 - When the user confirms that something in a fragment was wrong ("it was
   Tuesday, not Monday"), the host agent can now record the correction with
   `life-index fragment note` — the correction lands **beside** the fragment's

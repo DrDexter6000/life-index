@@ -52,6 +52,7 @@ from tools.ingest.schemas import (
     ROLLBACK_MANIFEST_SCHEMA_VERSION,
     RUN_SCHEMA_VERSION,
 )
+from tools.lib.entry_id import new_entry_id
 from tools.lib.file_lock import FileLock
 from tools.lib.frontmatter import SCHEMA_VERSION, format_journal_content
 from tools.lib.topics import VALID_TOPICS
@@ -4034,8 +4035,12 @@ def _execute_child_batch(  # noqa: C901
             # Canonical journal: staged bytes -> create-only publish (never
             # overwrite an existing target). Attachments are the SSOT using the
             # canonical stored schema; no source SHA/provenance in frontmatter.
+            # One durable entry id is generated for this journal's publication;
+            # a recovery that recognizes an already-published file keeps the id
+            # stored in it instead.
             journal_data = {
                 "schema_version": SCHEMA_VERSION,
+                "id": new_entry_id(),
                 "title": journal.get("title", ""),
                 "date": journal.get("date", ""),
                 # Use the confirmed proposal journal's authoritative topic

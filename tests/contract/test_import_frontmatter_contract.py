@@ -24,6 +24,7 @@ from typing import Any
 
 import pytest
 
+from tools.lib.entry_id import is_valid_entry_id
 from tools.lib.frontmatter import format_frontmatter, parse_frontmatter
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -225,7 +226,8 @@ def test_import_publish_roundtrips_plan_values(
     journal_path = _journal_path(data_dir, plan)
     parsed, body = parse_frontmatter(journal_path.read_text(encoding="utf-8"))
 
-    # Same canonical frontmatter fields the write tool emits.
+    # Same canonical frontmatter fields the write tool emits, plus the
+    # durable entry id generated at publication time.
     assert parsed["schema_version"] == 3
     assert isinstance(parsed["title"], str)
     assert parsed["title"] == title, f"{case_id}: title did not round-trip"
@@ -238,7 +240,8 @@ def test_import_publish_roundtrips_plan_values(
     assert isinstance(parsed["topic"], list)
     assert parsed["topic"] == [topic], f"{case_id}: topic did not round-trip"
     assert body == content, f"{case_id}: body changed"
-    assert set(parsed) == {"schema_version", "title", "date", "tags", "topic"}
+    assert is_valid_entry_id(parsed.get("id")), f"{case_id}: no valid entry id"
+    assert set(parsed) == {"schema_version", "title", "date", "tags", "topic", "id"}
 
 
 def test_import_publish_plain_bytes_use_shared_serializer(tmp_path: Path) -> None:
@@ -253,6 +256,12 @@ def test_import_publish_plain_bytes_use_shared_serializer(tmp_path: Path) -> Non
     )
     assert run["state"] == "committed"
 
+    journal_path = _journal_path(data_dir, plan)
+    published = journal_path.read_text(encoding="utf-8")
+    # The entry id is generated at publication time; everything else is the
+    # shared serializer's canonical byte-for-byte output.
+    parsed, _body = parse_frontmatter(published)
+    assert is_valid_entry_id(parsed.get("id"))
     expected = (
         "---\n"
         "schema_version: 3\n"
@@ -260,10 +269,11 @@ def test_import_publish_plain_bytes_use_shared_serializer(tmp_path: Path) -> Non
         "date: 2026-07-01\n"
         'tags: ["imported"]\n'
         'topic: ["imported"]\n'
+        f'id: "{parsed["id"]}"\n'
         "---\n\n"
         "Plain body.\n"
     )
-    assert _journal_path(data_dir, plan).read_text(encoding="utf-8") == expected
+    assert published == expected
 
 
 def test_import_publish_escapes_double_quote_bytes(tmp_path: Path) -> None:
@@ -278,6 +288,10 @@ def test_import_publish_escapes_double_quote_bytes(tmp_path: Path) -> None:
     )
     assert run["state"] == "committed"
 
+    journal_path = _journal_path(data_dir, plan)
+    published = journal_path.read_text(encoding="utf-8")
+    parsed, _body = parse_frontmatter(published)
+    assert is_valid_entry_id(parsed.get("id"))
     expected = (
         "---\n"
         "schema_version: 3\n"
@@ -285,13 +299,13 @@ def test_import_publish_escapes_double_quote_bytes(tmp_path: Path) -> None:
         "date: 2026-07-01\n"
         'tags: ["imported"]\n'
         'topic: ["imported"]\n'
+        f'id: "{parsed["id"]}"\n'
         "---\n\n"
         "Quote body.\n"
     )
-    journal_path = _journal_path(data_dir, plan)
-    assert journal_path.read_text(encoding="utf-8") == expected
+    assert published == expected
 
-    parsed, body = parse_frontmatter(journal_path.read_text(encoding="utf-8"))
+    parsed, body = parse_frontmatter(published)
     assert parsed["title"] == 'He said "hi"'
     assert body == "Quote body."
 
@@ -326,7 +340,12 @@ def test_import_plan_journal_preview_matches_published_frontmatter(tmp_path: Pat
     published_meta, published_body = parse_frontmatter(
         _journal_path(data_dir, plan).read_text(encoding="utf-8")
     )
+    # The published file carries exactly the projected fields plus the
+    # durable entry id generated at publication time (never in the plan).
+    assert is_valid_entry_id(published_meta.get("id"))
+    published_id = published_meta.pop("id")
     assert published_meta == preview_meta
+    assert published_id not in json.dumps(plan)
     assert published_body == preview_body
 
 

@@ -39,6 +39,7 @@ from tools.ingest.schemas import (
     STATUS_SCHEMA_VERSION,
 )
 from tools.lib.config import FILE_LOCK_TIMEOUT_DEFAULT
+from tools.lib.entry_id import new_entry_id
 from tools.lib.frontmatter import format_frontmatter
 from tools.lib.pending_writes import mark_pending
 from tools.lib.file_lock import FileLock, LockTimeoutError, get_journals_lock_path
@@ -137,7 +138,7 @@ def _ledger_serialized(func: _F) -> _F:
 # ---------------------------------------------------------------------------
 
 
-def _build_journal_text(journal_spec: dict[str, Any]) -> str:
+def _build_journal_text(journal_spec: dict[str, Any], entry_id: str) -> str:
     """Render one imported journal through the shared frontmatter serializer.
 
     ``format_frontmatter`` is the single writer for journal metadata: it
@@ -147,7 +148,9 @@ def _build_journal_text(journal_spec: dict[str, Any]) -> str:
     the canonical journal field is a string array, so it is wrapped as a
     one-item array: this preserves the scalar's exact text (including commas
     and surrounding spaces) instead of letting the serializer's comma-splitting
-    path normalise it.
+    path normalise it.  ``entry_id`` is the durable id generated for this one
+    journal publication (``tools.lib.entry_id``); it becomes the file's stored
+    ``id``.
     """
     topic = journal_spec.get("topic", "")
     topic_value: Any = topic if isinstance(topic, list) else [topic]
@@ -157,6 +160,7 @@ def _build_journal_text(journal_spec: dict[str, Any]) -> str:
             "date": journal_spec.get("date", ""),
             "topic": topic_value,
             "tags": journal_spec.get("tags", []),
+            "id": entry_id,
         }
     )
     content = journal_spec.get("content", "")
@@ -555,8 +559,11 @@ def execute_run(  # noqa: C901
                 journal_abs.parent.mkdir(parents=True, exist_ok=True)
 
                 # Build journal content with the shared YAML frontmatter
-                # serializer; never hand-format metadata here.
-                journal_text = _build_journal_text(journal_spec)
+                # serializer; never hand-format metadata here. One durable
+                # entry id is generated for this journal's publication; a
+                # retry that the ledger recognizes as already published keeps
+                # the id stored in that file instead.
+                journal_text = _build_journal_text(journal_spec, new_entry_id())
                 journal_abs.write_text(journal_text, encoding="utf-8")
 
                 sha256 = _file_sha256(journal_abs)

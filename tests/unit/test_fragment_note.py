@@ -1012,7 +1012,8 @@ class TestMalformedRegion:
         frontmatter = next(c for c in result["checks"] if c["name"] == "frontmatter_valid")
         assert frontmatter["status"] == "warning"
         assert any("malformed notes region" in i for i in frontmatter["issues"])
-        assert len(result["checks"]) == 5, "no new check slot: folded into frontmatter_valid"
+        # six checks: the five historical ones plus the entry_ids identity check
+        assert len(result["checks"]) == 6, "no new check slot: folded into frontmatter_valid"
 
     def test_well_formed_region_is_not_an_issue(self, data_dir):
         target = _fragment()

@@ -33,6 +33,7 @@ from ..lib.frontmatter import (
     normalize_indexable_metadata,
     parse_frontmatter,
     parse_journal_file,
+    unwritable_frontmatter_key,
 )
 from ..lib.journal_files import (
     JournalFileKind,
@@ -344,6 +345,10 @@ def _locked_request_refusal(  # noqa: C901 - flat refusal ladder, one branch per
         return _content_update_refusal(journal_path, "content")
     if "notes_boundary" in frontmatter_updates:
         return _content_update_refusal(journal_path, "notes_boundary")
+    if "id" in frontmatter_updates:
+        # The stored entry id is durable: no file — fragment or not — accepts
+        # setting, replacing, clearing or removing it through an edit.
+        return _content_update_refusal(journal_path, "id")
     if "location" in frontmatter_updates:
         weather_value = frontmatter_updates.get("weather")
         if not isinstance(weather_value, str) or not weather_value.strip():
@@ -403,16 +408,11 @@ def _boundary_in_content_refusal(journal_path: Path) -> Dict[str, Any]:
 def _invalid_update_key(key: Any) -> bool:
     """Whether a ``frontmatter_updates`` key may never reach the serializer.
 
-    Keys are written into the frontmatter verbatim, so a key that is not a
-    string, is empty, carries surrounding whitespace, or contains a line
-    break or ``:`` could forge the file (a padded ``kind `` bypassing the
-    fragment guard, a ``content `` changing the body, a key holding a
-    ``---`` line injecting body bytes). The outgoing-file check refuses all
-    of these at commit time; this predicate refuses them up front.
+    The one shared key rule (:func:`frontmatter.unwritable_frontmatter_key`);
+    the outgoing-file check refuses such keys at commit time, this predicate
+    refuses them up front.
     """
-    if not isinstance(key, str) or not key or key != key.strip():
-        return True
-    return "\n" in key or "\r" in key or ":" in key
+    return unwritable_frontmatter_key(key)
 
 
 def _invalid_update_key_refusal(journal_path: Path, key: Any) -> Dict[str, Any]:

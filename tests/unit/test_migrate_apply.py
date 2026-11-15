@@ -283,6 +283,9 @@ class TestNotRoundTrippableFrontmatterIsLeftUntouched:
         original = (
             self.NOT_ROUND_TRIPPABLE[shape]
             .replace("schema_version: 1", f"schema_version: {SCHEMA_VERSION}")
+            # A valid stored id keeps this file out of id assignment, so the
+            # rewrite guard never concerns it.
+            .replace("date: 2025-06-15", 'date: 2025-06-15\nid: "' + "a" * 32 + '"')
             .encode()
         )
         assert original != self.NOT_ROUND_TRIPPABLE[shape].encode()

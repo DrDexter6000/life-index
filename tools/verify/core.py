@@ -10,9 +10,10 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from ..lib.paths import get_attachments_dir, get_by_topic_dir, get_journals_dir, get_user_data_dir
+from ..lib.entry_id import classify_stored_entry_id
 from ..lib.fragment_notes import split_fragment_notes
 from ..lib.frontmatter import get_required_fields, parse_frontmatter, parse_journal_file
-from ..lib.journal_files import JournalFileKind, classify_journal_path
+from ..lib.journal_files import JournalFileKind, classify_journal_path, iter_journal_files
 from ..lib.path_contract import build_journal_path_fields
 
 
@@ -111,6 +112,48 @@ def _notes_region_issue(file_path: Path) -> str | None:
     if split_fragment_notes(metadata, body).malformed:
         return f"{file_path.name}: malformed notes region"
     return None
+
+
+def _entry_id_check() -> CheckResult:
+    """The identity check over live entry files (rules: ARCHITECTURE, *Entry identity*).
+
+    Live entry files only. An entry without an id is one warning-level
+    finding carrying the count (the fix is ``migrate``); a malformed id is an
+    issue naming the file; a duplicated id is one issue naming every file
+    that carries it. Neither is ever changed here.
+    """
+    check = CheckResult(name="entry_ids", status="ok", count=0)
+    missing: list[Path] = []
+    malformed: list[Path] = []
+    by_id: dict[str, list[str]] = {}
+    for file_path in iter_journal_files(get_journals_dir()):
+        try:
+            content = file_path.read_text(encoding="utf-8")
+            metadata, _body = parse_frontmatter(content)
+        except (OSError, UnicodeDecodeError):
+            continue
+        state = classify_stored_entry_id(metadata.get("id"))
+        if state == "valid":
+            check.count += 1
+            stored_id = str(metadata["id"])
+            by_id.setdefault(stored_id, []).append(_rel_path(file_path))
+        elif state == "malformed":
+            malformed.append(file_path)
+        else:
+            missing.append(file_path)
+    if missing:
+        check.status = "warning"
+        check.issues.append(
+            f"{len(missing)} entry file(s) have no id; run `life-index migrate` to assign one"
+        )
+    for file_path in malformed:
+        check.status = "warning"
+        check.issues.append(f"{_rel_path(file_path)}: malformed entry id")
+    for stored_id, rel_paths in sorted(by_id.items()):
+        if len(rel_paths) > 1:
+            check.status = "warning"
+            check.issues.append(f"duplicate entry id {stored_id}: " + ", ".join(sorted(rel_paths)))
+    return check
 
 
 def _load_fts_paths() -> set[str]:
@@ -271,6 +314,9 @@ def run_verify() -> Dict[str, Any]:
             topic_check.issues.append(f"orphan: {rel_path}")
 
     result["checks"].append(asdict(topic_check))
+
+    # Check 5: entry identity (live entry files only)
+    result["checks"].append(asdict(_entry_id_check()))
 
     # Count total issues
     total_issues = sum(len(c.get("issues", [])) for c in result["checks"])

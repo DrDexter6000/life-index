@@ -1,7 +1,6 @@
 """Tests for migrate --dry-run scan functionality."""
 
 import json
-import pytest
 from pathlib import Path
 
 
@@ -39,9 +38,12 @@ class TestMigrateScan:
             journals_dir / "life-index_2026-01-01_001.md",
             schema_version=1,
         )
+        # A current-schema file that already carries a valid id needs nothing;
+        # without the id it would be picked up for id assignment instead.
         self._create_journal(
             journals_dir / "life-index_2026-01-02_001.md",
             schema_version=SCHEMA_VERSION,
+            id="a" * 32,
         )
 
         report = scan_journals(tmp_path / "Journals")

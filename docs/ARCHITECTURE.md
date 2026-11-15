@@ -639,6 +639,63 @@ entity 候选提取、`verify` 附件扫描、maintenance 链接审计只扫原�
 `notes_malformed: true`，`verify` 记为一条 issue）；`backup` 保持字节复制不变。
 note 区损坏的文件：`fragment note` 拒绝在其后追加（E0209），原文照常可读。
 
+### 4.7 条目身份（entry identity）
+
+每个 entry 文件在自己的 frontmatter 里携带一个持久 `id`。规则只在本节描述（实现是
+`tools/lib/entry_id.py` 的唯一 id 模块，其他文档指向这里）：
+
+- **生成**：新建条目由创建它的命令生成一个 `new_entry_id()`（`uuid4().hex`）并存
+  进 frontmatter——`write`（每次调用生成一次，该调用内的序号重试复用同一个 id），
+  `fragment add`，以及两条 import 发布路径（每次发布的日志生成一次，识别到"已发
+  布"的恢复保留该文件里已存的 id）。id 生成绝不进入共享序列化器
+  （`format_frontmatter` / `format_journal_content`）——那些是重写共用的序列化器。
+- **有效性规则**：存储的 id 合法当且仅当它是恰好 32 个小写十六进制字符的字符串。
+  这是存储 id 处处适用的唯一有效性规则。
+- **旧条目的 id 由文件原样推导，一次定终身**：
+  `sha256("life-index/legacy-id/v1" + NUL + rel_path 的 UTF-8 字节 + NUL + 迁移前
+  该文件的字节)` 的小写十六进制前 32 个字符。`rel_path` 是相对数据目录的路径
+  （以 `Journals/` 开头、用 `/`、保留大小写、不做任何其他归一；POSIX 上反斜杠是
+  目录名里的合法字符，因此路径就用 `relative_to(数据目录).as_posix()` 计算，不经
+  任何会改写反斜杠的助手）；字节是锁内读取的快照，先于任何链式步骤或重新渲染，
+  不做行尾或其他归一。`migrate` 用这个配方给缺 id 的文件补 id，与 schema 链在同一
+  次重写里完成（一个文件绝不重写两次——两次之间崩溃会改变配方哈希的输入）。
+  **确切的承诺**：两份档案副本在同一 `rel_path`
+  持有逐字节相同的文件时，分别迁移会得到同一个 id；副本一旦不同（一次编辑、一次
+  行尾转换、一次移动）则不同——那时让副本保持一致的办法是迁移其中一份，再复制迁移
+  后的文件。
+- **一旦写入，id 就是不透明的存储值**：没有任何代码重算存储 id，或拿它对照配方
+  检查。`edit` 不能设置、替换、清空或删除任何文件上的 `id`（新形态 fragment 上是
+  身份字段 E0505；其他文件与 `content` 键同款 E0001 拒绝）；`write` 拒绝调用方
+  传入的 `id`（E0001，与 `notes_boundary` 同一保留键检查）。其他元数据编辑、正文
+  编辑、`fragment note` 与 `migrate` 都保持存储 id 值不变。
+- **`migrate` 的两遍次序**：先做一遍 census——每个可读的 live entry 文件的存储 id
+  状态，只保留 id 字符串，且无论文件还有什么别的毛病（`schema_version` 非数字、
+  有 rewrite blocker）都计入，所以跨文件重复的存储 id 在这一遍之后已知。然后逐个
+  文件：读取、规划，`--apply` 时**立即替换，然后才读下一个文件**——迁移中途被普通
+  编辑器改动的文件不会被陈旧快照覆盖；每次迭代之后只有该文件的小报告存活。
+- **补 id 的碰撞规则**：一个将要被分配的 id 若已出现在 census 的存储合法 id 里，
+  或已在本轮中被分配过，该文件以 `duplicate_id` 拒绝并点名，字节不变——绝不让
+  两个文件落得同一个 id。一个只需要补 id（无 schema 步骤）的文件，重写后的
+  metadata 除 `id` 外必须与旧文件读出的完全一致（类型敏感）：否则序列化器会把
+  别的存储值归一掉（列表字段里的字符串被拆开、`null` 的已知字段被删除），该文件
+  以 `would_change_metadata` 拒绝并点名会变的字段，字节不变；需要 schema 步骤的
+  文件保持链式迁移与序列化器归一化的既有行为。
+- **缺失 / 畸形 / 重复的政策**：`id` 缺失（无、null 或空白字符串）时 `migrate` 补
+  一个（schema 已是当前版本的文件也会被补）；畸形值（非字符串，或不是 32 个小写
+  十六进制字符的字符串）绝不替换——文件原样保留并被报告；跨文件重复的合法 id 同样
+  绝不修改——每个携带它的文件路径都被报告。`verify` 的 `entry_ids` 检查（只看
+  live entry 文件）把缺失报成一条带计数的 warning（修复命令是 `migrate`）、畸形
+  与重复各报 issue 并点名文件。`SCHEMA_VERSION` 不因 id 而递增：补 id 是与 schema
+  链并列的第二个独立重写理由。
+- **`write` 的 id 写入保障**：payload 里会成为 frontmatter 键的键（除 `content` 与
+  `_` 前缀键外全部）遵守与 `edit` 更新键相同的唯一键规则
+  （`frontmatter.unwritable_frontmatter_key`：非空字符串、等于自身 strip、不含换行
+  或 `:`），违者以 E0001 点名拒绝、零写入——跨 `---` 行的键再也不能把生成的 id 挤
+  进正文。发布前把最终渲染的日志用公共 reader 读回：存储 `id` 必须就是生成的 id，
+  否则拒绝、零发布。结果里的 `id` 在日志文件提交的那一刻写入结果，此后的一切结果
+  （含降级 envelope）都带着它；调用方的字典永远不会被加上 `id`。
+- 本包不改读取契约：`journal get` 按 id 取条目等读取侧能力属于后续包。
+
 ---
 
 ## 5. 基础设施增强
@@ -648,6 +705,9 @@ note 区损坏的文件：`fragment note` 拒绝在其后追加（E0209），原
 - `life-index migrate --dry-run` — 扫描 schema 版本分布
 - `life-index migrate --apply` — 确定性迁移（补字段 + bump version）+ needs_agent 输出
 - 迁移链框架：`register_migration(from, to)` 装饰器注册，`run_migration_chain()` 执行
+- 补 entry id（§4.7）是与 schema 链并列的第二个独立重写理由；dry-run 与 apply 共用
+  同一个规划器，dry-run 也逐文件算出将要发生的重写（含读回核验与可替换前置检查），
+  对每个不会被迁移的文件给出路径与原因，不发布任何字节
 
 ### 5.2 搭便车事件通知（Round 6）
 
@@ -1077,6 +1137,8 @@ additive 一个可恢复照片审阅队列。其权威架构有三条不变量�
   紧邻首次 unlink 前对所有 target / staging 再做 confinement / identity / hash / size
   复检，任一变化则零删除失败；commit/成功 rollback 清除 staging。该证据是
   `import_rollback_manifest.v1` 的 additive 字段，不增加第二权威或 schema break。
+  由此，`migrate`（§4.7）改变了文件字节后，一个以内容哈希为守卫的待决 import
+  rollback 会拒绝该文件——这是有意行为。
 
 - **Immutable provenance 权威**：source facts（adapter/provenance、content SHA-256、size、
   source 相对路径/ref、capture time value/source/timezone authority、GPS）不可变；一个

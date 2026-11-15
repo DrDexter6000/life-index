@@ -97,7 +97,10 @@ class TestVerifyCommand:
             year="2026",
             month="04",
             filename="life-index_2026-04-03_001.md",
-            frontmatter='title: "A"\ndate: 2026-04-03\ntopic: ["work"]\nabstract: "Alpha"',
+            frontmatter=(
+                'title: "A"\ndate: 2026-04-03\ntopic: ["work"]\nabstract: "Alpha"\n'
+                'id: "' + "a" * 32 + '"'
+            ),
             body="# A\n\nBody A",
         )
         journal_b = _write_journal(
@@ -105,7 +108,10 @@ class TestVerifyCommand:
             year="2026",
             month="04",
             filename="life-index_2026-04-04_001.md",
-            frontmatter='title: "B"\ndate: 2026-04-04\ntopic: ["work"]\nabstract: "Beta"',
+            frontmatter=(
+                'title: "B"\ndate: 2026-04-04\ntopic: ["work"]\nabstract: "Beta"\n'
+                'id: "' + "b" * 32 + '"'
+            ),
             body="# B\n\nBody B",
         )
         indexed = [
@@ -119,7 +125,10 @@ class TestVerifyCommand:
 
         assert result["success"] is True
         assert result["issues_count"] == 0
-        assert len(result["checks"]) == 5
+        assert len(result["checks"]) == 6
+        entry_id_check = _check(result, "entry_ids")
+        assert entry_id_check["status"] == "ok"
+        assert entry_id_check["issues"] == []
 
     def test_missing_required_field_detected(self, verify_paths: dict[str, Path]) -> None:
         _write_journal(
@@ -407,3 +416,84 @@ class TestVerifyCommand:
         assert any(
             "unknown frontmatter kind 'notebook'" in issue for issue in frontmatter_check["issues"]
         )
+
+
+class TestEntryIdFindings:
+    """The identity check over live entry files: missing / malformed / duplicate."""
+
+    def test_entries_without_an_id_are_one_finding_with_the_count(
+        self, verify_paths: dict[str, Path]
+    ) -> None:
+        _write_journal(
+            verify_paths["journals_dir"],
+            year="2026",
+            month="04",
+            filename="life-index_2026-04-03_001.md",
+            frontmatter='title: "A"\ndate: 2026-04-03',
+            body="Body A",
+        )
+        _write_journal(
+            verify_paths["journals_dir"],
+            year="2026",
+            month="04",
+            filename="life-index_2026-04-04_001.md",
+            frontmatter='title: "B"\ndate: 2026-04-04',
+            body="Body B",
+        )
+
+        result = run_verify()
+        entry_id_check = _check(result, "entry_ids")
+
+        assert entry_id_check["status"] == "warning"
+        assert entry_id_check["issues"] == [
+            "2 entry file(s) have no id; run `life-index migrate` to assign one"
+        ]
+
+    def test_a_malformed_id_names_the_file(self, verify_paths: dict[str, Path]) -> None:
+        _write_journal(
+            verify_paths["journals_dir"],
+            year="2026",
+            month="04",
+            filename="life-index_2026-04-03_001.md",
+            frontmatter='title: "A"\ndate: 2026-04-03\nid: "not-an-id"',
+            body="Body",
+        )
+
+        result = run_verify()
+        entry_id_check = _check(result, "entry_ids")
+
+        assert entry_id_check["status"] == "warning"
+        assert entry_id_check["issues"] == [
+            "Journals/2026/04/life-index_2026-04-03_001.md: malformed entry id"
+        ]
+
+    def test_a_duplicated_id_names_every_file_that_carries_it(
+        self, verify_paths: dict[str, Path]
+    ) -> None:
+        shared = "c" * 32
+        _write_journal(
+            verify_paths["journals_dir"],
+            year="2026",
+            month="04",
+            filename="life-index_2026-04-03_001.md",
+            frontmatter=f'title: "A"\ndate: 2026-04-03\nid: "{shared}"',
+            body="Body A",
+        )
+        _write_journal(
+            verify_paths["journals_dir"],
+            year="2026",
+            month="05",
+            filename="life-index_2026-05-01_001.md",
+            frontmatter=f'title: "B"\ndate: 2026-05-01\nid: "{shared}"',
+            body="Body B",
+        )
+
+        result = run_verify()
+        entry_id_check = _check(result, "entry_ids")
+
+        assert entry_id_check["status"] == "warning"
+        assert entry_id_check["issues"] == [
+            "duplicate entry id " + shared + ": "
+            "Journals/2026/04/life-index_2026-04-03_001.md, "
+            "Journals/2026/05/life-index_2026-05-01_001.md"
+        ]
