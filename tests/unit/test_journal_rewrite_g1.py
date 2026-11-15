@@ -114,7 +114,7 @@ def test_replace_failure_leaves_bytes_and_no_temp(isolated_data_dir, monkeypatch
     def fail_replace(_temp: Path, _path: Path) -> None:
         raise OSError("replace failed")
 
-    monkeypatch.setattr("tools.lib.journal_rewrite._atomic_replace", fail_replace)
+    monkeypatch.setattr("tools.lib.journal_rewrite.replace_with_retry", fail_replace)
 
     result = edit_journal(journal_path=journal, frontmatter_updates={"weather": "Sunny"})
 

@@ -363,3 +363,42 @@ class TestGenerations:
         clear_pending()
 
         assert get_pending_generations() == {}
+
+
+class TestQueueFileReplaceRetries:
+    def test_a_transient_replace_failure_does_not_fail_the_queue_update(
+        self, index_dir: Path, monkeypatch
+    ):
+        """The queue file goes through the shared bounded retry.
+
+        On Windows a reader or scanner holding the file for an instant makes
+        ``os.replace`` fail once with WinError 5; the update must get through
+        on the retry instead of failing the caller (an import rollback, a
+        write's index queueing).
+        """
+        import os
+
+        import tools.lib.journal_rewrite as rewrite
+
+        real_replace = os.replace
+        calls = {"n": 0}
+
+        def flaky_replace(src, dst):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise PermissionError(13, "simulated transient lock")
+            real_replace(src, dst)
+
+        monkeypatch.setattr(rewrite.os, "replace", flaky_replace)
+        monkeypatch.setattr(
+            rewrite,
+            "_is_windows_transient_replace_error",
+            lambda exc: isinstance(exc, PermissionError),
+        )
+        monkeypatch.setattr(rewrite.time, "sleep", lambda _seconds: None)
+
+        mark_pending("Journals/2026/03/life-index_2026-03-07_001.md")
+
+        assert calls["n"] == 2
+        assert get_pending() == ["Journals/2026/03/life-index_2026-03-07_001.md"]
+        assert [p.name for p in index_dir.iterdir() if ".tmp" in p.name] == []

@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Optional
 
 from .file_lock import FileLock
+from .journal_rewrite import replace_with_retry
 from .paths import get_index_dir
 
 # Queue mutations are millisecond-scale; a stuck holder must not wedge a
@@ -228,7 +229,10 @@ def _atomic_write(paths: List[str], generations: Mapping[str, int], counter: int
     try:
         with open(fd, "w", encoding="utf-8") as f:
             f.write(payload)
-        Path(tmp_path).replace(pfile)
+        # The bounded retry for Windows transient locks: without it a reader
+        # or scanner touching the file at that instant fails the whole
+        # queue update with WinError 5.
+        replace_with_retry(Path(tmp_path), pfile)
     except Exception:
         # Clean up temp file on failure
         try:

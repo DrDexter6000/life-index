@@ -187,6 +187,10 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
   shared atomic primitive (body suffix byte-identical).
 - fix(write): write journals as UTF-8 LF bytes on every platform.
 - fix(revisions): revision snapshots are byte-exact copies of the original.
+- fix(index queue): the pending-writes queue file is replaced with the same
+  bounded retry journal rewrites use, so a reader or scanner holding it for
+  an instant on Windows no longer fails a write's index queueing or an import
+  rollback with "access denied".
 
 ## [1.6.2] - 2026-08-04
 

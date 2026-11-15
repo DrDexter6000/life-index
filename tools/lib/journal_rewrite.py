@@ -348,7 +348,7 @@ def replace_journal_bytes(journal_path: Path, new_bytes: bytes) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.chmod(temp_path, original_mode)
-        _atomic_replace(temp_path, journal_path)
+        replace_with_retry(temp_path, journal_path)
     except BaseException:
         _unlink_temp(temp_path)
         raise
@@ -369,8 +369,13 @@ def _is_windows_transient_replace_error(exc: BaseException) -> bool:
     )
 
 
-def _atomic_replace(temp_path: Path, path: Path) -> None:
+def replace_with_retry(temp_path: Path, path: Path) -> None:
     """``os.replace`` with a bounded retry for Windows transient locks.
+
+    Shared by every same-directory temp-then-replace writer in ``tools/lib``
+    (journal rewrites, the pending-writes queue): on Windows a reader or a
+    scanner holding the file for an instant makes ``os.replace`` fail with
+    WinError 5 or 32, and a short retry gets through.
 
     On exhaustion the last ``OSError`` is re-raised as-is, so the caller's
     failure path runs against the unchanged failure semantics.
